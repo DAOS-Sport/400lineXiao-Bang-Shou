@@ -19,19 +19,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 安全中間件
   app.use(helmet());
   
-  // Rate limiting
+  // Rate limiting（配置適用於 Replit 代理環境）
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 分鐘
     max: 1000, // 最多 1000 requests per window
-    message: { error: "請求過於頻繁，請稍後再試" }
+    message: { error: "請求過於頻繁，請稍後再試" },
+    keyGenerator: () => 'global', // 使用固定 key 避免代理 IP 問題
   });
   app.use(limiter);
 
-  // 針對 webhook 的更嚴格限制
+  // 針對 webhook 的更嚴格限制（配置適用於 Replit 代理環境）
   const webhookLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 分鐘
     max: 100, // 最多 100 requests per minute
-    message: { error: "Webhook 請求過於頻繁" }
+    message: { error: "Webhook 請求過於頻繁" },
+    keyGenerator: () => 'webhook', // 使用固定 key 避免代理 IP 問題
   });
 
   // GET / - 只回 "ok"
