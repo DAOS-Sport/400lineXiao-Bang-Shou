@@ -13,8 +13,16 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  console.log('🚀 開始註冊路由...');
+  
   // 設定 trust proxy 以支援 Replit 的代理設置
   app.set('trust proxy', true);
+  
+  // 全局請求日誌中間件
+  app.use((req, res, next) => {
+    console.log(`📥 ${req.method} ${req.path} - 請求到達 (${new Date().toISOString()})`);
+    next();
+  });
   
   // 安全中間件
   app.use(helmet());
@@ -37,17 +45,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET / - 只回 "ok"
+  console.log('🔗 註冊根路由 /');
   app.get("/", (req, res) => {
+    console.log('🏠 根路由被請求');
     res.send("ok");
   });
 
-  // GET /healthz - 健康檢查
-  app.get("/healthz", (req, res) => {
+  // GET /api/health - 健康檢查
+  console.log('🔗 註冊 /api/health 路由');
+  app.get("/api/health", (req, res) => {
+    console.log('❤️ /api/health 被請求');
     res.json({ status: "ok" });
   });
 
-  // POST /webhook - LINE Webhook 處理
-  app.post("/webhook", webhookLimiter, validateLineSignature, async (req, res) => {
+  // POST /api/webhook - LINE Webhook 處理
+  console.log('🔗 註冊 /api/webhook 路由');
+  app.post("/api/webhook", webhookLimiter, validateLineSignature, async (req, res) => {
+    console.log('🎯 Webhook 請求到達!');
     try {
       // 立即回應 200
       res.status(200).send("OK");
@@ -122,6 +136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   schedulerService.start();
 
   const httpServer = createServer(app);
+  console.log('✅ 路由註冊完成，所有路由已就緒');
   return httpServer;
 }
 
