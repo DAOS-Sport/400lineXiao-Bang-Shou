@@ -32,7 +32,7 @@ export class SchedulerService {
 
   private async dailyTaskSummary(): Promise<void> {
     try {
-      const targetGroupIds = (process.env.TARGET_GROUP_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
+      const targetGroupIds = (process.env.TARGET_GROUP_IDS || 'Cde9656c23b55a1b7bd5b8da147d51910').split(',').map(id => id.trim()).filter(Boolean);
       
       if (targetGroupIds.length === 0) {
         console.log('沒有設定目標群組，跳過每日任務整理');
@@ -40,6 +40,7 @@ export class SchedulerService {
       }
 
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'info',
         category: 'scheduler',
         message: '開始每日任務整理',
@@ -59,6 +60,7 @@ export class SchedulerService {
         } catch (error: any) {
           console.error(`群組 ${groupId} 任務整理失敗:`, error);
           await storage.insertAuditLog({
+            id: crypto.randomUUID(),
             level: 'error',
             category: 'scheduler',
             message: '群組任務整理失敗',
@@ -70,6 +72,7 @@ export class SchedulerService {
     } catch (error: any) {
       console.error('每日任務整理失敗:', error);
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'error',
         category: 'scheduler',
         message: '每日任務整理失敗',
@@ -89,9 +92,9 @@ export class SchedulerService {
 
     // 準備任務資料
     const taskData = yesterdayTasks.map(task => ({
-      serial: task.taskSerial,
-      description: task.description,
-      creator: task.creatorName || task.createdBy
+      serial: task.taskIdSerial,
+      description: task.text,
+      creator: task.authorDisplayName || task.authorUserId
     }));
 
     try {
@@ -106,6 +109,7 @@ export class SchedulerService {
       await lineService.pushMessage(groupId, message);
       
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'info',
         category: 'scheduler',
         message: '群組每日任務整理完成',
@@ -128,6 +132,7 @@ export class SchedulerService {
         await lineService.pushMessage(groupId, fallbackMessage);
         
         await storage.insertAuditLog({
+          id: crypto.randomUUID(),
           level: 'warning',
           category: 'scheduler',
           message: '群組任務整理降級處理完成',
@@ -139,6 +144,7 @@ export class SchedulerService {
         });
       } catch (fallbackError: any) {
         await storage.insertAuditLog({
+          id: crypto.randomUUID(),
           level: 'error',
           category: 'scheduler',
           message: '群組任務推送完全失敗',
