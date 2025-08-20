@@ -101,6 +101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Webhook 處理錯誤:", error);
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'error',
         category: 'webhook',
         message: 'Webhook 處理失敗',
@@ -187,11 +188,11 @@ async function processWebhookEvent(event: any) {
     // 限制內存使用，只保留最近1000個事件
     if (processedEvents.size > 1000) {
       const firstKey = processedEvents.values().next().value;
-      processedEvents.delete(firstKey);
+      processedEvents.delete(firstKey || '');
     }
 
     // 檢查是否已處理過（資料庫去重）
-    const existingMessage = await storage.getMessageByMessageId(event.message.id);
+    const existingMessage = await storage.getMessageByMessageId(event.message.id || '');
     if (existingMessage) {
       return;
     }
@@ -219,8 +220,9 @@ async function processWebhookEvent(event: any) {
 
       // 2. 交辦偵測（僅限目標群組）
       if (text.includes('交辦') && source.type === 'group') {
-        const targetGroupIds = (process.env.TARGET_GROUP_IDS || '').split(',').map(id => id.trim());
-        if (targetGroupIds.includes(source.groupId)) {
+        const targetGroupIds = (process.env.TARGET_GROUP_IDS || 'Cde9656c23b55a1b7bd5b8da147d51910').split(',').map(id => id.trim());
+        if (targetGroupIds.includes(source.groupId) && savedMessage) {
+          console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
           await taskService.createTaskFromMessage(savedMessage, text);
         }
       }
@@ -245,6 +247,7 @@ async function processWebhookEvent(event: any) {
   } catch (error) {
     console.error("處理事件失敗:", error);
     await storage.insertAuditLog({
+      id: crypto.randomUUID(),
       level: 'error',
       category: 'webhook',
       message: '事件處理失敗',
@@ -283,7 +286,7 @@ async function handleAdminCommands(event: any, text: string) {
     if (openTasks.length === 0) {
       await lineService.replyMessage(event.replyToken, "📌 本群未完成代辦\n目前沒有未完成的任務。");
     } else {
-      const taskList = openTasks.map(task => `${task.taskSerial}. ${task.description}`).join('\n');
+      const taskList = openTasks.map(task => `${task.taskIdSerial}. ${task.text}`).join('\n');
       await lineService.replyMessage(event.replyToken, `📌 本群未完成代辦\n${taskList}`);
     }
   }
@@ -302,7 +305,7 @@ async function handleAdminCommands(event: any, text: string) {
     if (recentTasks.length === 0) {
       await lineService.replyMessage(event.replyToken, `📌 近 ${daysAgo} 日代辦事項\n目前沒有未完成的任務。`);
     } else {
-      const taskList = recentTasks.map(task => `${task.taskSerial}. ${task.description}`).join('\n');
+      const taskList = recentTasks.map(task => `${task.taskIdSerial}. ${task.text}`).join('\n');
       await lineService.replyMessage(event.replyToken, `📌 近 ${daysAgo} 日代辦事項\n${taskList}`);
     }
   }
@@ -322,7 +325,7 @@ async function handleAdminCommands(event: any, text: string) {
     } else {
       await storage.updateTaskStatus(task.id, 'completed', new Date());
       const completedTime = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-      await lineService.replyMessage(event.replyToken, `✅ 已結案：${taskSerial}. ${task.description}（完成時間 ${completedTime}）`);
+      await lineService.replyMessage(event.replyToken, `✅ 已結案：${taskSerial}. ${task.text}（完成時間 ${completedTime}）`);
     }
   }
 }
@@ -350,12 +353,13 @@ async function handleGptTaskExtraction(event: any) {
     for (const taskText of extractedTasks) {
       const taskSerial = await storage.getNextTaskSerial(source.groupId);
       await storage.insertTask({
+        id: crypto.randomUUID(),
         groupId: source.groupId,
-        taskSerial: taskSerial,
-        description: taskText,
+        taskIdSerial: taskSerial,
+        text: taskText,
         status: 'pending',
-        createdBy: source.userId,
-        context: recentMessages.slice(0, 5).map(m => m.messageId) // 最近 5 則為主要參考
+        authorUserId: source.userId,
+        sourceMessageIds: recentMessages.slice(0, 5).map(m => m.messageId) // 最近 5 則為主要參考
       });
       createdCount++;
     }
@@ -368,6 +372,7 @@ async function handleGptTaskExtraction(event: any) {
   } catch (error) {
     console.error("GPT 任務萃取失敗:", error);
     await storage.insertAuditLog({
+      id: crypto.randomUUID(),
       level: 'error',
       category: 'llm',
       message: 'GPT 任務萃取失敗',

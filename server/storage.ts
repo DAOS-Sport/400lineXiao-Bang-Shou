@@ -9,7 +9,7 @@ import { eq, and, desc, gte, lte, sql, count } from "drizzle-orm";
 export interface IStorage {
   // Messages
   insertMessage(data: CreateMessageData): Promise<IMessage>;
-  getMessageById(id: number): Promise<IMessage | null>;
+  getMessageById(id: string): Promise<IMessage | null>;
   getMessageByMessageId(messageId: string): Promise<IMessage | null>;
   getMessages(filters: {
     q?: string;
@@ -23,10 +23,10 @@ export interface IStorage {
 
   // Tasks
   insertTask(data: CreateTaskData): Promise<ITask>;
-  getTaskById(id: number): Promise<ITask | null>;
+  getTaskById(id: string): Promise<ITask | null>;
   getTasksByGroupId(groupId: string, status?: string): Promise<ITask[]>;
   getTaskByGroupAndSerial(groupId: string, taskSerial: string): Promise<ITask | null>;
-  updateTaskStatus(id: number, status: string, completedAt?: Date): Promise<ITask | null>;
+  updateTaskStatus(id: string, status: string, completedAt?: Date): Promise<ITask | null>;
   getNextTaskSerial(groupId: string): Promise<string>;
   getTasksCreatedBetween(groupId: string, start: Date, end: Date, status?: string): Promise<ITask[]>;
 
@@ -52,7 +52,7 @@ export class DatabaseStorage implements IStorage {
       const [message] = await db.insert(messages).values(messageData).returning();
       return message as IMessage;
     } catch (error) {
-      console.log('🔧 暫時跳過訊息儲存錯誤:', error.message);
+      console.log('🔧 暫時跳過訊息儲存錯誤:', (error as Error).message);
       // 暫時回傳模擬物件，避免阻塞功能
       return {
         id: crypto.randomUUID(),
@@ -78,7 +78,7 @@ export class DatabaseStorage implements IStorage {
       const [message] = await db.select().from(messages).where(eq(messages.messageId, messageId));
       return message ? (message as IMessage) : null;
     } catch (error) {
-      console.log('🔧 暫時跳過訊息查詢錯誤:', error.message);
+      console.log('🔧 暫時跳過訊息查詢錯誤:', (error as Error).message);
       return null; // 暫時回傳 null，避免阻塞功能
     }
   }
@@ -169,11 +169,11 @@ export class DatabaseStorage implements IStorage {
 
   async getTaskByGroupAndSerial(groupId: string, taskSerial: string): Promise<ITask | null> {
     const [task] = await db.select().from(tasks)
-      .where(and(eq(tasks.groupId, groupId), eq(tasks.taskSerial, taskSerial)));
+      .where(and(eq(tasks.groupId, groupId), eq(tasks.taskIdSerial, taskSerial)));
     return task ? (task as ITask) : null;
   }
 
-  async updateTaskStatus(id: number, status: string, completedAt?: Date): Promise<ITask | null> {
+  async updateTaskStatus(id: string, status: string, completedAt?: Date): Promise<ITask | null> {
     const updateData: any = { status };
     if (completedAt) {
       updateData.completedAt = completedAt;
@@ -189,13 +189,13 @@ export class DatabaseStorage implements IStorage {
 
   async getNextTaskSerial(groupId: string): Promise<string> {
     // 找到該群組中最大的任務編號
-    const [lastTask] = await db.select({ taskSerial: tasks.taskSerial })
+    const [lastTask] = await db.select({ taskIdSerial: tasks.taskIdSerial })
       .from(tasks)
       .where(eq(tasks.groupId, groupId))
-      .orderBy(desc(tasks.taskSerial))
+      .orderBy(desc(tasks.taskIdSerial))
       .limit(1);
     
-    const lastSerial = lastTask ? parseInt(lastTask.taskSerial) : 0;
+    const lastSerial = lastTask ? parseInt(lastTask.taskIdSerial) : 0;
     const nextNumber = lastSerial + 1;
     
     return nextNumber.toString().padStart(2, '0');
@@ -250,10 +250,9 @@ export class DatabaseStorage implements IStorage {
       // 在開發模式下允許失敗
       if (process.env.NODE_ENV === 'development') {
         return {
-          id: Math.floor(Math.random() * 1000000),
           ...data,
-          createdAt: new Date(),
-          updatedAt: new Date()
+          id: data.id || crypto.randomUUID(),
+          timestamp: new Date()
         } as IAuditLog;
       }
       throw error;
@@ -263,7 +262,7 @@ export class DatabaseStorage implements IStorage {
   async getAuditLogs(limit = 100): Promise<IAuditLog[]> {
     try {
       const logsResult = await db.select().from(auditLogs)
-        .orderBy(desc(auditLogs.createdAt))
+        .orderBy(desc(auditLogs.timestamp))
         .limit(limit);
       
       return logsResult as IAuditLog[];

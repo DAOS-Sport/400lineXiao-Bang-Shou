@@ -24,7 +24,7 @@ export class TaskService {
         groupId: message.groupId,
         taskIdSerial: taskSerial, // 匹配正確欄位名
         authorUserId: message.userId, // 匹配正確欄位名
-        authorDisplayName: message.displayName, // 匹配正確欄位名
+        authorDisplayName: message.displayName || message.userId, // 匹配正確欄位名並處理 null
         text: cleanText, // 匹配正確欄位名
         status: 'pending',
         sourceMessageIds: [message.messageId] // 匹配正確欄位名
