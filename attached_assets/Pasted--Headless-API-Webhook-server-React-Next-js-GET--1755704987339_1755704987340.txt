@@ -1,0 +1,201 @@
+✅ 請照以下規格開發（不要做網站）
+
+專案性質：後端服務（Headless API / Webhook server）。
+不要建立任何前端頁面、React、Next.js、模板或靜態檔。GET / 只需回 "ok"。
+
+1) Tech stack
+
+Node.js 18+、Express
+
+LINE Messaging API（@line/bot-sdk）
+
+Scheduler：node-cron（TZ=Asia/Taipei）
+
+LLM：OpenAI gpt-4o-mini（JSON 輸出）
+
+DB：優先 MongoDB（原始 JSON 儲存方便）；如要用 Postgres 也可，請用 JSONB 欄位存 rawEvent
+
+時間：dayjs + dayjs-timezone
+
+安全：helmet、express-rate-limit
+
+2) 只要三個 HTTP 端點
+
+POST /webhook
+
+驗證 X-Line-Signature；200 立即回應。
+
+處理 message 事件，全部入庫到 messages。
+
+規則判斷（見 §4 規則）→ 可能建立任務 / 回覆 / 查詢。
+
+GET /healthz → 回 {status:"ok"}
+
+GET /api/admin/messages（只讀 JSON）
+
+需 Authorization（Basic 或 Bearer Token）
+
+Query：q（全文搜尋 text）、start、end、sourceType=user|group|room|all、page、pageSize
+
+Server-side pagination，預設 pageSize=50、最大 200
+
+不要做任何 HTML 管理介面；我只要看 JSON 列表就好。
+
+3) ENV（.env）
+LINE_CHANNEL_SECRET=
+LINE_CHANNEL_ACCESS_TOKEN=
+OPENAI_API_KEY=
+MONGODB_URI=         # 或 DATABASE_URL (Postgres)
+TARGET_GROUP_IDS=    # 逗號分隔：只在這些群組啟用交辦 & 回朔 & 06:30
+ADMIN_USER_IDS=      # 逗號分隔：可用管理指令的人
+ADMIN_TOKEN=         # 或 ADMIN_USER/ADMIN_PASS（二擇一）
+TZ=Asia/Taipei
+PORT=3000
+
+4) 規則 / 指令（重點）
+
+交辦偵測：只要訊息包含「交辦」兩字，且來源群在 TARGET_GROUP_IDS → 建立任務（status=open）。
+
+回朔建任務：群組有人輸入 gpt幫我記錄代辦事項 → 回朔最近 20 則；以最近 5 則為主要內容，再檢查往前 5–15 則是否遺漏；丟給 LLM 萃取 1~N 個可執行任務並入庫。
+
+管理員（白名單）才可用的指令：
+
+查詢代辦事項 → 列出本群 status=open 任務，編號（01、02…）排序回覆。
+
+查詢近期代辦事項 → 近 7 天（可用 ENV 設定）status=open。
+
+編號XX已完成 → 將該任務 status=done、寫 completedAt，以後查詢不顯示。
+
+ID 查詢（任何人可用）：輸入 id
+
+一對一：回 userId
+
+群組/多人房：回 groupId/roomId + 發話者 userId
+
+06:30 排程（Asia/Taipei）：
+
+逐一處理 TARGET_GROUP_IDS：查該群前一日 status=open 任務 → 丟給 LLM 做去重/合併/格式化 → 只推回同一個群。
+
+絕對不可把 B 群的資料發到 A 群（群組隔離）。
+
+5) 資料模型
+
+messages
+
+id (PK)、messageId、sourceType (user|group|room)
+
+groupId|null、roomId|null、userId、displayName?
+
+type (text|image|file|...)、text?
+
+timestamp（ISO；建議同存原始毫秒）
+
+rawEvent（JSON 原樣存證）
+
+Index：timestamp、groupId、userId、text(full-text)
+
+tasks
+
+id (PK)、groupId
+
+taskIdSerial（群組內流水號字串：「01」「02」…）
+
+text、status(open|done)
+
+authorUserId、authorDisplayName?
+
+createdAt、completedAt?
+
+sourceMessageIds[]（建立這個任務參考到哪些 messageId）
+
+可選欄位：assigneeUserId?、dueDate?、place?、counterparty?
+
+Unique：groupId + taskIdSerial
+
+admins
+
+userId (PK)
+
+6) LLM 整合要點
+
+Model：gpt-4o-mini
+
+回朔輸入：帶上 20 則訊息（含說話者與時間標記），並註明「最近 5 則為主、再檢 5–15 則」。
+
+產出格式：JSON（{ "tasks":[ { "text":"...", "assignee":null, "due":null } ] }）
+
+06:30 整理：輸入為該群 status=open 任務清單，請模型合併重複、去客套、輸出條列訊息（中文、每條一行）。
+
+7) 安全 / 防外流
+
+驗簽 X-Line-Signature；驗簽不過 → 403。
+
+所有 HTTP 走 HTTPS；加 helmet、rate-limit。
+
+.env 管理 secrets，不可硬編碼；staging / production 分離。
+
+/api/admin/messages 必須帶 Authorization: Bearer <ADMIN_TOKEN>（或 Basic Auth）。
+
+僅提供 GET；不提供刪除/修改。
+
+入庫去重（messageId 唯一）。
+
+錯誤與異常（外連 5xx、排程失敗、LLM 失敗）需記錄 audit log；必要時簡訊或 LINE 推播管理員。
+
+8) 回覆格式（樣板）
+
+06:30（各群組）
+
+📌 昨日交辦整理（YYYY/MM/DD）
+01. 完成比賽報名表
+02. 整理泳隊成績（交辦人：小華）
+—— 合計 2 項（皆未完成）
+
+
+查詢代辦事項（管理員）
+
+📌 本群未完成代辦
+01. 聯絡場地租借
+02. 印製海報
+
+
+結案
+
+✅ 已結案：01. 聯絡場地租借（完成時間 2025/08/20 10:12）
+
+
+ID
+
+一對一：🆔 你的 userId：Uxxxxxxxx
+
+群組：🆔 groupId：Cxxxxxxxx、👤 你的 userId：Uyyyyyyyy
+
+9) 測試/驗收（必須通過）
+
+群組 A/B 同時使用：各自建任務、各自 06:30 回送，不串群。
+
+gpt幫我記錄代辦事項：能從 20 則回朔抽出任務並入庫。
+
+查詢代辦事項/編號XX已完成 僅白名單可用；非管理員會被拒。
+
+id 在私聊回 userId，在群組回 groupId + 該 userId。
+
+/api/admin/messages 需要授權，回傳分頁 JSON；支援 q/start/end/sourceType。
+
+Webhook 驗簽有效；messageId 去重；06:30 排程使用 TZ=Asia/Taipei。
+
+LLM 失敗時能降級（直接以原任務清單條列），並寫 log。
+
+10) 交付物
+
+完整可執行專案（無前端），README 內含：
+
+.env 範例
+
+curl 測試指令（/healthz、/api/admin/messages）
+
+LINE Webhook 設定步驟
+
+Replit 執行設定（.replit 指向 node index.js 或等效）
+
+來源碼註解與模組劃分（services / routes / models）

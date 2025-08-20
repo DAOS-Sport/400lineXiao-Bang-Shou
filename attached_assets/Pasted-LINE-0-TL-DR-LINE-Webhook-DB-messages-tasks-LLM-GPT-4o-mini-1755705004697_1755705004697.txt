@@ -1,0 +1,390 @@
+LINE 小秘書系統 — 完整需求與架構建議
+0) 摘要（TL;DR）
+
+以 LINE 官方帳號 + Webhook 後端 + DB（messages/tasks） + LLM（GPT-4o-mini） 建置一個「群組小秘書」：
+
+監聽群組/一對一訊息、入庫。
+
+含「交辦」兩字即自動建立任務（依群組獨立管理）。
+
+每日 06:30 Asia/Taipei：各群組回送前一日未完成交辦清單（先丟 GPT 梳理），嚴禁跨群。
+
+指令「gpt幫我記錄代辦事項」→ 回溯 20 則訊息，自然語言抽取任務（最近 5 則為主，再檢 5–15 則）。
+
+管理員可「查詢代辦事項 / 查詢近期代辦事項 / 編號XX已完成」。
+
+任何人輸入「id」→ 回覆 userId（與 groupId/roomId）。
+
+迷你後台 /admin/messages：只讀查看 messages（分頁/搜尋/時間篩選）。
+
+強化安全與不可外流：簽章驗證、憑證隔離、Basic Auth/Bearer Token、防重、防重放、稽核 Log。
+
+1) 範圍（Scope）
+
+In-scope
+
+LINE Messaging API Webhook 事件接收與驗簽
+
+訊息寫入 DB（messages）
+
+任務建立與管理（tasks）
+
+06:30 排程 per-group 推送
+
+LLM 整理/抽取（call OpenAI）
+
+管理指令（白名單）
+
+「id」指令（任何人）
+
+只讀管理後台（/admin/messages）
+
+Out-of-scope（第一版不做）
+
+角色/權限 GUI 後台、Flex/QuickReply、指派@mention、自動延期、推播報表下載、外部 BI
+
+2) 使用情境（User Stories）
+
+作為群組使用者：我輸入「交辦：明天帶海報」→ 系統自動登記成任務。
+
+作為群組使用者：我輸入「id」→ 系統告知我的 userId，若在群組也回 groupId。
+
+作為管理員：我輸入「查詢代辦事項」→ 系統列出本群未完成任務（01、02、…排序）。
+
+作為管理員：我輸入「編號01已完成」→ 任務 01 結案，下次查詢不再出現。
+
+作為群組使用者：我輸入「gpt幫我記錄代辦事項」→ 系統回朔 20 則，把最近對話轉為任務。
+
+作為任何成員：每天 06:30 看見本群昨日交辦整理清單（僅本群資料）。
+
+3) 指令/觸發規則（Command & Triggers）
+
+交辦偵測：訊息文字包含「交辦」兩字即建任務（僅限 TARGET_GROUP_IDS）。
+
+回朔建任務：gpt幫我記錄代辦事項（群組）→ 回朔 20 則，最近 5 則為主，檢 5–15 則是否遺漏。
+
+管理員指令（白名單）：
+
+查詢代辦事項 → 本群 status=open 任務（01、02…）
+
+查詢近期代辦事項 → 近 N 日（預設 7）status=open
+
+編號(\d{2})已完成 → 標記該任務 done（寫入 completedAt）
+
+ID 查詢（任何人）：id
+
+user chat → 回 userId
+
+group/room → 回 groupId/roomId + 發話者 userId
+
+06:30 Cron：各群組前一日 status=open 任務 → 先丟 GPT 清理/合併/標註 → 只回該群。
+
+4) 資料模型（Data Model）
+4.1 messages（訊息原始存證）
+
+id (PK, UUID)
+
+messageId (LINE message id / event id)
+
+sourceType (user|group|room)
+
+groupId (nullable), roomId (nullable)
+
+userId
+
+displayName (optional, cache)
+
+type (text|image|sticker|file|...)
+
+text (nullable; 若 type=text)
+
+timestamp (ISO; 保存原始毫秒 + 台北時區格式化欄位可選)
+
+rawEvent (JSON; 原樣存證)
+Index：timestamp, sourceType, groupId, userId, text (full-text)
+
+4.2 tasks（任務）
+
+id (PK, UUID)
+
+groupId（群組邊界隔離必填）
+
+taskIdSerial（群組內流水號字串，「01」「02」… 依群組獨立遞增）
+
+text（清理過的可執行描述）
+
+status (open|done)
+
+authorUserId, authorDisplayName(optional)
+
+createdAt, completedAt(nullable)
+
+sourceMessageIds (string[])（建立任務時參考的 messageId 列表）
+
+擴充欄位（可空）：assigneeUserId, dueDate, place, counterparty
+Index：groupId+taskIdSerial unique, status, createdAt
+
+4.3 admins（白名單）
+
+userId (PK)
+
+5) 系統流程（Sequence/Workflow）
+5.1 Webhook Ingest
+
+LINE → POST /webhook（含 X-Line-Signature）
+
+後端驗簽，超時控制（<1s ack）
+
+解析 events[]：僅處理 message.type=text（其他型別照樣 messages 入庫）
+
+去重（Dedup by messageId / event id）
+
+寫入 messages
+
+Routing：
+
+若 text 包含「交辦」且 groupId ∈ TARGET_GROUP_IDS → 建 tasks：
+
+產生 taskIdSerial（群組內 auto-increment；建議以 counter collection or SQL sequence）
+
+status=open
+
+若 text 精準等於指令：
+
+id：回覆 userId／groupId
+
+管理員查詢/結案：權限檢查後執行
+
+gpt幫我記錄代辦事項：回朔 → LLM → 批量建 tasks
+
+5.2 06:30 Cron（Asia/Taipei）
+
+取出 TARGET_GROUP_IDS 列表
+
+逐群組查詢：前一日 status=open 任務
+
+若有資料 → 組合 prompt → 呼叫 LLM（GPT-4o-mini, JSON schema）
+
+以清單格式輸出（範例見 §8），只 push 到該群組
+
+記錄推送成功/失敗（重試策略：exponential backoff）
+
+6) LLM / GPT 整合（LLM Integration）
+
+Model：gpt-4o-mini（成本低、延遲小），必要時可切 gpt-4o (production bursts)
+
+輸入：
+
+回朔 20 則訊息（帶有時間、說話者）
+
+規則：最近 5 則為主，檢 5–15 是否有可執行任務線索
+
+任務去冗與合併同義、補齊主詞/動詞
+
+輸出（建議 JSON Schema）：
+
+{
+  "tasks":[
+    {"text":"明天帶海報到是東國小（主任約談）","assignee":null,"due":null}
+  ]
+}
+
+
+清單整理（06:30）：輸入為該群 status=open 任務的文字陣列，要求 LLM：
+
+合併重複/衍生句、移除客套、保留可執行描述
+
+分點條列、強調關鍵期限或地點
+
+中英文標點統一
+
+防爆字元：輸出長度控制（token budget），必要時分段推送。
+
+7) 安全（Security & Compliance）
+
+驗簽：X-Line-Signature（HMAC-SHA256）必須驗證，未通過直接 403。
+
+HTTPS：反向代理或 PaaS（Replit/Render/Heroku）強制 TLS。
+
+Secrets：env 注入，不可 commit；最少權限原則（OpenAI/DB/LINE tokens）。
+
+後台 /admin/messages：
+
+Basic Auth 或 Bearer Token（環境變數 ADMIN_USER, ADMIN_PASS 或 ADMIN_TOKEN）
+
+僅 GET、只讀；增加 helmet, rate-limit, no-store cache header。
+
+RBAC：管理員白名單 admins 控制指令；非白名單回覆「需要管理員權限」。
+
+入侵/外流防範：
+
+伺服器/DB 安裝自動更新；最小開放入站 port；禁用匿名外連。
+
+請求/推送錯誤記 audit log，異常行為告警（如 5xx 提升）。
+
+防重放/去重：messageId/event id 索引唯一。
+
+監控 rate limit：LINE API throttle（429）時退避重試。
+
+8) 對話輸出格式（UX）
+8.1 06:30 各群組
+📌 昨日交辦整理（YYYY/MM/DD）
+01. 完成比賽報名表
+02. 整理泳隊成績（交辦人：小華）
+—— 合計 2 項（皆未完成）
+
+8.2 查詢代辦事項（管理員）
+📌 本群未完成代辦
+01. 聯絡場地租借
+02. 印製海報
+
+8.3 結案
+✅ 已結案：01. 聯絡場地租借（完成時間 2025/08/20 10:12）
+
+8.4 ID 查詢
+
+一對一：
+
+🆔 你的 userId：Uxxxxxxxxxxxxxxxx
+
+
+群組：
+
+🆔 groupId：Cxxxxxxxxxxxxxxxx
+👤 你的 userId：Uyyyyyyyyyyyyyyy
+
+9) Admin 迷你後台（只讀）
+
+路徑：/admin/messages（behind Basic Auth/Bearer Token）
+
+UI：純表格 + 搜尋 + 時間篩選 + 分頁（server-side pagination）
+
+欄位：timestamp(台北時區), sourceType, groupId/roomId, userId, displayName, type, text, messageId
+
+API：GET /api/admin/messages?q&start&end&sourceType&page&pageSize
+
+不提供刪改、下載；只讀瀏覽即可。
+
+10) 組態（Config / ENV）
+
+LINE_CHANNEL_SECRET
+
+LINE_CHANNEL_ACCESS_TOKEN
+
+TARGET_GROUP_IDS（逗號分隔；僅這些群啟用交辦/回朔/06:30）
+
+ADMIN_USER_IDS（白名單，逗號分隔）
+
+OPENAI_API_KEY
+
+TZ=Asia/Taipei
+
+DB：MONGODB_URI（或 DATABASE_URL for MySQL）
+
+後台：ADMIN_USER, ADMIN_PASS（或 ADMIN_TOKEN）
+
+11) 事件端點與模組切分（API & Modules）
+
+POST /webhook（LINE events; validate signature; ack 200）
+
+Services / Modules：
+
+line.service：reply/push、getContent（下載圖片/檔案可選）
+
+messages.service：入庫、查詢（for admin）
+
+tasks.service：建/查/結案、群組內流水號生成（atomic）
+
+llm.service：prompt 組裝、JSON schema 驗證
+
+scheduler.service：06:30 cron（迭代群組）
+
+guards.ts：admin/target-group/去重/速率
+
+time.ts：時區/日界轉換（前一日窗口）
+
+Admin API：GET /api/admin/messages
+
+12) 錯誤處理與重試（Reliability）
+
+Webhook handler：捕捉例外→log→仍回 200（避免 LINE 重送過多）
+
+Outbound 發送：retry with exponential backoff（最多 3 次）
+
+LLM 失敗策略：回退為不經 LLM 的原始條列；記告警
+
+DB 寫入失敗：dead-letter（簡易重試隊列/文件）
+
+所有錯誤與重試寫入 audit log（含 correlation id）
+
+13) 效能與限制（Performance）
+
+事件處理非同步（message 入庫 → 任務偵測 → 其他工作佇列）
+
+以 messageId 做去重；messages.timestamp/text 建索引
+
+pageSize 預設 50、最大 200，避免 admin 拉爆
+
+14) 測試/驗收（Acceptance）
+
+必過場景
+
+群組 A/B 同時使用：各自建任務、各自 06:30 回送、不串群。
+
+「交辦」偵測於 TARGET_GROUP_IDS 有效，非目標群忽略。
+
+gpt幫我記錄代辦事項：回朔 20 則、最近 5 則為主；能抽出任務並入庫。
+
+查詢代辦事項 僅管理員可用；非管理員拒絕。
+
+編號01已完成 僅影響本群；再次查詢不再出現。
+
+任意人 id 指令：私聊回 userId；群組回 groupId + 該 userId。
+
+/admin/messages 僅憑證可進；可分頁/搜尋/篩時間；只讀。
+
+Webhook 驗簽、去重有效；LLM 故障時有降級行為；錯誤有 log。
+
+15) 資安/外流防治補充（你特別交代）
+
+所有流量走 HTTPS；禁止未授權來源 IP 的管理端存取（可加 IP Allowlist）。
+
+Env secrets（LINE/OpenAI/DB/Admin）只在 Runtime 注入；不進版控；開測/正式分離。
+
+資料最小化：只存必要欄位；rawEvent 可保留但限制保留天數（90 天自動清除；messages.text 與 tasks 長期保留）。
+
+管理後台頁面與 API 全部加 Cache-Control: no-store。
+
+例外與登入嘗試過多觸發告警（LINE 推播或 Email）。
+
+16) 部署建議（Deployment Topology）
+
+單體服務（Node.js/Express），附 MongoDB（或 MySQL），跑於 Replit/Render/Heroku 任一 PaaS。
+
+啟用 Webhook 公網 URL（需 TLS）；綁定 LINE Messaging API。
+
+Cron：
+
+PaaS 原生 scheduler，或 node-cron 長駐（設 TZ=Asia/Taipei）。
+
+日誌：stdout + 第三方（如 Logtail/Datadog）可選。
+
+版本：staging（測試 LINE channel）/ production（正式 channel）分開。
+
+17) 未來擴充（Roadmap，非首版）
+
+Quick Reply/按鈕（結案/延期）
+
+@指派 + 個人提醒 DM
+
+Flex Message 版式
+
+後台 CSV 匯出、白名單 GUI
+
+多語/歧義容錯（繁簡/全半形/錯別字正規化）
+
+最後提醒
+
+計費：接收訊息免費；發送到群組每則算 1 則（與人數無關）。Broadcast 給「好友名單」才是按人頭計費。
+
+LLM 成本：以 GPT-4o-mini 為主，成本遠低於 LINE 訊息費。
