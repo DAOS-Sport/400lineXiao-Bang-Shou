@@ -29,6 +29,7 @@ export interface IStorage {
   updateTaskStatus(id: string, status: string, completedAt?: Date): Promise<ITask | null>;
   getNextTaskSerial(groupId: string): Promise<string>;
   getTasksCreatedBetween(groupId: string, start: Date, end: Date, status?: string): Promise<ITask[]>;
+  getTasksByStatus(status: string): Promise<ITask[]>;
 
   // Admins
   insertAdmin(data: CreateAdminData): Promise<IAdmin>;
@@ -220,6 +221,14 @@ export class DatabaseStorage implements IStorage {
     const tasksResult = await db.select().from(tasks)
       .where(and(...whereConditions))
       .orderBy(tasks.taskIdSerial);
+    
+    return tasksResult as ITask[];
+  }
+
+  async getTasksByStatus(status: string): Promise<ITask[]> {
+    const tasksResult = await db.select().from(tasks)
+      .where(eq(tasks.status, status))
+      .orderBy(tasks.createdAt);
     
     return tasksResult as ITask[];
   }

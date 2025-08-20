@@ -6,36 +6,51 @@ import { llmService } from "./llmService";
 import { getYesterday, formatDate, getYesterdayRange, getLast24HoursRange } from "../utils/time";
 
 export class SchedulerService {
-  private cronJob: cron.ScheduledTask | null = null;
+  private cronJobs: cron.ScheduledTask[] = [];
 
   start(): void {
-    if (this.cronJob) {
-      this.cronJob.destroy();
-    }
+    // 先清除既有的排程
+    this.stop();
 
-    // 每日 06:30 (Asia/Taipei) 執行
-    this.cronJob = cron.schedule('30 6 * * *', async () => {
-      await this.dailyTaskSummary();
-    }, {
-      timezone: 'Asia/Taipei'
+    // 四個時段的任務提醒：06:30, 11:00, 15:00, 20:00
+    const schedules = [
+      { time: '30 6 * * *', name: '06:30' },
+      { time: '0 11 * * *', name: '11:00' }, 
+      { time: '0 15 * * *', name: '15:00' },
+      { time: '0 20 * * *', name: '20:00' }
+    ];
+
+    schedules.forEach(({ time, name }) => {
+      const job = cron.schedule(time, async () => {
+        console.log(`${name} 任務提醒開始執行`);
+        await this.dailyTaskSummary();
+      }, {
+        timezone: 'Asia/Taipei'
+      });
+      this.cronJobs.push(job);
     });
 
-    console.log('排程服務已啟動 - 每日 06:30 (Asia/Taipei) 執行任務整理');
+    console.log('排程服務已啟動 - 每日四次任務提醒 (06:30, 11:00, 15:00, 20:00 Asia/Taipei)');
   }
 
   stop(): void {
-    if (this.cronJob) {
-      this.cronJob.destroy();
-      this.cronJob = null;
-    }
+    this.cronJobs.forEach(job => job.destroy());
+    this.cronJobs = [];
   }
 
   private async dailyTaskSummary(): Promise<void> {
     try {
-      const targetGroupIds = (process.env.TARGET_GROUP_IDS || 'Cde9656c23b55a1b7bd5b8da147d51910').split(',').map(id => id.trim()).filter(Boolean);
+      // 獲取所有有待辦任務的群組
+      const allPendingTasks = await storage.getTasksByStatus('pending');
+      const groupIds: string[] = [];
+      allPendingTasks.forEach(task => {
+        if (!groupIds.includes(task.groupId)) {
+          groupIds.push(task.groupId);
+        }
+      });
       
-      if (targetGroupIds.length === 0) {
-        console.log('沒有設定目標群組，跳過每日任務整理');
+      if (groupIds.length === 0) {
+        console.log('目前沒有任何群組有待辦任務，跳過任務整理');
         return;
       }
 
@@ -44,16 +59,15 @@ export class SchedulerService {
         level: 'info',
         category: 'scheduler',
         message: '開始每日任務整理',
-        details: { targetGroupIds }
+        details: { groupCount: groupIds.length, groupIds }
       });
 
       const { start: startDate, end: endDate } = getLast24HoursRange();
-      
 
       // 逐一處理每個群組
-      for (const groupId of targetGroupIds) {
+      for (const groupId of groupIds) {
         try {
-          await this.processGroupDailySummary(groupId, startDate, endDate);
+          await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
         } catch (error: any) {
           console.error(`群組 ${groupId} 任務整理失敗:`, error);
           await storage.insertAuditLog({
@@ -136,6 +150,104 @@ export class SchedulerService {
           details: {
             groupId,
             taskCount: yesterdayTasks.length,
+            error: error.message
+          }
+        });
+      } catch (fallbackError: any) {
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'error',
+          category: 'scheduler',
+          message: '群組任務推送完全失敗',
+          details: {
+            groupId,
+            originalError: error.message,
+            fallbackError: fallbackError.message
+          }
+        });
+      }
+    }
+  }
+
+  private async processGroupDailySummaryWithSuggestions(groupId: string, startDate: Date, endDate: Date): Promise<void> {
+    // 查詢該群組的所有未完成任務（不限時間範圍）
+    const pendingTasks = await storage.getTasksByGroupId(groupId, 'pending');
+    
+    if (pendingTasks.length === 0) {
+      console.log(`群組 ${groupId} 沒有未完成任務`);
+      return;
+    }
+
+    // 準備任務資料
+    const taskData = pendingTasks.map(task => ({
+      serial: task.taskIdSerial,
+      description: task.text,
+      creator: task.authorDisplayName || task.authorUserId
+    }));
+
+    try {
+      // 使用 LLM 整理任務
+      const organizedTasks = await llmService.organizeTasksForDailySummary(taskData);
+      
+      // 使用 LLM 生成處理建議
+      const suggestions = await llmService.generateTaskSuggestions(taskData);
+      
+      // 組合推送訊息
+      const currentTime = new Date().toLocaleString('zh-TW', { 
+        timeZone: 'Asia/Taipei',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      let message = `📌 任務提醒（${currentTime}）\n${organizedTasks}`;
+      
+      if (suggestions) {
+        message += `\n\n💡 處理建議：\n${suggestions}`;
+      }
+      
+      message += `\n—— 合計 ${pendingTasks.length} 項待辦任務`;
+      
+      // 推送到群組
+      await lineService.pushMessage(groupId, message);
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'scheduler',
+        message: '群組任務提醒完成（含建議）',
+        details: {
+          groupId,
+          taskCount: pendingTasks.length,
+          time: currentTime,
+          hasSuggestions: !!suggestions
+        }
+      });
+
+    } catch (error: any) {
+      console.error(`群組 ${groupId} 任務推送失敗:`, error);
+      
+      // 降級處理：直接推送原始任務列表
+      const fallbackTasks = taskData.map(task => `${task.serial}. ${task.description}`).join('\n');
+      const currentTime = new Date().toLocaleString('zh-TW', { 
+        timeZone: 'Asia/Taipei',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      const fallbackMessage = `📌 任務提醒（${currentTime}）\n${fallbackTasks}\n—— 合計 ${pendingTasks.length} 項待辦任務`;
+      
+      try {
+        await lineService.pushMessage(groupId, fallbackMessage);
+        
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'warning',
+          category: 'scheduler',
+          message: '群組任務提醒降級處理完成',
+          details: {
+            groupId,
+            taskCount: pendingTasks.length,
             error: error.message
           }
         });

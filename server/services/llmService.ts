@@ -75,6 +75,7 @@ ${messageTexts}
       const result = JSON.parse(response.choices[0].message.content || '{"tasks":[]}');
       
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'info',
         category: 'llm',
         message: 'GPT 任務萃取成功',
@@ -89,6 +90,7 @@ ${messageTexts}
     } catch (error: any) {
       console.error('LLM 任務萃取失敗:', error);
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'error',
         category: 'llm',
         message: 'LLM 任務萃取失敗',
@@ -146,6 +148,7 @@ ${taskTexts}
       const organizedTasks = response.choices[0].message.content?.trim() || taskTexts;
       
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'info',
         category: 'llm',
         message: 'GPT 任務整理成功',
@@ -160,6 +163,7 @@ ${taskTexts}
     } catch (error: any) {
       console.error('LLM 任務整理失敗:', error);
       await storage.insertAuditLog({
+        id: crypto.randomUUID(),
         level: 'error',
         category: 'llm',
         message: 'LLM 任務整理失敗',
@@ -168,6 +172,76 @@ ${taskTexts}
       
       // 降級處理：直接回傳原始任務列表
       return tasks.map(task => `${task.serial}. ${task.description}`).join('\n');
+    }
+  }
+
+  async generateTaskSuggestions(tasks: any[]): Promise<string> {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return '';
+      }
+
+      if (tasks.length === 0) {
+        return '';
+      }
+
+      const taskTexts = tasks.map(task => `${task.serial}. ${task.description}`).join('\n');
+      
+      const prompt = `請為以下未完成的代辦任務提供簡單的處理建議和優先順序分析：
+
+任務清單：
+${taskTexts}
+
+請以繁體中文回覆，包含：
+1. 優先順序建議（緊急/重要程度）
+2. 簡單的處理步驟或方法
+3. 可能需要的資源或協助
+4. 預估時間
+
+請保持建議簡潔實用，每項任務控制在 2-3 行建議內。`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o-mini" which was released for cost-effective usage. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "system",
+            content: "你是一個專業的任務管理顧問，擅長提供實用的任務處理建議和優先順序分析。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.4,
+        max_tokens: 1200
+      });
+
+      const suggestions = response.choices[0].message.content?.trim() || '';
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'llm',
+        message: 'GPT 任務建議生成成功',
+        details: {
+          taskCount: tasks.length,
+          suggestionLength: suggestions.length
+        }
+      });
+
+      return suggestions;
+
+    } catch (error: any) {
+      console.error('LLM 任務建議生成失敗:', error);
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'llm',
+        message: 'LLM 任務建議生成失敗',
+        details: { error: error.message }
+      });
+      
+      return '';
     }
   }
 }
