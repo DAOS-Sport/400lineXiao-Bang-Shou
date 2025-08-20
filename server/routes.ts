@@ -213,8 +213,8 @@ async function processWebhookEvent(event: any) {
       const text = event.message.text.trim();
       const source = event.source;
       
-      // 1. ID 查詢指令（任何人可用）
-      if (text === 'id') {
+      // 1. ID 查詢指令（任何人可用，不分大小寫）
+      if (text.toLowerCase() === 'id') {
         await handleIdCommand(event);
         return;
       }
