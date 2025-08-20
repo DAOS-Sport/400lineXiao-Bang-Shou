@@ -20,6 +20,7 @@ export class MessageService {
     }
 
     return {
+      id: crypto.randomUUID(), // 加入必要的 ID
       messageId: event.message.id,
       sourceType: source.type,
       groupId: source.groupId,
