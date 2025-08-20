@@ -18,6 +18,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 設定 trust proxy 以支援 Replit 的代理設置
   app.set('trust proxy', true);
   
+  // 🔧 添加原始 body 中間件以支援 LINE 簽名驗證
+  app.use('/webhook', express.raw({ type: 'application/json' }));
+  app.use('/webhook', (req: any, res, next) => {
+    req.rawBody = req.body;
+    req.body = JSON.parse(req.body.toString());
+    next();
+  });
+  
   // **關鍵修復：統一使用 /webhook 路徑**
   
   // 全局請求日誌中間件
