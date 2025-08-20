@@ -219,13 +219,10 @@ async function processWebhookEvent(event: any) {
         return;
       }
 
-      // 2. 交辦偵測（僅限目標群組）
-      if (text.includes('交辦') && source.type === 'group') {
-        const targetGroupIds = (process.env.TARGET_GROUP_IDS || 'Cde9656c23b55a1b7bd5b8da147d51910').split(',').map(id => id.trim());
-        if (targetGroupIds.includes(source.groupId) && savedMessage) {
-          console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
-          await taskService.createTaskFromMessage(savedMessage, text);
-        }
+      // 2. 交辦偵測（所有群組皆可使用）
+      if (text.includes('交辦') && source.type === 'group' && savedMessage) {
+        console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
+        await taskService.createTaskFromMessage(savedMessage, text);
       }
 
       // 3. 管理員指令
