@@ -44,13 +44,18 @@ export class DatabaseStorage implements IStorage {
   // Messages
   async insertMessage(data: CreateMessageData): Promise<IMessage> {
     try {
-      const [message] = await db.insert(messages).values(data).returning();
+      // 生成 UUID 作為 ID
+      const messageData = {
+        ...data,
+        id: crypto.randomUUID()
+      };
+      const [message] = await db.insert(messages).values(messageData).returning();
       return message as IMessage;
     } catch (error) {
       console.log('🔧 暫時跳過訊息儲存錯誤:', error.message);
       // 暫時回傳模擬物件，避免阻塞功能
       return {
-        id: Date.now(),
+        id: crypto.randomUUID(),
         messageId: data.messageId,
         sourceType: data.sourceType,
         groupId: data.groupId,
@@ -58,13 +63,12 @@ export class DatabaseStorage implements IStorage {
         text: data.text,
         timestamp: data.timestamp,
         rawEvent: data.rawEvent,
-        createdAt: new Date(),
-        updatedAt: new Date()
+        createdAt: new Date()
       } as IMessage;
     }
   }
 
-  async getMessageById(id: number): Promise<IMessage | null> {
+  async getMessageById(id: string): Promise<IMessage | null> {
     const [message] = await db.select().from(messages).where(eq(messages.id, id));
     return message ? (message as IMessage) : null;
   }
@@ -138,13 +142,14 @@ export class DatabaseStorage implements IStorage {
   async insertTask(data: CreateTaskData): Promise<ITask> {
     const taskData = {
       ...data,
-      context: data.context || []
+      id: crypto.randomUUID(),
+      sourceMessageIds: data.sourceMessageIds || []
     };
     const [task] = await db.insert(tasks).values(taskData).returning();
     return task as ITask;
   }
 
-  async getTaskById(id: number): Promise<ITask | null> {
+  async getTaskById(id: string): Promise<ITask | null> {
     const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
     return task ? (task as ITask) : null;
   }
@@ -157,7 +162,7 @@ export class DatabaseStorage implements IStorage {
 
     const tasksResult = await db.select().from(tasks)
       .where(and(...whereConditions))
-      .orderBy(tasks.taskSerial);
+      .orderBy(tasks.taskIdSerial);
     
     return tasksResult as ITask[];
   }
@@ -214,7 +219,7 @@ export class DatabaseStorage implements IStorage {
 
     const tasksResult = await db.select().from(tasks)
       .where(and(...whereConditions))
-      .orderBy(tasks.taskSerial);
+      .orderBy(tasks.taskIdSerial);
     
     return tasksResult as ITask[];
   }

@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 // Messages Table - 訊息原始存證
 export const messages = pgTable('messages', {
-  id: serial('id').primaryKey(),
+  id: varchar('id').primaryKey(), // 匹配現有資料庫結構
   messageId: varchar('message_id').notNull().unique(), // LINE 事件 ID
   sourceType: varchar('source_type').notNull(), // 'user' | 'group' | 'room'
   groupId: varchar('group_id'), // 群組 ID（如有）
@@ -28,45 +28,42 @@ export const messages = pgTable('messages', {
 
 // Tasks Table - 任務管理
 export const tasks = pgTable('tasks', {
-  id: serial('id').primaryKey(),
+  id: varchar('id').primaryKey(), // 匹配現有資料庫結構
   groupId: varchar('group_id').notNull(), // 任務來源群組
-  taskSerial: varchar('task_serial').notNull(), // 群組內的任務編號 (01, 02, ...)
-  createdBy: varchar('created_by').notNull(), // 建立任務的 userId
-  creatorName: varchar('creator_name'), // 建立者顯示名稱
-  description: text('description').notNull(), // 任務內容
+  taskIdSerial: varchar('task_id_serial').notNull(), // 匹配現有欄位名
+  text: text('text').notNull(), // 匹配現有欄位名
   status: varchar('status').notNull().default('pending'), // 'pending' | 'completed'
+  authorUserId: varchar('author_user_id').notNull(), // 匹配現有欄位名
+  authorDisplayName: varchar('author_display_name'), // 匹配現有欄位名
   completedAt: timestamp('completed_at'), // 完成時間（如有）
-  context: jsonb('context').notNull().default('[]'), // 任務相關的對話片段 messageId 陣列
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
+  sourceMessageIds: jsonb('source_message_ids'), // 匹配現有欄位名
+  assigneeUserId: varchar('assignee_user_id'), // 匹配現有欄位名
+  dueDate: timestamp('due_date'), // 匹配現有欄位名
+  place: varchar('place'), // 匹配現有欄位名
+  counterparty: varchar('counterparty'), // 匹配現有欄位名
+  createdAt: timestamp('created_at').defaultNow().notNull()
 }, (table) => ({
-  groupSerialIdx: uniqueIndex('tasks_group_serial_idx').on(table.groupId, table.taskSerial),
+  groupSerialIdx: uniqueIndex('tasks_group_serial_idx').on(table.groupId, table.taskIdSerial),
   groupStatusIdx: index('tasks_group_status_idx').on(table.groupId, table.status),
   createdAtIdx: index('tasks_created_at_idx').on(table.createdAt.desc())
 }));
 
-// Admins Table - 白名單 / 權限控管
+// Admins Table - 白名單 / 權限控管  
 export const admins = pgTable('admins', {
-  id: serial('id').primaryKey(),
-  userId: varchar('user_id').notNull().unique(), // LINE userId
-  role: varchar('role').notNull().default('admin'), // 'admin' | 'member'
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
-}, (table) => ({
-  userIdIdx: uniqueIndex('admins_user_id_idx').on(table.userId)
-}));
+  userId: varchar('user_id').primaryKey(), // 主鍵匹配現有結構
+  createdAt: timestamp('created_at').defaultNow().notNull() // 只有這個欄位存在
+}, (table) => ({}));
 
 // Audit Logs Table - 稽核日誌
 export const auditLogs = pgTable('audit_logs', {
-  id: serial('id').primaryKey(),
+  id: varchar('id').primaryKey(), // 匹配現有資料庫結構
   level: varchar('level').notNull(), // 'info' | 'warning' | 'error'
   category: varchar('category').notNull(), // 'webhook' | 'llm' | 'scheduler' | 'auth'
   message: text('message').notNull(),
   details: jsonb('details'), // 額外詳細資料
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
+  timestamp: timestamp('timestamp').defaultNow().notNull() // 匹配現有欄位名稱
 }, (table) => ({
-  createdAtIdx: index('audit_logs_created_at_idx').on(table.createdAt.desc()),
+  timestampIdx: index('audit_logs_timestamp_idx').on(table.timestamp.desc()),
   categoryIdx: index('audit_logs_category_idx').on(table.category),
   levelIdx: index('audit_logs_level_idx').on(table.level)
 }));
@@ -83,26 +80,21 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 // Drizzle Insert Schemas for Zod validation
 export const insertMessageSchema = createInsertSchema(messages).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true
+  createdAt: true
 });
 
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true
+  createdAt: true
 });
 
 export const insertAdminSchema = createInsertSchema(admins).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
+  createdAt: true
 });
 
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true
+  timestamp: true
 });
 
 // TypeScript Types
@@ -120,7 +112,7 @@ export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 
 // Interface compatibility for existing code
 export interface IMessage {
-  id: number;
+  id: string; // 匹配 varchar
   messageId: string;
   sourceType: string;
   groupId?: string | null;
@@ -132,43 +124,38 @@ export interface IMessage {
   timestamp: Date;
   rawEvent: any;
   createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface ITask {
-  id: number;
+  id: string; // 匹配 varchar
   groupId: string;
-  taskSerial: string;
-  createdBy: string;
-  creatorName?: string | null;
-  description: string;
+  taskIdSerial: string; // 匹配現有欄位名
+  authorUserId: string; // 匹配現有欄位名
+  authorDisplayName?: string | null; // 匹配現有欄位名
+  text: string; // 匹配現有欄位名
   status: string;
   completedAt?: Date | null;
-  context: any;
+  sourceMessageIds: any; // 匹配現有欄位名
   createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface IAdmin {
-  id: number;
-  userId: string;
-  role: string;
+  userId: string; // 主鍵
   createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface IAuditLog {
-  id: number;
+  id: string; // 匹配 varchar
   level: string;
   category: string;
   message: string;
   details?: any;
-  createdAt: Date;
-  updatedAt: Date;
+  timestamp: Date; // 匹配現有欄位名
 }
 
 // Create Data interfaces for compatibility
 export interface CreateMessageData {
+  id: string; // 需要提供ID
   messageId: string;
   sourceType: string;
   groupId?: string;
@@ -182,21 +169,22 @@ export interface CreateMessageData {
 }
 
 export interface CreateTaskData {
+  id: string; // 需要提供ID  
   groupId: string;
-  taskSerial: string;
-  createdBy: string;
-  creatorName?: string;
-  description: string;
+  taskIdSerial: string; // 匹配欄位名
+  authorUserId: string; // 匹配欄位名
+  authorDisplayName?: string; // 匹配欄位名
+  text: string; // 匹配欄位名
   status?: string;
-  context?: any;
+  sourceMessageIds?: any; // 匹配欄位名
 }
 
 export interface CreateAdminData {
   userId: string;
-  role?: string;
 }
 
 export interface CreateAuditLogData {
+  id: string; // 需要提供ID
   level: string;
   category: string;
   message: string;
