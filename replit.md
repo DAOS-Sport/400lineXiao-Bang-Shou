@@ -1,0 +1,94 @@
+# LINE 小秘書系統
+
+## Overview
+
+This is a comprehensive LINE bot system designed as a group task management assistant. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, and scheduled daily reminders. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
+
+The system automatically detects tasks when messages contain specific keywords (交辦), uses AI to extract actionable items from conversations, and provides daily task summaries at 06:30 Asia/Taipei time. It includes admin controls, user identification features, and a read-only management interface for message monitoring.
+
+## User Preferences
+
+Preferred communication style: Simple, everyday language.
+
+## System Architecture
+
+### Backend Architecture
+- **Framework**: Express.js with TypeScript for type safety and modern development practices
+- **API Design**: RESTful headless API with three main endpoints:
+  - `POST /webhook` for LINE message processing with signature validation
+  - `GET /healthz` for health monitoring
+  - `GET /api/admin/messages` for administrative message viewing
+- **Security**: Implements helmet for security headers, express-rate-limit for rate limiting, and comprehensive signature validation for LINE webhooks
+
+### Database Layer
+- **ORM**: Drizzle ORM for type-safe database operations with PostgreSQL
+- **Connection**: Neon serverless PostgreSQL with connection pooling
+- **Schema Design**: 
+  - Messages table for raw event storage with JSONB fields
+  - Tasks table with group-based isolation and serial numbering
+  - Admins table for access control
+  - Audit logs for system monitoring and compliance
+- **Indexing**: Strategic indexes on frequently queried fields (timestamp, groupId, userId, text)
+
+### Message Processing
+- **Event Handling**: Asynchronous processing of LINE webhook events with immediate 200 response
+- **Task Detection**: Automatic task creation when messages contain "交辦" keyword
+- **Storage Strategy**: Raw event preservation in JSONB format for audit trails and debugging
+
+### AI Integration
+- **LLM Service**: OpenAI GPT-4o-mini for natural language task extraction
+- **Context Analysis**: Reviews recent 20 messages with emphasis on latest 5 for task identification
+- **JSON Output**: Structured task extraction with error handling and fallback mechanisms
+
+### Scheduling System
+- **Cron Jobs**: node-cron with Asia/Taipei timezone for daily 06:30 reminders
+- **Group Isolation**: Strict per-group task processing with no cross-group data sharing
+- **Task Summarization**: AI-powered daily task summary generation before sending reminders
+
+### Authentication & Authorization
+- **Multi-layer Security**: Support for both Basic Auth and Bearer Token authentication
+- **Admin Controls**: Environment-variable defined admin user IDs for privileged operations
+- **Group Targeting**: Environment-configurable target group IDs for selective bot activation
+
+### Frontend Architecture
+- **Client Framework**: React with TypeScript and Vite for development tooling
+- **UI Components**: Comprehensive shadcn/ui component library with Radix UI primitives
+- **State Management**: TanStack Query for server state management and caching
+- **Styling**: Tailwind CSS with custom theme configuration and CSS variables
+- **Routing**: Wouter for lightweight client-side routing
+
+### Development & Build System
+- **Build Tool**: Vite for fast development and optimized production builds
+- **TypeScript**: Strict type checking across client, server, and shared code
+- **Module Resolution**: Path aliases for clean imports and better code organization
+- **Hot Reload**: Development server with HMR for rapid iteration
+
+## External Dependencies
+
+### LINE Platform Integration
+- **LINE Bot SDK**: Official @line/bot-sdk for message handling, user profile access, and group management
+- **Webhook Processing**: Real-time event processing with signature validation
+- **Message API**: Support for text messages, replies, and push notifications
+
+### AI Services
+- **OpenAI API**: GPT-4o-mini integration for intelligent task extraction and conversation analysis
+- **Prompt Engineering**: Structured prompts for consistent task identification and summarization
+
+### Database Services
+- **Neon Database**: Serverless PostgreSQL with automatic scaling and connection pooling
+- **Drizzle ORM**: Type-safe database operations with migration support
+
+### Scheduling & Time Management
+- **node-cron**: Timezone-aware task scheduling for daily reminders
+- **dayjs**: Comprehensive date manipulation with timezone support for Asia/Taipei
+
+### Security & Monitoring
+- **Crypto Module**: HMAC signature validation for webhook security
+- **Helmet**: Security headers and protection middleware
+- **Rate Limiting**: Express rate limiting for API protection
+- **Audit Logging**: Comprehensive system activity tracking
+
+### Development Tools
+- **ESBuild**: Fast bundling for production server builds
+- **PostCSS**: CSS processing with autoprefixer
+- **Replit Integration**: Development environment optimization with runtime error handling
