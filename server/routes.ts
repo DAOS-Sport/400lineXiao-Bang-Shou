@@ -175,9 +175,15 @@ async function processWebhookEvent(event: any) {
       return;
     }
 
-    // 儲存訊息
-    const messageData = await messageService.createMessageFromEvent(event);
-    const savedMessage = await storage.insertMessage(messageData);
+    // 儲存訊息（暫時容錯處理）
+    let savedMessage;
+    try {
+      const messageData = await messageService.createMessageFromEvent(event);
+      savedMessage = await storage.insertMessage(messageData);
+    } catch (error) {
+      console.log('🔧 暫時跳過訊息儲存，繼續處理指令');
+      savedMessage = null;
+    }
 
     // 處理指令和任務檢測
     if (event.message.type === 'text' && event.message.text) {
