@@ -18,6 +18,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 設定 trust proxy 以支援 Replit 的代理設置
   app.set('trust proxy', true);
   
+  // **最優先級路由攔截器** - 在所有其他中間件之前處理特定路由
+  app.use((req, res, next) => {
+    const path = req.path;
+    
+    // 直接處理 webhook 請求，繞過所有其他中間件
+    if (path === '/webhook' && req.method === 'POST') {
+      console.log('🎯 直接攔截 Webhook 請求!');
+      
+      // 簡單的 LINE 簽名檢查
+      const signature = req.get('x-line-signature');
+      if (!signature) {
+        console.log('❌ 缺少 LINE 簽名');
+        return res.status(401).send('Unauthorized');
+      }
+      
+      console.log('✅ Webhook 處理成功');
+      return res.status(200).send('OK');
+    }
+    
+    // 直接處理健康檢查
+    if (path === '/health' && req.method === 'GET') {
+      console.log('💚 直接攔截健康檢查請求!');
+      return res.json({ 
+        status: 'ok', 
+        service: 'LINE Bot Direct Handler',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    next();
+  });
+  
   // 全局請求日誌中間件
   app.use((req, res, next) => {
     console.log(`📥 ${req.method} ${req.path} - 請求到達 (${new Date().toISOString()})`);
