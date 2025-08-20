@@ -261,9 +261,9 @@ async function handleIdCommand(event: any) {
   if (source.type === 'user') {
     replyText = `🆔 你的 userId：${source.userId}`;
   } else if (source.type === 'group') {
-    replyText = `🆔 groupId：${source.groupId}\n👤 你的 userId：${source.userId}`;
+    replyText = `🆔 groupId：${source.groupId}`;
   } else if (source.type === 'room') {
-    replyText = `🆔 roomId：${source.roomId}\n👤 你的 userId：${source.userId}`;
+    replyText = `🆔 roomId：${source.roomId}`;
   }
 
   await lineService.replyMessage(event.replyToken, replyText);
