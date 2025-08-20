@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { connectMongoDB } from "./mongodb";
+import { db } from "./db";
 
 const app = express();
 app.use(express.json());
@@ -38,12 +38,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // 連接 MongoDB
+  // 初始化 PostgreSQL 資料庫連接
   try {
-    await connectMongoDB();
-    log("資料庫連接成功");
+    // 測試資料庫連接
+    await db.$client.query('SELECT 1');
+    log("PostgreSQL 資料庫連接成功");
   } catch (error) {
-    console.error("資料庫連接失敗:", error);
+    console.error("PostgreSQL 資料庫連接失敗:", error);
     process.exit(1);
   }
 

@@ -1,88 +1,134 @@
-import mongoose from 'mongoose';
+import { pgTable, varchar, text, timestamp, jsonb, serial, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+import { createInsertSchema } from 'drizzle-zod';
+import { z } from 'zod';
 
-// Messages Schema - 訊息原始存證
-const messageSchema = new mongoose.Schema({
-  messageId: { type: String, required: true, unique: true }, // LINE 事件 ID
-  sourceType: { type: String, required: true, enum: ['user', 'group', 'room'] },
-  groupId: { type: String }, // 群組 ID（如有）
-  roomId: { type: String }, // Room ID（如有）
-  userId: { type: String, required: true }, // 發話者 ID
-  displayName: { type: String }, // 顯示名稱（可選）
-  type: { type: String, required: true }, // text | image | file ...
-  text: { type: String }, // 文字內容
-  timestamp: { type: Date, required: true }, // ISO 時間戳，存台北時區
-  rawEvent: { type: mongoose.Schema.Types.Mixed, required: true } // 原始 JSON 事件
-}, {
-  timestamps: true // 自動創建 createdAt, updatedAt
+// Messages Table - 訊息原始存證
+export const messages = pgTable('messages', {
+  id: serial('id').primaryKey(),
+  messageId: varchar('message_id').notNull().unique(), // LINE 事件 ID
+  sourceType: varchar('source_type').notNull(), // 'user' | 'group' | 'room'
+  groupId: varchar('group_id'), // 群組 ID（如有）
+  roomId: varchar('room_id'), // Room ID（如有）
+  userId: varchar('user_id').notNull(), // 發話者 ID
+  displayName: varchar('display_name'), // 顯示名稱（可選）
+  type: varchar('type').notNull(), // text | image | file ...
+  text: text('text'), // 文字內容
+  timestamp: timestamp('timestamp').notNull(), // ISO 時間戳，存台北時區
+  rawEvent: jsonb('raw_event').notNull(), // 原始 JSON 事件
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  timestampIdx: index('messages_timestamp_idx').on(table.timestamp.desc()),
+  groupIdIdx: index('messages_group_id_idx').on(table.groupId),
+  userIdIdx: index('messages_user_id_idx').on(table.userId),
+  sourceTypeIdx: index('messages_source_type_idx').on(table.sourceType),
+  messageIdIdx: uniqueIndex('messages_message_id_idx').on(table.messageId)
+}));
+
+// Tasks Table - 任務管理
+export const tasks = pgTable('tasks', {
+  id: serial('id').primaryKey(),
+  groupId: varchar('group_id').notNull(), // 任務來源群組
+  taskSerial: varchar('task_serial').notNull(), // 群組內的任務編號 (01, 02, ...)
+  createdBy: varchar('created_by').notNull(), // 建立任務的 userId
+  creatorName: varchar('creator_name'), // 建立者顯示名稱
+  description: text('description').notNull(), // 任務內容
+  status: varchar('status').notNull().default('pending'), // 'pending' | 'completed'
+  completedAt: timestamp('completed_at'), // 完成時間（如有）
+  context: jsonb('context').notNull().default('[]'), // 任務相關的對話片段 messageId 陣列
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  groupSerialIdx: uniqueIndex('tasks_group_serial_idx').on(table.groupId, table.taskSerial),
+  groupStatusIdx: index('tasks_group_status_idx').on(table.groupId, table.status),
+  createdAtIdx: index('tasks_created_at_idx').on(table.createdAt.desc())
+}));
+
+// Admins Table - 白名單 / 權限控管
+export const admins = pgTable('admins', {
+  id: serial('id').primaryKey(),
+  userId: varchar('user_id').notNull().unique(), // LINE userId
+  role: varchar('role').notNull().default('admin'), // 'admin' | 'member'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  userIdIdx: uniqueIndex('admins_user_id_idx').on(table.userId)
+}));
+
+// Audit Logs Table - 稽核日誌
+export const auditLogs = pgTable('audit_logs', {
+  id: serial('id').primaryKey(),
+  level: varchar('level').notNull(), // 'info' | 'warning' | 'error'
+  category: varchar('category').notNull(), // 'webhook' | 'llm' | 'scheduler' | 'auth'
+  message: text('message').notNull(),
+  details: jsonb('details'), // 額外詳細資料
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  createdAtIdx: index('audit_logs_created_at_idx').on(table.createdAt.desc()),
+  categoryIdx: index('audit_logs_category_idx').on(table.category),
+  levelIdx: index('audit_logs_level_idx').on(table.level)
+}));
+
+// Relations
+export const messagesRelations = relations(messages, ({ many }) => ({
+  // 可以在這裡定義關聯，例如與任務的關聯
+}));
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  // 可以在這裡定義關聯，例如與訊息的關聯
+}));
+
+// Drizzle Insert Schemas for Zod validation
+export const insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
 });
 
-// 建立索引以提升查詢效能
-messageSchema.index({ timestamp: -1 });
-messageSchema.index({ groupId: 1 });
-messageSchema.index({ userId: 1 });
-messageSchema.index({ text: 'text' }); // 全文搜尋索引
-messageSchema.index({ sourceType: 1 });
-
-export const Message = mongoose.model('Message', messageSchema);
-
-// Tasks Schema - 任務管理
-const taskSchema = new mongoose.Schema({
-  groupId: { type: String, required: true }, // 任務來源群組
-  taskSerial: { type: String, required: true }, // 群組內的任務編號 (01, 02, ...)
-  createdBy: { type: String, required: true }, // 建立任務的 userId
-  creatorName: { type: String }, // 建立者顯示名稱
-  description: { type: String, required: true }, // 任務內容
-  status: { type: String, required: true, enum: ['pending', 'completed'], default: 'pending' },
-  completedAt: { type: Date }, // 完成時間（如有）
-  context: [{ type: String }] // 任務相關的對話片段 messageId
-}, {
-  timestamps: true
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
 });
 
-// 群組內任務編號唯一
-taskSchema.index({ groupId: 1, taskSerial: 1 }, { unique: true });
-taskSchema.index({ groupId: 1, status: 1 });
-taskSchema.index({ createdAt: -1 });
-
-export const Task = mongoose.model('Task', taskSchema);
-
-// Admins Schema - 白名單 / 權限控管
-const adminSchema = new mongoose.Schema({
-  userId: { type: String, required: true, unique: true }, // LINE userId
-  role: { type: String, required: true, enum: ['admin', 'member'], default: 'admin' }
-}, {
-  timestamps: true
+export const insertAdminSchema = createInsertSchema(admins).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
 });
 
-export const Admin = mongoose.model('Admin', adminSchema);
-
-// Audit Logs Schema - 稽核日誌
-const auditLogSchema = new mongoose.Schema({
-  level: { type: String, required: true, enum: ['info', 'warning', 'error'] },
-  category: { type: String, required: true, enum: ['webhook', 'llm', 'scheduler', 'auth'] },
-  message: { type: String, required: true },
-  details: { type: mongoose.Schema.Types.Mixed } // 額外詳細資料
-}, {
-  timestamps: true
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
 });
 
-auditLogSchema.index({ createdAt: -1 });
-auditLogSchema.index({ category: 1 });
-auditLogSchema.index({ level: 1 });
+// TypeScript Types
+export type Message = typeof messages.$inferSelect;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
-export const AuditLog = mongoose.model('AuditLog', auditLogSchema);
+export type Task = typeof tasks.$inferSelect;
+export type InsertTask = z.infer<typeof insertTaskSchema>;
 
-// TypeScript 介面
+export type Admin = typeof admins.$inferSelect;
+export type InsertAdmin = z.infer<typeof insertAdminSchema>;
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+// Interface compatibility for existing code
 export interface IMessage {
-  _id: string;
+  id: number;
   messageId: string;
-  sourceType: 'user' | 'group' | 'room';
-  groupId?: string;
-  roomId?: string;
+  sourceType: string;
+  groupId?: string | null;
+  roomId?: string | null;
   userId: string;
-  displayName?: string;
+  displayName?: string | null;
   type: string;
-  text?: string;
+  text?: string | null;
   timestamp: Date;
   rawEvent: any;
   createdAt: Date;
@@ -90,40 +136,41 @@ export interface IMessage {
 }
 
 export interface ITask {
-  _id: string;
+  id: number;
   groupId: string;
   taskSerial: string;
   createdBy: string;
-  creatorName?: string;
+  creatorName?: string | null;
   description: string;
-  status: 'pending' | 'completed';
-  completedAt?: Date;
-  context: string[];
+  status: string;
+  completedAt?: Date | null;
+  context: any;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface IAdmin {
-  _id: string;
+  id: number;
   userId: string;
-  role: 'admin' | 'member';
+  role: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface IAuditLog {
-  _id: string;
-  level: 'info' | 'warning' | 'error';
-  category: 'webhook' | 'llm' | 'scheduler' | 'auth';
+  id: number;
+  level: string;
+  category: string;
   message: string;
   details?: any;
   createdAt: Date;
   updatedAt: Date;
 }
 
+// Create Data interfaces for compatibility
 export interface CreateMessageData {
   messageId: string;
-  sourceType: 'user' | 'group' | 'room';
+  sourceType: string;
   groupId?: string;
   roomId?: string;
   userId: string;
@@ -140,18 +187,18 @@ export interface CreateTaskData {
   createdBy: string;
   creatorName?: string;
   description: string;
-  status?: 'pending' | 'completed';
-  context?: string[];
+  status?: string;
+  context?: any;
 }
 
 export interface CreateAdminData {
   userId: string;
-  role?: 'admin' | 'member';
+  role?: string;
 }
 
 export interface CreateAuditLogData {
-  level: 'info' | 'warning' | 'error';
-  category: 'webhook' | 'llm' | 'scheduler' | 'auth';
+  level: string;
+  category: string;
   message: string;
   details?: any;
 }

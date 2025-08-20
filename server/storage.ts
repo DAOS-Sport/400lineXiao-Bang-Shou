@@ -1,48 +1,15 @@
 import { 
-  Message, Task, Admin, AuditLog, 
+  messages, tasks, admins, auditLogs,
   type IMessage, type ITask, type IAdmin, type IAuditLog,
   type CreateMessageData, type CreateTaskData, type CreateAdminData, type CreateAuditLogData
 } from "@shared/schema";
-
-function convertMessage(obj: any): IMessage {
-  return {
-    ...obj,
-    _id: obj._id.toString(),
-    groupId: obj.groupId || undefined,
-    roomId: obj.roomId || undefined,
-    displayName: obj.displayName || undefined,
-    text: obj.text || undefined
-  };
-}
-
-function convertTask(obj: any): ITask {
-  return {
-    ...obj,
-    _id: obj._id.toString(),
-    creatorName: obj.creatorName || undefined,
-    completedAt: obj.completedAt || undefined
-  };
-}
-
-function convertAdmin(obj: any): IAdmin {
-  return {
-    ...obj,
-    _id: obj._id.toString()
-  };
-}
-
-function convertAuditLog(obj: any): IAuditLog {
-  return {
-    ...obj,
-    _id: obj._id.toString(),
-    details: obj.details || undefined
-  };
-}
+import { db } from "./db";
+import { eq, and, desc, gte, lte, sql, count } from "drizzle-orm";
 
 export interface IStorage {
   // Messages
   insertMessage(data: CreateMessageData): Promise<IMessage>;
-  getMessageById(id: string): Promise<IMessage | null>;
+  getMessageById(id: number): Promise<IMessage | null>;
   getMessageByMessageId(messageId: string): Promise<IMessage | null>;
   getMessages(filters: {
     q?: string;
@@ -56,10 +23,10 @@ export interface IStorage {
 
   // Tasks
   insertTask(data: CreateTaskData): Promise<ITask>;
-  getTaskById(id: string): Promise<ITask | null>;
+  getTaskById(id: number): Promise<ITask | null>;
   getTasksByGroupId(groupId: string, status?: string): Promise<ITask[]>;
   getTaskByGroupAndSerial(groupId: string, taskSerial: string): Promise<ITask | null>;
-  updateTaskStatus(id: string, status: string, completedAt?: Date): Promise<ITask | null>;
+  updateTaskStatus(id: number, status: string, completedAt?: Date): Promise<ITask | null>;
   getNextTaskSerial(groupId: string): Promise<string>;
   getTasksCreatedBetween(groupId: string, start: Date, end: Date, status?: string): Promise<ITask[]>;
 
@@ -73,22 +40,21 @@ export interface IStorage {
   getAuditLogs(limit?: number): Promise<IAuditLog[]>;
 }
 
-export class MongoStorage implements IStorage {
+export class DatabaseStorage implements IStorage {
   // Messages
   async insertMessage(data: CreateMessageData): Promise<IMessage> {
-    const message = new Message(data);
-    await message.save();
-    return convertMessage(message.toObject());
+    const [message] = await db.insert(messages).values(data).returning();
+    return message as IMessage;
   }
 
-  async getMessageById(id: string): Promise<IMessage | null> {
-    const message = await Message.findById(id);
-    return message ? convertMessage(message.toObject()) : null;
+  async getMessageById(id: number): Promise<IMessage | null> {
+    const [message] = await db.select().from(messages).where(eq(messages.id, id));
+    return message ? (message as IMessage) : null;
   }
 
   async getMessageByMessageId(messageId: string): Promise<IMessage | null> {
-    const message = await Message.findOne({ messageId });
-    return message ? convertMessage(message.toObject()) : null;
+    const [message] = await db.select().from(messages).where(eq(messages.messageId, messageId));
+    return message ? (message as IMessage) : null;
   }
 
   async getMessages(filters: {
@@ -101,97 +67,106 @@ export class MongoStorage implements IStorage {
   }): Promise<{ messages: IMessage[]; total: number }> {
     const page = filters.page || 1;
     const pageSize = Math.min(filters.pageSize || 50, 200);
-    const skip = (page - 1) * pageSize;
+    const offset = (page - 1) * pageSize;
 
-    const query: any = {};
+    let whereConditions = [];
     
-    if (filters.q) {
-      query.$text = { $search: filters.q };
-    }
     if (filters.start) {
-      query.timestamp = { ...query.timestamp, $gte: filters.start };
+      whereConditions.push(gte(messages.timestamp, filters.start));
     }
     if (filters.end) {
-      query.timestamp = { ...query.timestamp, $lte: filters.end };
+      whereConditions.push(lte(messages.timestamp, filters.end));
     }
     if (filters.sourceType && filters.sourceType !== 'all') {
-      query.sourceType = filters.sourceType;
+      whereConditions.push(eq(messages.sourceType, filters.sourceType));
+    }
+    // Note: Full-text search would need PostgreSQL-specific implementation
+    // For now, we'll implement basic text search on the text field
+    if (filters.q) {
+      whereConditions.push(sql`${messages.text} ILIKE ${'%' + filters.q + '%'}`);
     }
 
-    const [messages, total] = await Promise.all([
-      Message.find(query)
-        .sort({ timestamp: -1 })
-        .skip(skip)
+    const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+    const [messagesResult, totalResult] = await Promise.all([
+      db.select().from(messages)
+        .where(whereClause)
+        .orderBy(desc(messages.timestamp))
         .limit(pageSize)
-        .lean(),
-      Message.countDocuments(query)
+        .offset(offset),
+      db.select({ count: count() }).from(messages).where(whereClause)
     ]);
 
     return {
-      messages: messages.map(convertMessage),
-      total
+      messages: messagesResult as IMessage[],
+      total: totalResult[0].count
     };
   }
 
   async getRecentMessages(groupId: string, limit: number): Promise<IMessage[]> {
-    const messages = await Message.find({ groupId })
-      .sort({ timestamp: -1 })
-      .limit(limit)
-      .lean();
+    const messagesResult = await db.select().from(messages)
+      .where(eq(messages.groupId, groupId))
+      .orderBy(desc(messages.timestamp))
+      .limit(limit);
     
-    return messages.map(convertMessage);
+    return messagesResult as IMessage[];
   }
 
   // Tasks
   async insertTask(data: CreateTaskData): Promise<ITask> {
-    const task = new Task(data);
-    await task.save();
-    return convertTask(task.toObject());
+    const taskData = {
+      ...data,
+      context: data.context || []
+    };
+    const [task] = await db.insert(tasks).values(taskData).returning();
+    return task as ITask;
   }
 
-  async getTaskById(id: string): Promise<ITask | null> {
-    const task = await Task.findById(id);
-    return task ? convertTask(task.toObject()) : null;
+  async getTaskById(id: number): Promise<ITask | null> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task ? (task as ITask) : null;
   }
 
   async getTasksByGroupId(groupId: string, status?: string): Promise<ITask[]> {
-    const query: any = { groupId };
+    let whereConditions = [eq(tasks.groupId, groupId)];
     if (status) {
-      query.status = status;
+      whereConditions.push(eq(tasks.status, status));
     }
 
-    const tasks = await Task.find(query)
-      .sort({ taskSerial: 1 })
-      .lean();
+    const tasksResult = await db.select().from(tasks)
+      .where(and(...whereConditions))
+      .orderBy(tasks.taskSerial);
     
-    return tasks.map(convertTask);
+    return tasksResult as ITask[];
   }
 
   async getTaskByGroupAndSerial(groupId: string, taskSerial: string): Promise<ITask | null> {
-    const task = await Task.findOne({ groupId, taskSerial });
-    return task ? convertTask(task.toObject()) : null;
+    const [task] = await db.select().from(tasks)
+      .where(and(eq(tasks.groupId, groupId), eq(tasks.taskSerial, taskSerial)));
+    return task ? (task as ITask) : null;
   }
 
-  async updateTaskStatus(id: string, status: string, completedAt?: Date): Promise<ITask | null> {
+  async updateTaskStatus(id: number, status: string, completedAt?: Date): Promise<ITask | null> {
     const updateData: any = { status };
     if (completedAt) {
       updateData.completedAt = completedAt;
     }
 
-    const task = await Task.findByIdAndUpdate(
-      id, 
-      updateData, 
-      { new: true }
-    );
+    const [task] = await db.update(tasks)
+      .set(updateData)
+      .where(eq(tasks.id, id))
+      .returning();
     
-    return task ? convertTask(task.toObject()) : null;
+    return task ? (task as ITask) : null;
   }
 
   async getNextTaskSerial(groupId: string): Promise<string> {
     // 找到該群組中最大的任務編號
-    const lastTask = await Task.findOne({ groupId })
-      .sort({ taskSerial: -1 })
-      .lean();
+    const [lastTask] = await db.select({ taskSerial: tasks.taskSerial })
+      .from(tasks)
+      .where(eq(tasks.groupId, groupId))
+      .orderBy(desc(tasks.taskSerial))
+      .limit(1);
     
     const lastSerial = lastTask ? parseInt(lastTask.taskSerial) : 0;
     const nextNumber = lastSerial + 1;
@@ -205,35 +180,32 @@ export class MongoStorage implements IStorage {
     end: Date, 
     status?: string
   ): Promise<ITask[]> {
-    const query: any = {
-      groupId,
-      createdAt: {
-        $gte: start,
-        $lte: end
-      }
-    };
+    let whereConditions = [
+      eq(tasks.groupId, groupId),
+      gte(tasks.createdAt, start),
+      lte(tasks.createdAt, end)
+    ];
     
     if (status) {
-      query.status = status;
+      whereConditions.push(eq(tasks.status, status));
     }
 
-    const tasks = await Task.find(query)
-      .sort({ taskSerial: 1 })
-      .lean();
+    const tasksResult = await db.select().from(tasks)
+      .where(and(...whereConditions))
+      .orderBy(tasks.taskSerial);
     
-    return tasks.map(convertTask);
+    return tasksResult as ITask[];
   }
 
   // Admins
   async insertAdmin(data: CreateAdminData): Promise<IAdmin> {
-    const admin = new Admin(data);
-    await admin.save();
-    return convertAdmin(admin.toObject());
+    const [admin] = await db.insert(admins).values(data).returning();
+    return admin as IAdmin;
   }
 
   async getAdmin(userId: string): Promise<IAdmin | null> {
-    const admin = await Admin.findOne({ userId });
-    return admin ? convertAdmin(admin.toObject()) : null;
+    const [admin] = await db.select().from(admins).where(eq(admins.userId, userId));
+    return admin ? (admin as IAdmin) : null;
   }
 
   async isAdmin(userId: string): Promise<boolean> {
@@ -244,19 +216,18 @@ export class MongoStorage implements IStorage {
   // Audit Logs
   async insertAuditLog(data: CreateAuditLogData): Promise<IAuditLog> {
     try {
-      const log = new AuditLog(data);
-      await log.save();
-      return convertAuditLog(log.toObject());
+      const [log] = await db.insert(auditLogs).values(data).returning();
+      return log as IAuditLog;
     } catch (error) {
       console.error('插入審計日誌失敗:', error);
       // 在開發模式下允許失敗
       if (process.env.NODE_ENV === 'development') {
         return {
-          _id: 'dev-log-' + Date.now(),
+          id: Math.floor(Math.random() * 1000000),
           ...data,
           createdAt: new Date(),
           updatedAt: new Date()
-        };
+        } as IAuditLog;
       }
       throw error;
     }
@@ -264,12 +235,11 @@ export class MongoStorage implements IStorage {
 
   async getAuditLogs(limit = 100): Promise<IAuditLog[]> {
     try {
-      const logs = await AuditLog.find({})
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .lean();
+      const logsResult = await db.select().from(auditLogs)
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(limit);
       
-      return logs.map(convertAuditLog);
+      return logsResult as IAuditLog[];
     } catch (error) {
       console.error('獲取審計日誌失敗:', error);
       if (process.env.NODE_ENV === 'development') {
@@ -280,4 +250,4 @@ export class MongoStorage implements IStorage {
   }
 }
 
-export const storage = new MongoStorage();
+export const storage = new DatabaseStorage();
