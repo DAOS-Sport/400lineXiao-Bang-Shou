@@ -18,6 +18,22 @@ export function getYesterday(): Date {
   return now().subtract(1, 'day').toDate();
 }
 
+export function getYesterdayRange(): { start: Date; end: Date } {
+  const yesterday = now().subtract(1, 'day');
+  return {
+    start: yesterday.startOf('day').toDate(),
+    end: yesterday.endOf('day').toDate()
+  };
+}
+
+export function getLast24HoursRange(): { start: Date; end: Date } {
+  const nowTime = now();
+  return {
+    start: nowTime.subtract(24, 'hour').toDate(),
+    end: nowTime.toDate()
+  };
+}
+
 export function formatDate(date: Date): string {
   return dayjs(date).tz(TZ).format('YYYY/MM/DD');
 }

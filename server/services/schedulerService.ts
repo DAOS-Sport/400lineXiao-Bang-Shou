@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { lineService } from "./lineService";
 import { taskService } from "./taskService";
 import { llmService } from "./llmService";
-import { getYesterday, formatDate } from "../utils/time";
+import { getYesterday, formatDate, getYesterdayRange, getLast24HoursRange } from "../utils/time";
 
 export class SchedulerService {
   private cronJob: cron.ScheduledTask | null = null;
@@ -47,11 +47,8 @@ export class SchedulerService {
         details: { targetGroupIds }
       });
 
-      const yesterday = getYesterday();
-      const startDate = new Date(yesterday);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(yesterday);
-      endDate.setHours(23, 59, 59, 999);
+      const { start: startDate, end: endDate } = getLast24HoursRange();
+      
 
       // 逐一處理每個群組
       for (const groupId of targetGroupIds) {

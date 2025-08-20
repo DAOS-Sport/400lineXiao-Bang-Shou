@@ -79,6 +79,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+
   // POST /webhook - LINE Webhook 處理（統一路徑）
   console.log('🔗 註冊 /webhook 路由');
   app.post("/webhook", webhookLimiter, validateLineSignature, async (req, res) => {
