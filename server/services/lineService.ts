@@ -1,8 +1,8 @@
 import { Client, middleware } from '@line/bot-sdk';
 
 const config = {
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
-  channelSecret: process.env.LINE_CHANNEL_SECRET || '',
+  channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN || '',
+  channelSecret: process.env.CHANNEL_SECRET || '',
 };
 
 // 開發模式下允許沒有憑證
@@ -11,7 +11,7 @@ if (!config.channelAccessToken || !config.channelSecret) {
   if (isDevMode) {
     console.warn('LINE 憑證未設定，部分功能將無法使用（開發模式）');
   } else {
-    throw new Error('LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 必須設定');
+    throw new Error('CHANNEL_ACCESS_TOKEN 和 CHANNEL_SECRET 必須設定');
   }
 }
 
