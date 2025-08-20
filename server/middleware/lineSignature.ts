@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { createHmac } from 'crypto';
 
-export function validateLineSignature(req: Request, res: Response, next: NextFunction): void {
+// 擴展 Request 類型以包含 rawBody
+interface LineRequest extends Request {
+  rawBody?: Buffer;
+}
+
+export function validateLineSignature(req: LineRequest, res: Response, next: NextFunction): void {
   try {
     const signature = req.headers['x-line-signature'] as string;
     const channelSecret = process.env.CHANNEL_SECRET; // 🔧 修復：正確的環境變數名稱
@@ -12,8 +17,10 @@ export function validateLineSignature(req: Request, res: Response, next: NextFun
       return;
     }
 
-    // 🔧 修復：使用原始 body 而不是 JSON.stringify
-    const body = req.rawBody || Buffer.from(JSON.stringify(req.body));
+    // 🔧 修復：確保使用 Buffer 進行簽名驗證
+    const body = Buffer.isBuffer(req.rawBody) 
+      ? req.rawBody 
+      : Buffer.from(JSON.stringify(req.body));
     const expectedSignature = 'SHA256=' + createHmac('sha256', channelSecret)
       .update(body)
       .digest('base64');

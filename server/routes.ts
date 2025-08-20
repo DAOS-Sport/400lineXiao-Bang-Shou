@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { lineService } from "./services/lineService";
@@ -18,12 +18,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 設定 trust proxy 以支援 Replit 的代理設置
   app.set('trust proxy', true);
   
-  // 🔧 添加原始 body 中間件以支援 LINE 簽名驗證
+  // 🔧 修復：正確處理原始 body 以支援 LINE 簽名驗證
   app.use('/webhook', express.raw({ type: 'application/json' }));
   app.use('/webhook', (req: any, res, next) => {
-    req.rawBody = req.body;
-    req.body = JSON.parse(req.body.toString());
-    next();
+    try {
+      req.rawBody = req.body;
+      if (Buffer.isBuffer(req.body)) {
+        req.body = JSON.parse(req.body.toString());
+      }
+      next();
+    } catch (error) {
+      console.error('解析 webhook body 失敗:', error);
+      res.status(400).json({ error: 'Invalid JSON' });
+    }
   });
   
   // **關鍵修復：統一使用 /webhook 路徑**
