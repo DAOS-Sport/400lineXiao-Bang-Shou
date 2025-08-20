@@ -16,8 +16,8 @@ export const messages = pgTable('messages', {
   text: text('text'), // 文字內容
   timestamp: timestamp('timestamp').notNull(), // ISO 時間戳，存台北時區
   rawEvent: jsonb('raw_event').notNull(), // 原始 JSON 事件
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
+  createdAt: timestamp('created_at').defaultNow().notNull()
+  // 移除 updatedAt，匹配現有資料庫結構
 }, (table) => ({
   timestampIdx: index('messages_timestamp_idx').on(table.timestamp.desc()),
   groupIdIdx: index('messages_group_id_idx').on(table.groupId),
