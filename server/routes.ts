@@ -13,6 +13,9 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // 設定 trust proxy 以支援 Replit 的代理設置
+  app.set('trust proxy', true);
+  
   // 安全中間件
   app.use(helmet());
   
@@ -252,7 +255,7 @@ async function handleAdminCommands(event: any, text: string) {
     if (!task || task.status === 'completed') {
       await lineService.replyMessage(event.replyToken, `找不到編號 ${taskSerial} 的未完成任務。`);
     } else {
-      await storage.updateTaskStatus(task._id, 'completed', new Date());
+      await storage.updateTaskStatus(task.id, 'completed', new Date());
       const completedTime = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       await lineService.replyMessage(event.replyToken, `✅ 已結案：${taskSerial}. ${task.description}（完成時間 ${completedTime}）`);
     }
@@ -284,10 +287,10 @@ async function handleGptTaskExtraction(event: any) {
       await storage.insertTask({
         groupId: source.groupId,
         taskSerial: taskSerial,
-        text: taskText,
+        description: taskText,
         status: 'pending',
-        authorUserId: source.userId,
-        sourceMessageIds: recentMessages.slice(0, 5).map(m => m.messageId) // 最近 5 則為主要參考
+        createdBy: source.userId,
+        context: recentMessages.slice(0, 5).map(m => m.messageId) // 最近 5 則為主要參考
       });
       createdCount++;
     }
