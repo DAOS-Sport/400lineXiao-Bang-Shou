@@ -84,15 +84,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/webhook", webhookLimiter, validateLineSignature, async (req, res) => {
     console.log('🎯 Webhook 請求到達!');
     try {
-      // 立即回應 200
+      // 立即回應 200 - 加速回應時間
       res.status(200).send("OK");
 
-      // 處理事件（非同步）
+      // 處理事件（非同步，避免阻塞回應）
       const events = req.body.events;
       if (events && Array.isArray(events)) {
-        for (const event of events) {
-          await processWebhookEvent(event);
-        }
+        // 🔧 並發處理多個事件，提升性能
+        const eventPromises = events.map(event => 
+          processWebhookEvent(event).catch(error => {
+            console.error('處理單個事件失敗:', error);
+          })
+        );
+        await Promise.allSettled(eventPromises);
       }
     } catch (error) {
       console.error("Webhook 處理錯誤:", error);
@@ -161,6 +165,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
+// 內存去重機制
+const processedEvents = new Set<string>();
+
 // 處理 Webhook 事件
 async function processWebhookEvent(event: any) {
   try {
@@ -169,7 +176,21 @@ async function processWebhookEvent(event: any) {
       return;
     }
 
-    // 檢查是否已處理過（去重）
+    // 🔧 增強去重機制 - 使用內存快取
+    const eventKey = `${event.message.id}_${event.timestamp}`;
+    if (processedEvents.has(eventKey)) {
+      console.log('⚡ 已處理過的事件，跳過重複處理');
+      return;
+    }
+    processedEvents.add(eventKey);
+    
+    // 限制內存使用，只保留最近1000個事件
+    if (processedEvents.size > 1000) {
+      const firstKey = processedEvents.values().next().value;
+      processedEvents.delete(firstKey);
+    }
+
+    // 檢查是否已處理過（資料庫去重）
     const existingMessage = await storage.getMessageByMessageId(event.message.id);
     if (existingMessage) {
       return;
