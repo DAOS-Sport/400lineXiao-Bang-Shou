@@ -18,31 +18,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 設定 trust proxy 以支援 Replit 的代理設置
   app.set('trust proxy', true);
   
-  // **最優先級路由攔截器** - 在所有其他中間件之前處理特定路由
-  app.use((req, res, next) => {
-    const path = req.path;
-    
-    // 直接處理 webhook 請求，繞過所有其他中間件
-    if (path === '/webhook' && req.method === 'POST') {
-      console.log('🎯🎯🎯 直接攔截 Webhook 請求! 成功！');
-      
-      // 完全跳過簽名檢查，直接回應成功
-      console.log('✅✅✅ Webhook 處理成功 - 完全繞過驗證！');
-      return res.status(200).send('WEBHOOK_OK');
-    }
-    
-    // 直接處理健康檢查
-    if (path === '/health' && req.method === 'GET') {
-      console.log('💚 直接攔截健康檢查請求!');
-      return res.json({ 
-        status: 'ok', 
-        service: 'LINE Bot Direct Handler',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    next();
-  });
+  // **關鍵修復：統一使用 /webhook 路徑**
   
   // 全局請求日誌中間件
   app.use((req, res, next) => {
@@ -77,16 +53,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.send("ok");
   });
 
-  // GET /api/health - 健康檢查
-  console.log('🔗 註冊 /api/health 路由');
-  app.get("/api/health", (req, res) => {
-    console.log('❤️ /api/health 被請求');
-    res.json({ status: "ok" });
+  // GET /health - 健康檢查
+  console.log('🔗 註冊 /health 路由');
+  app.get("/health", (req, res) => {
+    console.log('❤️ /health 被請求');
+    res.json({ 
+      status: "ok",
+      service: "LINE Bot Service", 
+      timestamp: new Date().toISOString()
+    });
   });
 
-  // POST /api/webhook - LINE Webhook 處理
-  console.log('🔗 註冊 /api/webhook 路由');
-  app.post("/api/webhook", webhookLimiter, validateLineSignature, async (req, res) => {
+  // POST /webhook - LINE Webhook 處理（統一路徑）
+  console.log('🔗 註冊 /webhook 路由');
+  app.post("/webhook", webhookLimiter, validateLineSignature, async (req, res) => {
     console.log('🎯 Webhook 請求到達!');
     try {
       // 立即回應 200
