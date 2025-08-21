@@ -48,7 +48,7 @@ export class LineService {
     const { maxRetries = 3 } = options;
     let attempt = 0;
     
-    while (true) {
+    while (attempt < maxRetries) {
       try {
         // LINE API 支援推送到群組 ID (C開頭) 和用戶 ID (U開頭)
         await client.pushMessage(to, {
@@ -68,23 +68,62 @@ export class LineService {
         const status = error?.statusCode || 0;
         const retryAfter = Number(error?.originalError?.response?.headers?.['retry-after']) || 0;
         
+        // 403/404 錯誤視為永久失敗，不重試
+        if (status === 403 || status === 404) {
+          console.error(`❌ 永久失敗 (${status}): Bot 不在群組中或 ID 錯誤 - ${to.substring(0, 8)}...`);
+          
+          // 記錄永久失敗到 audit logs
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'error',
+            category: 'line_api',
+            message: 'LINE 推送永久失敗',
+            details: {
+              targetId: to,
+              statusCode: status,
+              errorMessage: error.message,
+              reason: status === 403 ? 'Bot 被踢出群組或權限不足' : 'ID 不存在或無效',
+              timestamp: new Date().toISOString()
+            }
+          });
+          
+          // 設置 retryAttempt 屬性供上層記錄
+          error.retryAttempt = attempt;
+          throw error;
+        }
+        
         // 429 (Too Many Requests) 或 5xx 錯誤時重試
-        if ((status === 429 || (status >= 500 && status < 600)) && attempt <= maxRetries) {
-          // 增強退避策略：429 錯誤使用更長延遲
-          const baseBackoff = status === 429 ? 5000 : 1000; // 429 錯誤基礎延遲 5 秒
-          const backoff = Math.min(60000, baseBackoff * Math.pow(2, attempt)); // 最大 60 秒
-          const wait = Math.max(backoff, retryAfter * 1000);
+        if ((status === 429 || (status >= 500 && status < 600)) && attempt < maxRetries) {
+          // 指數退避策略，尊重 Retry-After header
+          const baseBackoff = status === 429 ? 2000 : 1000; // 429 錯誤基礎延遲 2 秒
+          const exponentialBackoff = baseBackoff * Math.pow(2, attempt - 1);
+          const wait = Math.max(exponentialBackoff, retryAfter * 1000);
+          
           console.log(`⏳ API 限制 (${status})，等待 ${wait}ms 後重試 (嘗試 ${attempt}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, wait));
           continue;
         }
         
-        // 403/404 錯誤記錄但不重試
-        if (status === 403 || status === 404) {
-          console.error(`❌ 推送失敗 (${status}): Bot 可能不在群組中或 ID 錯誤 - ${to}`);
-        }
+        // 其他錯誤或重試次數用盡
+        console.error(`❌ LINE 推送失敗 (${status})，已重試 ${attempt} 次:`, error.message);
         
-        console.error('LINE 推送訊息失敗:', error);
+        // 記錄失敗到 audit logs
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'error',
+          category: 'line_api',
+          message: 'LINE 推送最終失敗',
+          details: {
+            targetId: to,
+            statusCode: status,
+            errorMessage: error.message,
+            retryAttempts: attempt,
+            timestamp: new Date().toISOString()
+          }
+        });
+        
+        // 設置 retryAttempt 屬性供上層記錄
+        error.retryAttempt = attempt;
         throw error;
       }
     }
@@ -132,9 +171,9 @@ export class LineService {
         // 檢查訊息是否在過去 5 分鐘內
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
         
-        if (new Date(lastMessage.timestamp) > fiveMinutesAgo && lastMessage.replyToken) {
-          console.log('🎯 找到最近的訊息，嘗試回覆發送');
-          await this.replyMessage(lastMessage.replyToken, text);
+        if (new Date(lastMessage.timestamp) > fiveMinutesAgo) {
+          console.log('🎯 找到最近的訊息，嘗試直接推送到群組');
+          await this.pushMessage(groupId, text);
           
           // 標記為已發送
           await storage.insertAuditLog({

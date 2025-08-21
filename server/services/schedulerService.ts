@@ -170,46 +170,60 @@ export class SchedulerService {
       const endDate = now; // 現在時間
       const startDate = yesterday; // 昨天00:00
 
-      // 🔒 群組隔離處理：逐一處理每個群組，加入延遲避免 API 限制
+      // 🔒 群組隔離處理：逐一處理每個群組，加入隨機抖動和延遲
       for (let i = 0; i < groupIds.length; i++) {
         const groupId = groupIds[i];
+        
         try {
-          console.log(`🔒 開始處理群組 ${groupId} 的專屬任務提醒 (${i + 1}/${groupIds.length})`);
-          await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
-          console.log(`✅ 群組 ${groupId} 任務提醒完成`);
+          // 先檢查群組是否有待處理任務，避免不必要的推送
+          const pendingTasks = await storage.getTasksByGroupId(groupId, 'pending');
+          if (pendingTasks.length === 0) {
+            console.log(`⏭️ 群組 ${groupId.substring(0, 8)}... 沒有待處理任務，跳過推送`);
+            continue;
+          }
           
-          // 🕐 避免 LINE API 頻率限制：群組間延遲 1000ms（加強）
+          console.log(`🔒 開始處理群組 ${groupId.substring(0, 8)}... 的專屬任務提醒 (${i + 1}/${groupIds.length})，待處理任務: ${pendingTasks.length}`);
+          
+          // 加入隨機抖動 (0-20 秒) 避免同時打爆 API
+          const jitter = Math.floor(Math.random() * 20000); // 0-20秒
+          if (jitter > 0) {
+            console.log(`⏱️ 隨機延遲 ${jitter}ms 避免同時請求...`);
+            await new Promise(resolve => setTimeout(resolve, jitter));
+          }
+          
+          await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
+          console.log(`✅ 群組 ${groupId.substring(0, 8)}... 任務提醒完成`);
+          
+          // 群組間固定延遲 300-500ms
           if (i < groupIds.length - 1) {
-            console.log(`⏱️ 等待 1000ms 避免 API 限制...`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            const baseDelay = 300 + Math.floor(Math.random() * 200); // 300-500ms
+            console.log(`⏱️ 群組間延遲 ${baseDelay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, baseDelay));
           }
         } catch (error: any) {
-          console.error(`❌ 群組 ${groupId} 任務整理失敗:`, error);
-          // 如果是 API 限制錯誤，增加更長延遲並記錄失敗
-          if (error.statusCode === 429) {
+          const statusCode = error?.statusCode || 0;
+          console.error(`❌ 群組 ${groupId.substring(0, 8)}... 任務整理失敗 (${statusCode}):`, error.message);
+          
+          // 記錄詳細錯誤信息
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'error',
+            category: 'scheduler',
+            message: '群組任務推送失敗',
+            details: { 
+              groupId,
+              statusCode,
+              errorMessage: error.message,
+              timestamp: new Date().toISOString(),
+              retryAttempt: error.retryAttempt || 0
+            }
+          });
+          
+          // 如果是 API 限制錯誤，增加更長延遲
+          if (statusCode === 429) {
             console.log(`⚠️ API 限制錯誤，延遲 60 秒後繼續...`);
             await new Promise(resolve => setTimeout(resolve, 60000));
           }
-          
-          // 記錄推送失敗到 audit log
-          await storage.insertAuditLog({
-            id: crypto.randomUUID(),
-            level: 'error',
-            category: 'scheduler',
-            message: '群組任務推送完全失敗',
-            details: { 
-              groupId, 
-              originalError: error.message,
-              fallbackError: error.message
-            }
-          });
-          await storage.insertAuditLog({
-            id: crypto.randomUUID(),
-            level: 'error',
-            category: 'scheduler',
-            message: '群組任務整理失敗',
-            details: { groupId, error: error.message }
-          });
         }
       }
 
