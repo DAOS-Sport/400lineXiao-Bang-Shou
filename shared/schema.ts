@@ -105,6 +105,11 @@ export const insertAdminSchema = createInsertSchema(admins).omit({
   createdAt: true
 });
 
+export const insertAuthorizedGroupSchema = createInsertSchema(authorizedGroups).omit({
+  createdAt: true,
+  updatedAt: true
+});
+
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
   id: true,
   timestamp: true
@@ -119,6 +124,9 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 
 export type Admin = typeof admins.$inferSelect;
 export type InsertAdmin = z.infer<typeof insertAdminSchema>;
+
+export type AuthorizedGroup = typeof authorizedGroups.$inferSelect;
+export type InsertAuthorizedGroup = z.infer<typeof insertAuthorizedGroupSchema>;
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;

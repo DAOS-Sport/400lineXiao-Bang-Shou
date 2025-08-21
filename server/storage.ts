@@ -1,7 +1,7 @@
 import { 
-  messages, tasks, admins, auditLogs,
-  type IMessage, type ITask, type IAdmin, type IAuditLog,
-  type CreateMessageData, type CreateTaskData, type CreateAdminData, type CreateAuditLogData
+  messages, tasks, admins, auditLogs, authorizedGroups,
+  type IMessage, type ITask, type IAdmin, type IAuditLog, type AuthorizedGroup,
+  type CreateMessageData, type CreateTaskData, type CreateAdminData, type CreateAuditLogData, type InsertAuthorizedGroup
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, sql, count } from "drizzle-orm";
@@ -36,6 +36,12 @@ export interface IStorage {
   getAdmin(userId: string): Promise<IAdmin | null>;
   isAdmin(userId: string): Promise<boolean>;
 
+  // Authorized Groups
+  insertAuthorizedGroup(data: InsertAuthorizedGroup): Promise<AuthorizedGroup>;
+  getAuthorizedGroup(groupId: string): Promise<AuthorizedGroup | null>;
+  isGroupAuthorized(groupId: string): Promise<boolean>;
+  getAuthorizedGroups(): Promise<AuthorizedGroup[]>;
+  
   // Audit Logs
   insertAuditLog(data: CreateAuditLogData): Promise<IAuditLog>;
   getAuditLogs(limit?: number): Promise<IAuditLog[]>;
@@ -247,6 +253,29 @@ export class DatabaseStorage implements IStorage {
   async isAdmin(userId: string): Promise<boolean> {
     const admin = await this.getAdmin(userId);
     return !!admin;
+  }
+
+  // Authorized Groups
+  async insertAuthorizedGroup(data: InsertAuthorizedGroup): Promise<AuthorizedGroup> {
+    const [group] = await db.insert(authorizedGroups).values(data).returning();
+    return group as AuthorizedGroup;
+  }
+
+  async getAuthorizedGroup(groupId: string): Promise<AuthorizedGroup | null> {
+    const [group] = await db.select().from(authorizedGroups).where(eq(authorizedGroups.groupId, groupId));
+    return group ? (group as AuthorizedGroup) : null;
+  }
+
+  async isGroupAuthorized(groupId: string): Promise<boolean> {
+    const group = await this.getAuthorizedGroup(groupId);
+    return group !== null && group.isActive === 'true';
+  }
+
+  async getAuthorizedGroups(): Promise<AuthorizedGroup[]> {
+    const groups = await db.select().from(authorizedGroups)
+      .where(eq(authorizedGroups.isActive, 'true'))
+      .orderBy(desc(authorizedGroups.createdAt));
+    return groups as AuthorizedGroup[];
   }
 
   // Audit Logs

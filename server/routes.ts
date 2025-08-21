@@ -236,9 +236,9 @@ async function processWebhookEvent(event: any) {
         }
       }
 
-      // 4. GPT 記錄代辦事項（任何人可用，但僅限群組）
-      if (text === 'gpt幫我記錄代辦事項' && source.type === 'group') {
-        await handleGptTaskExtraction(event);
+      // 4. 駿斯小助理記錄功能（僅限授權群組）
+      if (text === '小助理請紀錄' && source.type === 'group') {
+        await handleJunsiAssistantExtraction(event);
       }
     }
 
@@ -328,10 +328,18 @@ async function handleAdminCommands(event: any, text: string) {
   }
 }
 
-// 處理 GPT 任務萃取
-async function handleGptTaskExtraction(event: any) {
+// 處理駿斯小助理任務萃取（需要群組授權）
+async function handleJunsiAssistantExtraction(event: any) {
   try {
     const source = event.source;
+    
+    // 檢查群組授權
+    const isAuthorized = await storage.isGroupAuthorized(source.groupId);
+    if (!isAuthorized) {
+      await lineService.replyMessage(event.replyToken, "此群組未授權使用駿斯小助理功能，請聯繫系統管理員。");
+      return;
+    }
+
     const recentMessages = await storage.getRecentMessages(source.groupId, 20);
     
     if (recentMessages.length === 0) {
@@ -342,7 +350,7 @@ async function handleGptTaskExtraction(event: any) {
     const extractedTasks = await llmService.extractTasksFromMessages(recentMessages);
     
     if (extractedTasks.length === 0) {
-      await lineService.replyMessage(event.replyToken, "從最近的對話中沒有找到可執行的任務。");
+      await lineService.replyMessage(event.replyToken, "駿斯小助理從最近的對話中沒有找到可執行的任務。");
       return;
     }
 
@@ -364,19 +372,19 @@ async function handleGptTaskExtraction(event: any) {
 
     await lineService.replyMessage(
       event.replyToken, 
-      `✅ 已從最近對話中萃取並建立 ${createdCount} 個任務。\n使用「查詢代辦事項」查看詳細列表。`
+      `✅ 駿斯小助理已從最近對話中萃取並建立 ${createdCount} 個任務。\n使用「查詢代辦事項」查看詳細列表。`
     );
 
   } catch (error) {
-    console.error("GPT 任務萃取失敗:", error);
+    console.error("駿斯小助理任務萃取失敗:", error);
     await storage.insertAuditLog({
       id: crypto.randomUUID(),
       level: 'error',
       category: 'llm',
-      message: 'GPT 任務萃取失敗',
+      message: '駿斯小助理任務萃取失敗',
       details: { error: (error as Error).message, groupId: event.source.groupId }
     });
     
-    await lineService.replyMessage(event.replyToken, "任務萃取暫時無法使用，請稍後再試。");
+    await lineService.replyMessage(event.replyToken, "駿斯小助理暫時無法使用，請稍後再試。");
   }
 }
