@@ -3,7 +3,8 @@ import { storage } from "../storage";
 import { lineService } from "./lineService";
 import { taskService } from "./taskService";
 import { llmService } from "./llmService";
-import { getYesterday, formatDate, getYesterdayRange, getLast24HoursRange } from "../utils/time";
+import { simpleBackupService } from "./simpleBackupService";
+import { getYesterday, formatDate } from "../utils/time";
 
 export class SchedulerService {
   private cronJobs: cron.ScheduledTask[] = [];
@@ -13,14 +14,14 @@ export class SchedulerService {
     this.stop();
 
     // 四個時段的任務提醒：06:30, 11:00, 15:00, 20:00
-    const schedules = [
+    const taskSchedules = [
       { time: '30 6 * * *', name: '06:30' },
       { time: '0 11 * * *', name: '11:00' }, 
       { time: '0 15 * * *', name: '15:00' },
       { time: '0 20 * * *', name: '20:00' }
     ];
 
-    schedules.forEach(({ time, name }) => {
+    taskSchedules.forEach(({ time, name }) => {
       const job = cron.schedule(time, async () => {
         console.log(`${name} 任務提醒開始執行`);
         await this.dailyTaskSummary();
@@ -30,7 +31,16 @@ export class SchedulerService {
       this.cronJobs.push(job);
     });
 
-    console.log('排程服務已啟動 - 每日四次任務提醒 (06:30, 11:00, 15:00, 20:00 Asia/Taipei)');
+    // 每日凌晨 02:00 執行備份
+    const backupJob = cron.schedule('0 2 * * *', async () => {
+      console.log('02:00 每日備份開始執行');
+      await this.performDailyBackup();
+    }, {
+      timezone: 'Asia/Taipei'
+    });
+    this.cronJobs.push(backupJob);
+
+    console.log('排程服務已啟動 - 每日四次任務提醒 (06:30, 11:00, 15:00, 20:00) + 每日02:00備份 (Asia/Taipei)');
   }
 
   stop(): void {
@@ -281,6 +291,55 @@ export class SchedulerService {
   async triggerManualSummary(): Promise<void> {
     console.log('手動觸發每日任務整理...');
     await this.dailyTaskSummary();
+  }
+
+  /**
+   * 執行每日備份
+   */
+  private async performDailyBackup(): Promise<void> {
+    try {
+      console.log('🗄️ 開始執行每日消息備份...');
+      
+      const success = await simpleBackupService.performDailyBackup();
+      
+      if (success) {
+        console.log('✅ 每日備份成功完成');
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'backup',
+          message: '每日備份成功完成',
+          details: { 
+            backupTime: new Date().toISOString(),
+            scheduledBy: 'scheduler_service'
+          }
+        });
+      } else {
+        console.error('❌ 每日備份失敗');
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'error',
+          category: 'backup',
+          message: '每日備份失敗',
+          details: { 
+            backupTime: new Date().toISOString(),
+            scheduledBy: 'scheduler_service'
+          }
+        });
+      }
+    } catch (error) {
+      console.error('備份服務過程中發生錯誤:', error);
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'backup',
+        message: '備份服務執行失敗',
+        details: { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          backupTime: new Date().toISOString()
+        }
+      });
+    }
   }
 }
 

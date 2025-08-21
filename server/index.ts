@@ -43,6 +43,10 @@ app.use((req, res, next) => {
     // 測試資料庫連接
     await db.$client.query('SELECT 1');
     log("PostgreSQL 資料庫連接成功");
+    
+    // 初始化備份系統
+    const { simpleBackupService } = await import('./services/simpleBackupService');
+    await simpleBackupService.initializeBackupSystem();
   } catch (error) {
     console.error("PostgreSQL 資料庫連接失敗:", error);
     process.exit(1);

@@ -311,6 +311,14 @@ async function handleAdminCommands(event: any, text: string) {
     }
   }
   
+  else if (text === '手動備份') {
+    await handleManualBackup(event);
+  }
+  
+  else if (text === '查詢備份歷史') {
+    await handleBackupHistory(event);
+  }
+  
   else if (text.match(/^編號(\d{2})已完成$/)) {
     if (source.type !== 'group') {
       await lineService.replyMessage(event.replyToken, "此指令僅可在群組中使用。");
@@ -389,5 +397,68 @@ async function handleJunsiAssistantExtraction(event: any) {
     });
     
     await lineService.replyMessage(event.replyToken, "駿斯小助理暫時無法使用，請稍後再試。");
+  }
+}
+
+// 處理手動備份指令
+async function handleManualBackup(event: any) {
+  try {
+    const source = event.source;
+    
+    console.log('🗄️ 管理員觸發手動備份');
+    
+    // 執行群組備份（最近7天）
+    const { simpleBackupService } = await import('./services/simpleBackupService');
+    let success = false;
+    
+    if (source.type === 'group') {
+      success = await simpleBackupService.backupGroupMessages(source.groupId, 7);
+      if (success) {
+        await lineService.replyMessage(event.replyToken, "✅ 本群組訊息備份完成\n已備份最近7天的對話記錄");
+      } else {
+        await lineService.replyMessage(event.replyToken, "❌ 備份過程中發生錯誤，請查看系統日誌");
+      }
+    } else {
+      // 全系統備份
+      success = await simpleBackupService.performDailyBackup();
+      if (success) {
+        await lineService.replyMessage(event.replyToken, "✅ 系統訊息備份完成\n已備份昨天的所有對話記錄");
+      } else {
+        await lineService.replyMessage(event.replyToken, "❌ 備份過程中發生錯誤，請查看系統日誌");
+      }
+    }
+    
+  } catch (error) {
+    console.error("手動備份失敗:", error);
+    await lineService.replyMessage(event.replyToken, "❌ 備份功能執行失敗");
+  }
+}
+
+// 處理備份歷史查詢
+async function handleBackupHistory(event: any) {
+  try {
+    console.log('📋 管理員查詢備份歷史');
+    
+    const { simpleBackupService } = await import('./services/simpleBackupService');
+    const backupHistory = await simpleBackupService.getBackupHistory(5);
+    
+    if (backupHistory.length === 0) {
+      await lineService.replyMessage(event.replyToken, "📋 備份歷史\n目前沒有備份記錄");
+      return;
+    }
+    
+    const historyText = backupHistory.map(backup => {
+      const date = backup.backupDate;
+      const type = backup.backupType;
+      const count = backup.totalMessages;
+      const group = backup.groupId ? `群組 ${backup.groupId.substring(0, 8)}...` : '全系統';
+      return `${date} ${type} (${count}條) ${group}`;
+    }).join('\n');
+    
+    await lineService.replyMessage(event.replyToken, `📋 備份歷史（最近5次）\n${historyText}`);
+    
+  } catch (error) {
+    console.error("查詢備份歷史失敗:", error);
+    await lineService.replyMessage(event.replyToken, "❌ 查詢備份歷史失敗");
   }
 }

@@ -2,9 +2,9 @@
 
 ## Overview
 
-This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, and scheduled daily reminders. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
+This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, scheduled daily reminders, and comprehensive message backup functionality. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
 
-The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, and authorized group management for GPT functionality.
+The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, authorized group management for GPT functionality, and a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00.
 
 ## User Preferences
 
@@ -27,8 +27,12 @@ Preferred communication style: Simple, everyday language.
   - Messages table for raw event storage with JSONB fields
   - Tasks table with group-based isolation and serial numbering
   - Admins table for access control
+  - Authorized groups table for GPT functionality access control
   - Audit logs for system monitoring and compliance
+  - Message backups table for permanent conversation storage
+  - System settings table for backup configuration
 - **Indexing**: Strategic indexes on frequently queried fields (timestamp, groupId, userId, text)
+- **Backup Strategy**: Permanent message retention with automated daily backups at 02:00 Asia/Taipei time
 
 ### Message Processing
 - **Event Handling**: Asynchronous processing of LINE webhook events with immediate 200 response
@@ -42,10 +46,13 @@ Preferred communication style: Simple, everyday language.
 - **Task Suggestions**: GPT-generated concise processing suggestions (limited to 30 characters for brevity and clarity)
 
 ### Scheduling System
-- **Cron Jobs**: node-cron with Asia/Taipei timezone for four daily reminders (06:30, 11:00, 15:00, 20:00)
+- **Cron Jobs**: node-cron with Asia/Taipei timezone for:
+  - Four daily task reminders (06:30, 11:00, 15:00, 20:00)
+  - Daily message backup at 02:00
 - **Group Isolation**: Strict per-group task processing with no cross-group data sharing
 - **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions
 - **Time Range Logic**: Each group receives tasks created from yesterday 00:00 to current time specific to that group (昨天+今天發送前的所有事項)
+- **Backup Automation**: Automatic daily backup of all LINE conversations with permanent retention
 
 ### Authentication & Authorization
 - **Multi-layer Security**: Support for both Basic Auth and Bearer Token authentication
