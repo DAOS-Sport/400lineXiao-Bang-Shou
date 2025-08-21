@@ -115,6 +115,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/admin/trigger-tasks - 手動觸發任務推送
+  app.post("/api/admin/trigger-tasks", authMiddleware, async (req, res) => {
+    try {
+      console.log('🔧 管理員手動觸發任務推送');
+      await schedulerService.manualTriggerTaskSummary();
+      res.json({ success: true, message: "任務推送已觸發" });
+    } catch (error) {
+      console.error("手動觸發任務推送失敗:", error);
+      res.status(500).json({ error: "觸發失敗" });
+    }
+  });
+
   // GET /api/admin/messages - 管理後台 API
   app.get("/api/admin/messages", authMiddleware, async (req, res) => {
     try {

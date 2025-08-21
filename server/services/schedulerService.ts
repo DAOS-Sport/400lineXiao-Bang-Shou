@@ -49,6 +49,13 @@ export class SchedulerService {
     this.cronJobs = [];
   }
 
+  // 手動觸發任務推送
+  async manualTriggerTaskSummary(): Promise<void> {
+    console.log('🔧 手動觸發任務推送開始');
+    await this.dailyTaskSummary();
+    console.log('🔧 手動觸發任務推送完成');
+  }
+
   private async dailyTaskSummary(): Promise<void> {
     try {
       // 獲取所有有待辦任務的群組
@@ -90,17 +97,17 @@ export class SchedulerService {
           await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
           console.log(`✅ 群組 ${groupId} 任務提醒完成`);
           
-          // 🕐 避免 LINE API 頻率限制：群組間延遲 2 秒
+          // 🕐 避免 LINE API 頻率限制：群組間延遲 10 秒
           if (i < groupIds.length - 1) {
-            console.log(`⏱️ 等待 2 秒避免 API 限制...`);
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log(`⏱️ 等待 10 秒避免 API 限制...`);
+            await new Promise(resolve => setTimeout(resolve, 10000));
           }
         } catch (error: any) {
           console.error(`❌ 群組 ${groupId} 任務整理失敗:`, error);
           // 如果是 API 限制錯誤，增加更長延遲
           if (error.statusCode === 429) {
-            console.log(`⚠️ API 限制錯誤，延遲 5 秒後繼續...`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            console.log(`⚠️ API 限制錯誤，延遲 30 秒後繼續...`);
+            await new Promise(resolve => setTimeout(resolve, 30000));
           }
           await storage.insertAuditLog({
             id: crypto.randomUUID(),
