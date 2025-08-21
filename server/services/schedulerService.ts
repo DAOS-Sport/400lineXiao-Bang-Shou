@@ -56,6 +56,59 @@ export class SchedulerService {
     console.log('🔧 手動觸發任務推送完成');
   }
 
+  // 手動補發特定群組的任務推送
+  async manualPushToRemainingGroups(): Promise<void> {
+    console.log('📤 開始補發剩餘群組的 11 點任務提醒');
+    
+    // 指定需要補發的群組（排除已推送的駿斯小幫手群組）
+    const groupsToNotify = [
+      'C2dd9a5fce7c276f2cbfdd02c2342661c', // 三民排班群組
+      'C66a4b3bb3fbc3dcf52d42626ec512484', // 其他群組
+      'C2dc6991e51074dd47d5d275d568318f7', // 未知群組
+      'Ce936c6bebb59b8b5683ffbcf97bf20de'  // 原授權群組
+    ];
+
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+    
+    const endDate = now;
+    const startDate = yesterday;
+
+    for (let i = 0; i < groupsToNotify.length; i++) {
+      const groupId = groupsToNotify[i];
+      try {
+        console.log(`📋 補發群組 ${groupId.substring(0, 8)}... 的任務提醒 (${i + 1}/${groupsToNotify.length})`);
+        
+        // 檢查該群組是否有未完成任務
+        const tasks = await storage.getTasksCreatedBetween(groupId, startDate, endDate, 'pending');
+        if (tasks.length === 0) {
+          console.log(`📝 群組 ${groupId.substring(0, 8)}... 沒有未完成任務，跳過`);
+          continue;
+        }
+
+        await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
+        console.log(`✅ 群組 ${groupId.substring(0, 8)}... 補發完成`);
+        
+        // 群組間延遲 10 秒避免 API 限制
+        if (i < groupsToNotify.length - 1) {
+          console.log(`⏱️ 等待 10 秒避免 API 限制...`);
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+        
+      } catch (error: any) {
+        console.error(`❌ 群組 ${groupId} 補發失敗:`, error);
+        if (error.statusCode === 429) {
+          console.log(`⚠️ API 限制錯誤，延遲 30 秒後繼續...`);
+          await new Promise(resolve => setTimeout(resolve, 30000));
+        }
+      }
+    }
+    
+    console.log('📤 補發任務完成');
+  }
+
   private async dailyTaskSummary(): Promise<void> {
     try {
       // 獲取所有有待辦任務的群組
