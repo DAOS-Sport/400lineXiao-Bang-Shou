@@ -82,12 +82,14 @@ export class SchedulerService {
       const endDate = now; // 現在時間
       const startDate = yesterday; // 昨天00:00
 
-      // 逐一處理每個群組
+      // 🔒 群組隔離處理：逐一處理每個群組，確保任務不跨群組
       for (const groupId of groupIds) {
         try {
+          console.log(`🔒 開始處理群組 ${groupId} 的專屬任務提醒`);
           await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
+          console.log(`✅ 群組 ${groupId} 任務提醒完成`);
         } catch (error: any) {
-          console.error(`群組 ${groupId} 任務整理失敗:`, error);
+          console.error(`❌ 群組 ${groupId} 任務整理失敗:`, error);
           await storage.insertAuditLog({
             id: crypto.randomUUID(),
             level: 'error',
@@ -188,13 +190,16 @@ export class SchedulerService {
   }
 
   private async processGroupDailySummaryWithSuggestions(groupId: string, startDate: Date, endDate: Date): Promise<void> {
-    // 查詢該群組從昨天到現在建立的未完成任務
+    // 🔒 嚴格群組隔離：只查詢該群組的未完成任務
+    console.log(`🔍 正在查詢群組 ${groupId.substring(0, 8)}... 的專屬任務`);
     const recentTasks = await storage.getTasksCreatedBetween(groupId, startDate, endDate, 'pending');
     
     if (recentTasks.length === 0) {
-      console.log(`群組 ${groupId} 從昨天到現在沒有未完成任務`);
+      console.log(`📝 群組 ${groupId.substring(0, 8)}... 從昨天到現在沒有未完成任務`);
       return;
     }
+
+    console.log(`📋 群組 ${groupId.substring(0, 8)}... 找到 ${recentTasks.length} 個未完成任務`);
 
     // 準備任務資料
     const taskData = recentTasks.map(task => ({
@@ -227,8 +232,10 @@ export class SchedulerService {
       
       message += `\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
-      // 推送到群組
+      // 🔒 群組隔離推送：確保只推送到對應群組
+      console.log(`📤 正在推送任務提醒到群組 ${groupId.substring(0, 8)}...`);
       await lineService.pushMessage(groupId, message);
+      console.log(`✅ 群組 ${groupId.substring(0, 8)}... 任務提醒推送成功`);
       
       await storage.insertAuditLog({
         id: crypto.randomUUID(),
