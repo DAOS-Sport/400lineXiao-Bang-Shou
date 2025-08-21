@@ -6,18 +6,16 @@ export class MessageService {
   async createMessageFromEvent(event: any): Promise<CreateMessageData> {
     const source = event.source;
     
-    // 取得顯示名稱
+    // 取得顯示名稱（容錯處理）
     let displayName = '';
     try {
-      if (source.type === 'user') {
+      if (source.userId) {
         const profile = await lineService.getProfile(source.userId);
-        displayName = profile?.displayName || '';
-      } else {
-        const profile = await lineService.getProfile(source.userId);
-        displayName = profile?.displayName || '';
+        displayName = profile?.displayName || '未知用戶';
       }
     } catch (error) {
-      console.error('獲取用戶顯示名稱失敗:', error);
+      console.log(`⚠️ 無法獲取用戶 ${source.userId} 的資料，可能為私人帳號或已封鎖機器人`);
+      displayName = '未知用戶';
     }
 
     return {
