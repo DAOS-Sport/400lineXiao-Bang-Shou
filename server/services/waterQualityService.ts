@@ -35,8 +35,8 @@ export class WaterQualityService {
     try {
       const lines = text.split('\n').map(line => line.trim());
       
-      // 解析日期和時間 (114/8/21 12.10)
-      const dateTimePattern = /(\d{3})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})\.(\d{2})/;
+      // 解析日期和時間 (支援 114/8/21 12.10 和 114/8/21 17:05 格式)
+      const dateTimePattern = /(\d{3})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})[.:](\d{2})/;
       const dateTimeMatch = lines[0]?.match(dateTimePattern);
       
       if (!dateTimeMatch) return null;
@@ -124,7 +124,7 @@ export class WaterQualityService {
 
   // 檢查是否為水質紀錄訊息
   isWaterQualityMessage(text: string): boolean {
-    const hasDateTime = /\d{3}\/\d{1,2}\/\d{1,2}\s+\d{1,2}\.\d{2}/.test(text);
+    const hasDateTime = /\d{3}\/\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}/.test(text);
     const hasCL = /CL\s+[\d.]+/.test(text);
     const hasPH = /PH\s+[\d.]+/.test(text);
     const hasWaterTemp = /水溫\s+[\d.]+/.test(text);
