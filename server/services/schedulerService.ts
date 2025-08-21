@@ -4,6 +4,7 @@ import { lineService } from "./lineService";
 import { taskService } from "./taskService";
 import { llmService } from "./llmService";
 import { simpleBackupService } from "./simpleBackupService";
+import { waterQualityService } from "./waterQualityService";
 import { getYesterday, formatDate } from "../utils/time";
 
 export class SchedulerService {
@@ -41,7 +42,16 @@ export class SchedulerService {
     });
     this.cronJobs.push(backupJob);
 
-    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 (Asia/Taipei)');
+    // 每日晚上 22:00 發送水質報告
+    const waterQualityReportJob = cron.schedule('0 22 * * *', async () => {
+      console.log('22:00 水質報告開始執行');
+      await waterQualityService.sendDailyWaterQualityReport();
+    }, {
+      timezone: 'Asia/Taipei'
+    });
+    this.cronJobs.push(waterQualityReportJob);
+
+    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 + 每日22:00水質報告 (Asia/Taipei)');
   }
 
   stop(): void {

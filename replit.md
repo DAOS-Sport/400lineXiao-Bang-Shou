@@ -2,9 +2,9 @@
 
 ## Overview
 
-This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, scheduled daily reminders, and comprehensive message backup functionality. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
+This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant with specialized water quality monitoring capabilities. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, scheduled daily reminders, comprehensive message backup functionality, and dedicated water quality monitoring for swimming pool facilities. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
 
-The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, authorized group management for GPT functionality, and a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00.
+The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 08:00, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, authorized group management for GPT functionality, a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00, and specialized water quality monitoring for group C50c2a9623a78cc5f5e9f39557e3abfe6 with daily reports at 22:00.
 
 ## User Preferences
 
@@ -31,12 +31,16 @@ Preferred communication style: Simple, everyday language.
   - Audit logs for system monitoring and compliance
   - Message backups table for permanent conversation storage
   - System settings table for backup configuration
+  - Water quality records stored via audit logs with specialized categorization
+- **Memory Storage**: In-memory caching for water quality data with automatic cleanup
 - **Indexing**: Strategic indexes on frequently queried fields (timestamp, groupId, userId, text)
 - **Backup Strategy**: Permanent message retention with automated daily backups at 02:00 Asia/Taipei time
 
 ### Message Processing
 - **Event Handling**: Asynchronous processing of LINE webhook events with immediate 200 response
 - **Task Detection**: Automatic task creation when messages contain "交辦" keyword
+- **Water Quality Detection**: Automatic recognition of water quality data in specific format (民國年/月/日 時.分, CL, PH, 水溫, 氣溫)
+- **Group-Specific Processing**: Water quality monitoring limited to authorized group C50c2a9623a78cc5f5e9f39557e3abfe6
 - **Storage Strategy**: Raw event preservation in JSONB format for audit trails and debugging
 
 ### AI Integration
@@ -49,10 +53,12 @@ Preferred communication style: Simple, everyday language.
 - **Cron Jobs**: node-cron with Asia/Taipei timezone for:
   - Five daily task reminders (06:30, 08:00, 11:00, 15:00, 20:00)
   - Daily message backup at 02:00
+  - Daily water quality report at 22:00 (for authorized group)
 - **Group Isolation**: Strict per-group task processing with no cross-group data sharing
 - **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions
 - **Time Range Logic**: Each group receives tasks created from yesterday 00:00 to current time specific to that group (昨天+今天發送前的所有事項)
 - **Backup Automation**: Automatic daily backup of all LINE conversations with permanent retention
+- **Water Quality Monitoring**: Specialized monitoring for swimming pool facilities with automated reporting
 
 ### Authentication & Authorization
 - **Multi-layer Security**: Support for both Basic Auth and Bearer Token authentication
@@ -88,7 +94,7 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle ORM**: Type-safe database operations with migration support
 
 ### Scheduling & Time Management
-- **node-cron**: Timezone-aware task scheduling for daily reminders
+- **node-cron**: Timezone-aware task scheduling for daily reminders and water quality reports
 - **dayjs**: Comprehensive date manipulation with timezone support for Asia/Taipei
 
 ### Security & Monitoring
@@ -96,6 +102,12 @@ Preferred communication style: Simple, everyday language.
 - **Helmet**: Security headers and protection middleware
 - **Rate Limiting**: Express rate limiting for API protection
 - **Audit Logging**: Comprehensive system activity tracking
+
+### Water Quality Monitoring
+- **Pattern Recognition**: RegEx-based parsing for Taiwanese date format (民國年) and water quality parameters
+- **Memory Caching**: In-memory storage for daily water quality data with automatic cleanup
+- **Data Validation**: Comprehensive validation for chlorine levels, pH values, and temperature readings
+- **Report Generation**: Automated daily summaries with status evaluation and trend analysis
 
 ### Development Tools
 - **ESBuild**: Fast bundling for production server builds

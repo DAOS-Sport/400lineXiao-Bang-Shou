@@ -1,4 +1,5 @@
-import { pgTable, varchar, text, timestamp, decimal, jsonb, sql } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, timestamp, decimal, jsonb, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * 水質紀錄資料表

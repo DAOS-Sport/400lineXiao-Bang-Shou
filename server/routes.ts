@@ -6,6 +6,7 @@ import { messageService } from "./services/messageService";
 import { taskService } from "./services/taskService";
 import { llmService } from "./services/llmService";
 import { schedulerService } from "./services/schedulerService";
+import { waterQualityService } from "./services/waterQualityService";
 import { authMiddleware } from "./middleware/auth";
 import { validateLineSignature } from "./middleware/lineSignature";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
@@ -184,6 +185,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 水質測試API（開發用）
+  app.get('/api/water-quality/test', async (req, res) => {
+    try {
+      const { runWaterQualityTests } = await import('./test/waterQualityTest');
+      
+      // 運行測試並捕獲輸出
+      const originalLog = console.log;
+      let output = '';
+      console.log = (...args) => {
+        output += args.join(' ') + '\n';
+        originalLog(...args);
+      };
+      
+      await runWaterQualityTests();
+      
+      // 恢復原始 console.log
+      console.log = originalLog;
+      
+      res.json({ 
+        success: true, 
+        message: '水質系統測試完成',
+        output: output
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  // 獲取今日水質報告API
+  app.get('/api/water-quality/report', async (req, res) => {
+    try {
+      const report = await waterQualityService.generateDailyWaterQualityReport();
+      res.json({ 
+        success: true, 
+        report: report
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
   // 啟動排程服務
   schedulerService.start();
 
@@ -263,7 +311,12 @@ async function processWebhookEvent(event: any) {
         }
       }
 
-      // 4. 駿斯小助理記錄功能（僅限授權群組）
+      // 4. 水質監控（僅限指定群組）
+      if (source.type === 'group' && source.groupId === 'C50c2a9623a78cc5f5e9f39557e3abfe6') {
+        await waterQualityService.handleWaterQualityMessage(text, event.message.id, source.userId, source.groupId);
+      }
+
+      // 5. 駿斯小助理記錄功能（僅限授權群組）
       console.log(`🔍 檢查是否為小助理指令: "${text}" === "小助理請紀錄" = ${text === '小助理請紀錄'}, 群組類型: ${source.type}`);
       if (text === '小助理請紀錄' && source.type === 'group') {
         console.log(`🤖 偵測到「小助理請紀錄」指令來自群組 ${source.groupId}`);
