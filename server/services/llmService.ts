@@ -187,18 +187,19 @@ ${taskTexts}
 
       const taskTexts = tasks.map(task => `${task.serial}. ${task.description}`).join('\n');
       
-      const prompt = `請為以下未完成的代辦任務提供簡單的處理建議和優先順序分析：
+      const prompt = `請為以下未完成的代辦任務提供簡潔的處理建議：
 
 任務清單：
 ${taskTexts}
 
-請以繁體中文回覆，包含：
-1. 優先順序建議（緊急/重要程度）
-2. 簡單的處理步驟或方法
-3. 可能需要的資源或協助
-4. 預估時間
+要求：
+- 使用繁體中文
+- 總字數控制在30字以內
+- 提供最關鍵的處理提醒
+- 包含優先順序或時間提醒
+- 格式簡潔明瞭
 
-請保持建議簡潔實用，每項任務控制在 2-3 行建議內。`;
+範例：「優先處理，需準備整理工具，預計30分鐘完成。」`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o-mini" which was released for cost-effective usage. do not change this unless explicitly requested by the user
@@ -212,8 +213,8 @@ ${taskTexts}
             content: prompt
           }
         ],
-        temperature: 0.4,
-        max_tokens: 1200
+        temperature: 0.2,
+        max_tokens: 100
       });
 
       const suggestions = response.choices[0].message.content?.trim() || '';

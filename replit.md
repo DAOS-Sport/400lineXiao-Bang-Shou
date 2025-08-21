@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
 - **LLM Service**: OpenAI GPT-4o-mini for natural language task extraction and processing suggestions
 - **Context Analysis**: Reviews recent 20 messages with emphasis on latest 5 for task identification
 - **JSON Output**: Structured task extraction with error handling and fallback mechanisms
-- **Task Suggestions**: GPT-generated priority analysis, processing steps, resource recommendations, and time estimates
+- **Task Suggestions**: GPT-generated concise processing suggestions (limited to 30 characters for brevity and clarity)
 
 ### Scheduling System
 - **Cron Jobs**: node-cron with Asia/Taipei timezone for four daily reminders (06:30, 11:00, 15:00, 20:00)
