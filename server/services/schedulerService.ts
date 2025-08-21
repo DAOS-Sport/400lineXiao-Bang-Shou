@@ -51,7 +51,16 @@ export class SchedulerService {
     });
     this.cronJobs.push(waterQualityReportJob);
 
-    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 + 每日22:00水質報告 (Asia/Taipei)');
+    // 每日下午 14:30 發送水質報告
+    const afternoonWaterQualityReportJob = cron.schedule('30 14 * * *', async () => {
+      console.log('14:30 下午水質報告開始執行');
+      await waterQualityService.sendDailyWaterQualityReport();
+    }, {
+      timezone: 'Asia/Taipei'
+    });
+    this.cronJobs.push(afternoonWaterQualityReportJob);
+
+    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 + 每日14:30&22:00水質報告 (Asia/Taipei)');
   }
 
   stop(): void {
