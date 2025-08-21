@@ -39,19 +39,31 @@ export class LLMService {
 對話記錄：
 ${messageTexts}
 
-身為專業的員工助理，請遵循以下規則：
-1. 最近 5 則訊息為主要分析內容，前 5-15 則訊息作為補充參考
-2. 只萃取明確的行動項目，不包含閒聊或討論
-3. 將相似或重複的任務合併
-4. 任務描述要具體可執行，符合職場專業標準
-5. 保持原始語言（繁體中文）
-6. 每個任務用一句話描述，語調專業友善
+身為專業的員工助理，請遵循以下分析原則：
+
+**上下文分析**：
+- 重點分析最近 5 則訊息，參考前 5-15 則訊息
+- 識別相關討論並合併成單一任務（如：多則訊息討論同一筆款項確認）
+- 理解隱含的任務需求（如：「麻煩確認」、「幫忙聯繫」等）
+
+**任務萃取標準**：
+- 只萃取具體可執行的行動項目
+- 將分散但相關的討論整合成統一任務
+- 任務描述具體明確，包含關鍵資訊（金額、對象、期限等）
+- 語調專業友善，符合職場標準
+
+**輸出要求**：
+- 每個任務包含任務描述和30字內的處理建議
+- 按優先級排序（緊急/重要的任務排前面）
+- 使用繁體中文
 
 請以 JSON 格式回傳結果：
 {
   "tasks": [
-    {"text": "具體任務描述"},
-    {"text": "另一個任務描述"}
+    {
+      "text": "具體任務描述", 
+      "suggestion": "30字內處理建議"
+    }
   ]
 }`;
 
@@ -60,7 +72,7 @@ ${messageTexts}
         messages: [
           {
             role: "system",
-            content: "您是駿斯小助理，一位專業的員工助理。您擅長從群組對話中萃取可執行的代辦事項，協助團隊提高工作效率。您的回應專業、友善且具建設性。"
+            content: "您是駿斯小助理，一位專業的員工助理。您擅長理解對話脈絡，將分散的討論整合成明確的代辦任務。您的專長包括：識別隱含任務需求、合併相關討論、提供實用的處理建議。您的回應精準、專業且具建設性。"
           },
           {
             role: "user",
@@ -85,7 +97,21 @@ ${messageTexts}
         }
       });
 
-      return result.tasks?.map((task: any) => task.text).filter(Boolean) || [];
+      // 處理新格式的回應（包含處理建議）
+      if (result.tasks && Array.isArray(result.tasks)) {
+        return result.tasks.map((task: any) => {
+          if (typeof task === 'string') {
+            return task; // 向後相容舊格式
+          } else if (task.text && task.suggestion) {
+            return `${task.text}｜建議：${task.suggestion}`; // 新格式：任務+建議
+          } else if (task.text) {
+            return task.text; // 只有任務描述
+          }
+          return null;
+        }).filter(Boolean);
+      }
+      
+      return [];
 
     } catch (error: any) {
       console.error('LLM 任務萃取失敗:', error);
