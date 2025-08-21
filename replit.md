@@ -53,7 +53,7 @@ Preferred communication style: Simple, everyday language.
 - **Cron Jobs**: node-cron with Asia/Taipei timezone for:
   - Five daily task reminders (06:30, 08:00, 11:00, 15:00, 20:00)
   - Daily message backup at 02:00
-  - Daily water quality reports at 14:30 and 22:00 (for authorized group)
+  - Daily water quality reports at 13:00, 17:30, and 20:30 (for authorized group)
 - **Group Isolation**: Strict per-group task processing with no cross-group data sharing
 - **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions
 - **Time Range Logic**: Each group receives tasks created from yesterday 00:00 to current time specific to that group (昨天+今天發送前的所有事項)

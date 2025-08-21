@@ -42,25 +42,34 @@ export class SchedulerService {
     });
     this.cronJobs.push(backupJob);
 
-    // 每日晚上 22:00 發送水質報告
-    const waterQualityReportJob = cron.schedule('0 22 * * *', async () => {
-      console.log('22:00 水質報告開始執行');
+    // 每日 13:00 發送水質報告 (收集 00:00-12:50 數據)
+    const morningWaterQualityReportJob = cron.schedule('0 13 * * *', async () => {
+      console.log('13:00 水質報告開始執行 (00:00-12:50 數據)');
       await waterQualityService.sendDailyWaterQualityReport();
     }, {
       timezone: 'Asia/Taipei'
     });
-    this.cronJobs.push(waterQualityReportJob);
+    this.cronJobs.push(morningWaterQualityReportJob);
 
-    // 每日下午 14:30 發送水質報告
-    const afternoonWaterQualityReportJob = cron.schedule('30 14 * * *', async () => {
-      console.log('14:30 下午水質報告開始執行');
+    // 每日 17:30 發送水質報告 (收集 00:00-17:20 數據)
+    const afternoonWaterQualityReportJob = cron.schedule('30 17 * * *', async () => {
+      console.log('17:30 水質報告開始執行 (00:00-17:20 數據)');
       await waterQualityService.sendDailyWaterQualityReport();
     }, {
       timezone: 'Asia/Taipei'
     });
     this.cronJobs.push(afternoonWaterQualityReportJob);
 
-    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 + 每日14:30&22:00水質報告 (Asia/Taipei)');
+    // 每日 20:30 發送水質報告 (收集 00:00-20:20 數據)
+    const eveningWaterQualityReportJob = cron.schedule('30 20 * * *', async () => {
+      console.log('20:30 水質報告開始執行 (00:00-20:20 數據)');
+      await waterQualityService.sendDailyWaterQualityReport();
+    }, {
+      timezone: 'Asia/Taipei'
+    });
+    this.cronJobs.push(eveningWaterQualityReportJob);
+
+    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 + 每日13:00&17:30&20:30水質報告 (Asia/Taipei)');
   }
 
   stop(): void {
