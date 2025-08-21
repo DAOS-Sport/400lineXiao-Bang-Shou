@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
-import 'dayjs/locale/zh-tw';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js';
+import 'dayjs/locale/zh-tw.js';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -16,6 +16,22 @@ export function now(): dayjs.Dayjs {
 
 export function getYesterday(): Date {
   return now().subtract(1, 'day').toDate();
+}
+
+export function getYesterdayRange(): { start: Date; end: Date } {
+  const yesterday = now().subtract(1, 'day');
+  return {
+    start: yesterday.startOf('day').toDate(),
+    end: yesterday.endOf('day').toDate()
+  };
+}
+
+export function getLast24HoursRange(): { start: Date; end: Date } {
+  const nowTime = now();
+  return {
+    start: nowTime.subtract(24, 'hour').toDate(),
+    end: nowTime.toDate()
+  };
 }
 
 export function formatDate(date: Date): string {
