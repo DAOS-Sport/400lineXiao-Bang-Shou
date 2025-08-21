@@ -133,13 +133,19 @@ export class LineService {
   // 檢查並發送待發送的群組訊息
   async checkAndSendPendingMessages(groupId: string, replyToken: string): Promise<void> {
     try {
+      console.log(`🔎 checkAndSendPendingMessages 被調用，群組: ${groupId}`);
+      
       // 查找該群組的待發送訊息
       const pendingLogs = await storage.getAuditLogs(10);
+      console.log(`📋 查詢到 ${pendingLogs.length} 筆審計日誌`);
+      
       const pendingMessage = pendingLogs.find(log => 
         log.category === 'pending_group_message' && 
         log.details?.groupId === groupId &&
         log.details?.status === 'pending'
       );
+      
+      console.log(`📤 找到待發送訊息:`, !!pendingMessage);
       
       if (pendingMessage) {
         console.log('📤 發現待發送的群組訊息，立即發送');

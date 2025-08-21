@@ -313,6 +313,7 @@ async function processWebhookEvent(event: any) {
 
       // 4. 檢查待發送的群組訊息
       if (source.type === 'group' && source.groupId) {
+        console.log(`🔍 檢查群組 ${source.groupId} 是否有待發送訊息...`);
         await lineService.checkAndSendPendingMessages(source.groupId, event.replyToken);
       }
 
