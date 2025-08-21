@@ -151,6 +151,32 @@ export class LineService {
         return isMatch;
       });
       
+      // 檢查是否已經有已發送的記錄（避免重複發送）
+      if (pendingMessage) {
+        const sentMessages = pendingLogs.filter(log => 
+          log.category === 'group_message_sent' && 
+          log.details?.groupId === groupId &&
+          log.details?.originalLogId === pendingMessage.id
+        );
+        
+        if (sentMessages.length > 0) {
+          console.log(`📭 群組 ${groupId} 的待發送訊息已經發送過了，跳過重複發送`);
+          return;
+        }
+        
+        // 同時檢查是否有相同內容的報告在近期已發送（額外防護）
+        const recentSentMessages = pendingLogs.filter(log => 
+          log.category === 'group_message_sent' && 
+          log.details?.groupId === groupId &&
+          new Date(log.timestamp).getTime() > (Date.now() - 60 * 60 * 1000) // 1小時內
+        );
+        
+        if (recentSentMessages.length > 0) {
+          console.log(`🕒 群組 ${groupId} 在 1 小時內已發送過報告，跳過重複發送`);
+          return;
+        }
+      }
+      
       console.log(`📤 找到待發送訊息:`, !!pendingMessage);
       
       if (pendingMessage) {
