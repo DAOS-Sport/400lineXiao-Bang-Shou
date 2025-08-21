@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { db } from "./db";
+import { processManager } from "./utils/processManager";
+import "./utils/stableRunner"; // 自動應用穩定運行優化
 
 const app = express();
 app.use(express.json());
@@ -51,6 +53,12 @@ app.use((req, res, next) => {
     // 啟動系統保活服務
     const { keepAliveService } = await import('./services/keepAliveService');
     keepAliveService.start();
+    
+    // 啟用防重啟模式（減少開發環境不必要的重啟）
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔒 開發環境：啟用穩定運行模式');
+      processManager.preventRestart();
+    }
   } catch (error) {
     console.error("PostgreSQL 資料庫連接失敗:", error);
     process.exit(1);

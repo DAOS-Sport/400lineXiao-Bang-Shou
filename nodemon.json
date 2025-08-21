@@ -1,0 +1,22 @@
+{
+  "watch": [
+    "server/**/*.ts",
+    "shared/**/*.ts"
+  ],
+  "ignore": [
+    "node_modules/**/*",
+    "client/**/*",
+    "*.log",
+    "*.json",
+    "dist/**/*",
+    ".git/**/*"
+  ],
+  "ext": "ts,js",
+  "exec": "tsx server/index.ts",
+  "delay": 2000,
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "verbose": false,
+  "restartable": "rs"
+}

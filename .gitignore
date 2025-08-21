@@ -1,6 +1,26 @@
-node_modules
-dist
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+.env.development
+*.log
 .DS_Store
-server/public
-vite.config.ts.*
-*.tar.gz
+.vscode/
+.idea/
+coverage/
+.nyc_output/
+temp/
+tmp/
+
+# Replit 相關
+.replit
+replit.nix
+.config/
+.cache/
+
+# 開發時不需要監控的檔案
+*.test.ts
+*.spec.ts
+*.test.js
+*.spec.js
