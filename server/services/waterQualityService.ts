@@ -224,9 +224,9 @@ export class WaterQualityService {
   async sendDailyWaterQualityReport(): Promise<void> {
     try {
       const report = await this.generateDailyWaterQualityReport();
-      await lineService.pushMessage(this.targetGroupId, report);
+      await lineService.sendToGroup(this.targetGroupId, report);
       
-      console.log('📊 每日水質報告已發送');
+      console.log('📊 每日水質報告已準備完成');
     } catch (error) {
       console.error('發送水質報告失敗:', error);
     }
