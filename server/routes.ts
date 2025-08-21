@@ -317,8 +317,9 @@ async function processWebhookEvent(event: any) {
         await lineService.checkAndSendPendingMessages(source.groupId, event.replyToken);
       }
 
-      // 5. 水質監控（僅限指定群組）
-      if (source.type === 'group' && source.groupId === 'C50c2a9623a78cc5f5e9f39557e3abfe6') {
+      // 5. 水質監控（多群組支援）
+      const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      if (source.type === 'group' && waterQualityGroups.includes(source.groupId)) {
         await waterQualityService.handleWaterQualityMessage(text, event.message.id, source.userId, source.groupId);
       }
 

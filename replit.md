@@ -39,8 +39,12 @@ Preferred communication style: Simple, everyday language.
 ### Message Processing
 - **Event Handling**: Asynchronous processing of LINE webhook events with immediate 200 response
 - **Task Detection**: Automatic task creation when messages contain "交辦" keyword
-- **Water Quality Detection**: Automatic recognition of water quality data in specific format (民國年/月/日 時.分, CL, PH, 水溫, 氣溫)
-- **Group-Specific Processing**: Water quality monitoring limited to authorized group C50c2a9623a78cc5f5e9f39557e3abfe6
+- **Water Quality Detection**: Automatic recognition of water quality data in multiple formats:
+  - Original format: (民國年/月/日 時.分, CL, PH, 水溫, 氣溫) for group C50c2a9623a78cc5f5e9f39557e3abfe6
+  - Multi-pool format: (民國年 月.日) with multiple pool sections for group C9b3c5dfe2e005adafd2ed914714a1930
+- **Multi-Group Processing**: Water quality monitoring supports two groups with different facility types:
+  - C50c2a9623a78cc5f5e9f39557e3abfe6: Single pool monitoring
+  - C9b3c5dfe2e005adafd2ed914714a1930: Multi-pool facility (大池&兒童池, SPA池, 熱水池, 冷水池)
 - **Storage Strategy**: Raw event preservation in JSONB format for audit trails and debugging
 
 ### AI Integration
@@ -58,7 +62,9 @@ Preferred communication style: Simple, everyday language.
 - **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions
 - **Time Range Logic**: Each group receives tasks created from yesterday 00:00 to current time specific to that group (昨天+今天發送前的所有事項)
 - **Backup Automation**: Automatic daily backup of all LINE conversations with permanent retention
-- **Water Quality Monitoring**: Specialized monitoring for swimming pool facilities with automated reporting
+- **Water Quality Monitoring**: Specialized monitoring for multiple swimming pool facilities:
+  - Single pool monitoring with temperature data
+  - Multi-pool monitoring with additional equipment tracking (加藥量, 鍋爐狀態)
 
 ### Authentication & Authorization
 - **Multi-layer Security**: Support for both Basic Auth and Bearer Token authentication
