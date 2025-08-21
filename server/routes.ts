@@ -280,7 +280,10 @@ async function handleAdminCommands(event: any, text: string) {
       return;
     }
     
+    console.log(`🔍 管理員查詢代辦事項 - 群組ID: ${source.groupId}`);
     const openTasks = await storage.getTasksByGroupId(source.groupId, 'pending');
+    console.log(`🔍 找到待辦任務數量: ${openTasks.length}`, openTasks.map(t => `${t.taskIdSerial}: ${t.text.substring(0, 30)}`));
+    
     if (openTasks.length === 0) {
       await lineService.replyMessage(event.replyToken, "📌 本群未完成代辦\n目前沒有未完成的任務。");
     } else {
