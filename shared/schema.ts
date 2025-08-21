@@ -54,6 +54,19 @@ export const admins = pgTable('admins', {
   createdAt: timestamp('created_at').defaultNow().notNull() // 只有這個欄位存在
 }, (table) => ({}));
 
+// Authorized Groups Table - GPT功能授權群組
+export const authorizedGroups = pgTable('authorized_groups', {
+  groupId: varchar('group_id').primaryKey(), // LINE群組ID
+  groupName: varchar('group_name'), // 群組名稱（可選）
+  description: text('description'), // 授權說明
+  isActive: varchar('is_active').default('true').notNull(), // 'true' | 'false'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  isActiveIdx: index('authorized_groups_is_active_idx').on(table.isActive),
+  createdAtIdx: index('authorized_groups_created_at_idx').on(table.createdAt.desc())
+}));
+
 // Audit Logs Table - 稽核日誌
 export const auditLogs = pgTable('audit_logs', {
   id: varchar('id').primaryKey(), // 匹配現有資料庫結構
