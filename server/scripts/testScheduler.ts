@@ -1,27 +1,13 @@
-import { waterQualityService } from '../services/waterQualityService';
-import dayjs from 'dayjs';
-import timezone from 'dayjs/plugin/timezone';
-import utc from 'dayjs/plugin/utc';
-
-dayjs.extend(utc);
-dayjs.extend(timezone);
+import { schedulerService } from '../services/schedulerService';
 
 async function testScheduler() {
-  try {
-    console.log('🧪 測試排程服務 - 手動觸發水質報告...');
-    
-    const now = dayjs().tz('Asia/Taipei');
-    console.log(`⏰ 當前台灣時間: ${now.format('YYYY-MM-DD HH:mm:ss')}`);
-    
-    // 手動觸發水質報告發送
-    console.log('📊 開始手動執行水質報告...');
-    await waterQualityService.sendDailyWaterQualityReport();
-    
-    console.log('✅ 測試完成');
-    
-  } catch (error) {
-    console.error('❌ 測試失敗:', error);
-  }
+  console.log('📅 當前時間:', new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }));
+  console.log('📅 UTC 時間:', new Date().toISOString());
+  
+  console.log('\n🔧 測試手動觸發任務提醒...');
+  await schedulerService.manualTriggerTaskSummary();
+  
+  console.log('\n✅ 測試完成');
 }
 
-testScheduler();
+testScheduler().catch(console.error);
