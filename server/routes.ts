@@ -252,7 +252,7 @@ async function handleAdminCommands(event: any, text: string) {
     if (!task || task.status === 'completed') {
       await lineService.replyMessage(event.replyToken, `找不到編號 ${taskSerial} 的未完成任務。`);
     } else {
-      await storage.updateTaskStatus(task._id, 'completed', new Date());
+      await storage.updateTaskStatus(task.id, 'completed', new Date());
       const completedTime = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
       await lineService.replyMessage(event.replyToken, `✅ 已結案：${taskSerial}. ${task.description}（完成時間 ${completedTime}）`);
     }
@@ -284,7 +284,7 @@ async function handleGptTaskExtraction(event: any) {
       await storage.insertTask({
         groupId: source.groupId,
         taskSerial: taskSerial,
-        text: taskText,
+        description: taskText,
         status: 'pending',
         authorUserId: source.userId,
         sourceMessageIds: recentMessages.slice(0, 5).map(m => m.messageId) // 最近 5 則為主要參考
