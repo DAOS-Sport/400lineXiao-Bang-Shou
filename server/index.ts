@@ -47,6 +47,10 @@ app.use((req, res, next) => {
     // 初始化備份系統
     const { simpleBackupService } = await import('./services/simpleBackupService');
     await simpleBackupService.initializeBackupSystem();
+    
+    // 啟動系統保活服務
+    const { keepAliveService } = await import('./services/keepAliveService');
+    keepAliveService.start();
   } catch (error) {
     console.error("PostgreSQL 資料庫連接失敗:", error);
     process.exit(1);

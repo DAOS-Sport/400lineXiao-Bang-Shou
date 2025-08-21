@@ -70,13 +70,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /health - 健康檢查
   console.log('🔗 註冊 /health 路由');
-  app.get("/health", (req, res) => {
+  app.get("/health", async (req, res) => {
     console.log('❤️ /health 被請求');
-    res.json({ 
-      status: "ok",
-      service: "LINE Bot Service", 
-      timestamp: new Date().toISOString()
-    });
+    try {
+      const { keepAliveService } = await import('./services/keepAliveService');
+      const status = keepAliveService.getStatus();
+      
+      res.json({ 
+        status: "ok",
+        service: "LINE Bot Service", 
+        keepAlive: status,
+        uptime: `${Math.floor(process.uptime() / 60)} 分鐘`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      res.json({ 
+        status: "ok",
+        service: "LINE Bot Service", 
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
 
