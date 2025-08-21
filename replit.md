@@ -47,7 +47,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Scheduling System
 - **Cron Jobs**: node-cron with Asia/Taipei timezone for:
-  - Four daily task reminders (06:30, 11:00, 15:00, 20:00)
+  - Five daily task reminders (06:30, 08:00, 11:00, 15:00, 20:00)
   - Daily message backup at 02:00
 - **Group Isolation**: Strict per-group task processing with no cross-group data sharing
 - **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions

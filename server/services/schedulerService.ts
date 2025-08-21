@@ -13,9 +13,10 @@ export class SchedulerService {
     // 先清除既有的排程
     this.stop();
 
-    // 四個時段的任務提醒：06:30, 11:00, 15:00, 20:00
+    // 五個時段的任務提醒：06:30, 08:00, 11:00, 15:00, 20:00
     const taskSchedules = [
       { time: '30 6 * * *', name: '06:30' },
+      { time: '0 8 * * *', name: '08:00' },
       { time: '0 11 * * *', name: '11:00' }, 
       { time: '0 15 * * *', name: '15:00' },
       { time: '0 20 * * *', name: '20:00' }
@@ -40,7 +41,7 @@ export class SchedulerService {
     });
     this.cronJobs.push(backupJob);
 
-    console.log('排程服務已啟動 - 每日四次任務提醒 (06:30, 11:00, 15:00, 20:00) + 每日02:00備份 (Asia/Taipei)');
+    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 (Asia/Taipei)');
   }
 
   stop(): void {
