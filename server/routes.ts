@@ -324,9 +324,11 @@ async function processWebhookEvent(event: any) {
       }
 
       // 5. 駿斯小助理記錄功能（僅限授權群組）
-      console.log(`🔍 檢查是否為小助理指令: "${text}" === "小助理請紀錄" = ${text === '小助理請紀錄'}, 群組類型: ${source.type}`);
-      if (text === '小助理請紀錄' && source.type === 'group') {
-        console.log(`🤖 偵測到「小助理請紀錄」指令來自群組 ${source.groupId}`);
+      const assistantTriggers = ['小助理請紀錄', '小助理請記錄'];
+      const isAssistantCommand = assistantTriggers.includes(text);
+      console.log(`🔍 檢查是否為小助理指令: "${text}" 是否符合 ${assistantTriggers.join('或')} = ${isAssistantCommand}, 群組類型: ${source.type}`);
+      if (isAssistantCommand && source.type === 'group') {
+        console.log(`🤖 偵測到小助理指令來自群組 ${source.groupId}`);
         await handleJunsiAssistantExtraction(event);
       }
     }
