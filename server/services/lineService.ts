@@ -135,23 +135,31 @@ export class LineService {
     try {
       console.log(`🔎 checkAndSendPendingMessages 被調用，群組: ${groupId}`);
       
-      // 查找該群組的待發送訊息
-      const pendingLogs = await storage.getAuditLogs(10);
+      // 查找該群組的待發送訊息（增加查找範圍）
+      const pendingLogs = await storage.getAuditLogs(50);
       console.log(`📋 查詢到 ${pendingLogs.length} 筆審計日誌`);
       
-      const pendingMessage = pendingLogs.find(log => 
-        log.category === 'pending_group_message' && 
-        log.details?.groupId === groupId &&
-        log.details?.status === 'pending'
-      );
+      const pendingMessage = pendingLogs.find(log => {
+        const isMatch = log.category === 'pending_group_message' && 
+                       log.details?.groupId === groupId &&
+                       log.details?.status === 'pending';
+        
+        if (log.category === 'pending_group_message') {
+          console.log(`🔍 檢查待發送訊息: 群組 ${log.details?.groupId} vs ${groupId}, 狀態: ${log.details?.status}`);
+        }
+        
+        return isMatch;
+      });
       
       console.log(`📤 找到待發送訊息:`, !!pendingMessage);
       
       if (pendingMessage) {
         console.log('📤 發現待發送的群組訊息，立即發送');
+        console.log(`📤 訊息內容預覽: ${pendingMessage.details.messageContent?.substring(0, 50)}...`);
+        
         await this.replyMessage(replyToken, pendingMessage.details.messageContent);
         
-        // 標記為已發送
+        // 標記為已發送 - 更新原記錄的狀態
         await storage.insertAuditLog({
           id: crypto.randomUUID(),
           level: 'info',
@@ -160,11 +168,27 @@ export class LineService {
           details: { 
             groupId, 
             originalLogId: pendingMessage.id,
-            timestamp: new Date().toISOString() 
+            timestamp: new Date().toISOString(),
+            status: 'sent'
+          }
+        });
+        
+        // 同時更新原始待發送記錄的狀態（透過新增一筆狀態更新記錄）
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info', 
+          category: 'pending_group_message',
+          message: '水質報告狀態更新',
+          details: {
+            ...pendingMessage.details,
+            status: 'sent',
+            sentAt: new Date().toISOString()
           }
         });
         
         console.log('✅ 待發送的水質報告已成功發送');
+      } else {
+        console.log(`📭 群組 ${groupId} 目前沒有待發送的訊息`);
       }
     } catch (error) {
       console.error('檢查待發送訊息失敗:', error);
