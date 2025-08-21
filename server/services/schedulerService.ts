@@ -62,7 +62,14 @@ export class SchedulerService {
         details: { groupCount: groupIds.length, groupIds }
       });
 
-      const { start: startDate, end: endDate } = getLast24HoursRange();
+      // 改為從昨天00:00到現在的時間範圍
+      const now = new Date();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0); // 昨天00:00
+      
+      const endDate = now; // 現在時間
+      const startDate = yesterday; // 昨天00:00
 
       // 逐一處理每個群組
       for (const groupId of groupIds) {
@@ -170,16 +177,16 @@ export class SchedulerService {
   }
 
   private async processGroupDailySummaryWithSuggestions(groupId: string, startDate: Date, endDate: Date): Promise<void> {
-    // 查詢該群組昨天建立的未完成任務（限制時間範圍）
-    const yesterdayTasks = await storage.getTasksCreatedBetween(groupId, startDate, endDate, 'pending');
+    // 查詢該群組從昨天到現在建立的未完成任務
+    const recentTasks = await storage.getTasksCreatedBetween(groupId, startDate, endDate, 'pending');
     
-    if (yesterdayTasks.length === 0) {
-      console.log(`群組 ${groupId} 昨天沒有未完成任務`);
+    if (recentTasks.length === 0) {
+      console.log(`群組 ${groupId} 從昨天到現在沒有未完成任務`);
       return;
     }
 
     // 準備任務資料
-    const taskData = yesterdayTasks.map(task => ({
+    const taskData = recentTasks.map(task => ({
       serial: task.taskIdSerial,
       description: task.text,
       creator: task.authorDisplayName || task.authorUserId
@@ -201,13 +208,13 @@ export class SchedulerService {
         minute: '2-digit'
       });
       
-      let message = `📌 昨日交辦整理（${dateStr}）${currentTime}\n${organizedTasks}`;
+      let message = `📌 近期交辦整理（${dateStr}）${currentTime}\n${organizedTasks}`;
       
       if (suggestions) {
-        message += `\n\n💡 處理建議：\n${suggestions}`;
+        message += `\n\n💡 處理建議：${suggestions}`;
       }
       
-      message += `\n—— 合計 ${yesterdayTasks.length} 項（皆未完成）`;
+      message += `\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
       // 推送到群組
       await lineService.pushMessage(groupId, message);
@@ -219,7 +226,7 @@ export class SchedulerService {
         message: '群組任務提醒完成（含建議）',
         details: {
           groupId,
-          taskCount: yesterdayTasks.length,
+          taskCount: recentTasks.length,
           time: currentTime,
           hasSuggestions: !!suggestions,
           date: dateStr
@@ -238,7 +245,7 @@ export class SchedulerService {
         hour: '2-digit',
         minute: '2-digit'
       });
-      const fallbackMessage = `📌 昨日交辦整理（${dateStr}）${currentTime}\n${fallbackTasks}\n—— 合計 ${yesterdayTasks.length} 項（皆未完成）`;
+      const fallbackMessage = `📌 近期交辦整理（${dateStr}）${currentTime}\n${fallbackTasks}\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
       try {
         await lineService.pushMessage(groupId, fallbackMessage);
@@ -250,7 +257,7 @@ export class SchedulerService {
           message: '群組任務提醒降級處理完成',
           details: {
             groupId,
-            taskCount: yesterdayTasks.length,
+            taskCount: recentTasks.length,
             error: error.message
           }
         });

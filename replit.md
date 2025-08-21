@@ -45,7 +45,7 @@ Preferred communication style: Simple, everyday language.
 - **Cron Jobs**: node-cron with Asia/Taipei timezone for four daily reminders (06:30, 11:00, 15:00, 20:00)
 - **Group Isolation**: Strict per-group task processing with no cross-group data sharing
 - **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions
-- **Time Range Logic**: Each group only receives tasks created in the previous 24-hour period specific to that group
+- **Time Range Logic**: Each group receives tasks created from yesterday 00:00 to current time specific to that group (昨天+今天發送前的所有事項)
 
 ### Authentication & Authorization
 - **Multi-layer Security**: Support for both Basic Auth and Bearer Token authentication
