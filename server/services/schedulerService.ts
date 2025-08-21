@@ -224,13 +224,13 @@ export class SchedulerService {
         minute: '2-digit'
       });
       
-      let message = `📌 近期交辦整理（${dateStr}）${currentTime}\n${organizedTasks}`;
+      let message = `🔔 系統提醒\n📌 近期交辦整理（${dateStr}）${currentTime}\n\n${organizedTasks}`;
       
       if (suggestions) {
         message += `\n\n💡 處理建議：${suggestions}`;
       }
       
-      message += `\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
+      message += `\n\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
       // 🔒 群組隔離推送：確保只推送到對應群組
       console.log(`📤 正在推送任務提醒到群組 ${groupId.substring(0, 8)}...`);
@@ -263,7 +263,7 @@ export class SchedulerService {
         hour: '2-digit',
         minute: '2-digit'
       });
-      const fallbackMessage = `📌 近期交辦整理（${dateStr}）${currentTime}\n${fallbackTasks}\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
+      const fallbackMessage = `🔔 系統提醒\n📌 近期交辦整理（${dateStr}）${currentTime}\n\n${fallbackTasks}\n\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
       try {
         await lineService.pushMessage(groupId, fallbackMessage);
