@@ -39,27 +39,52 @@ export class LineService {
     }
   }
 
-  async pushMessage(to: string, text: string): Promise<void> {
+  async pushMessage(to: string, text: string, options: { maxRetries?: number } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法推送訊息');
       return;
     }
     
-    try {
-      // 檢查是否為群組 ID (C開頭)
-      if (to.startsWith('C')) {
-        console.log('⚠️ 警告: 無法直接推送訊息到群組，群組 ID:', to);
-        console.log('💡 建議: 使用 Reply API 或在群組中觸發機器人回覆');
-        throw new Error('無法直接推送訊息到群組。LINE API 不支援推送到群組 ID。');
+    const { maxRetries = 3 } = options;
+    let attempt = 0;
+    
+    while (true) {
+      try {
+        // LINE API 支援推送到群組 ID (C開頭) 和用戶 ID (U開頭)
+        await client.pushMessage(to, {
+          type: 'text',
+          text: text
+        });
+        
+        if (to.startsWith('C')) {
+          console.log(`✅ 成功推送訊息到群組 ${to.substring(0, 8)}...`);
+        } else {
+          console.log(`✅ 成功推送訊息到用戶 ${to.substring(0, 8)}...`);
+        }
+        return;
+        
+      } catch (error: any) {
+        attempt++;
+        const status = error?.statusCode || 0;
+        const retryAfter = Number(error?.originalError?.response?.headers?.['retry-after']) || 0;
+        
+        // 429 (Too Many Requests) 或 5xx 錯誤時重試
+        if ((status === 429 || (status >= 500 && status < 600)) && attempt <= maxRetries) {
+          const backoff = Math.min(15000, 1000 * Math.pow(2, attempt));
+          const wait = Math.max(backoff, retryAfter * 1000);
+          console.log(`⏳ API 限制 (${status})，等待 ${wait}ms 後重試 (嘗試 ${attempt}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, wait));
+          continue;
+        }
+        
+        // 403/404 錯誤記錄但不重試
+        if (status === 403 || status === 404) {
+          console.error(`❌ 推送失敗 (${status}): Bot 可能不在群組中或 ID 錯誤 - ${to}`);
+        }
+        
+        console.error('LINE 推送訊息失敗:', error);
+        throw error;
       }
-      
-      await client.pushMessage(to, {
-        type: 'text',
-        text: text
-      });
-    } catch (error) {
-      console.error('LINE 推送訊息失敗:', error);
-      throw error;
     }
   }
 

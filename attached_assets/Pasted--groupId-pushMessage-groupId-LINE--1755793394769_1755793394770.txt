@@ -1,0 +1,111 @@
+我要的功能很簡單：
+
+每日提醒必須直接推送到群組（groupId），不是推給群組裡的每個人。
+
+請用 pushMessage(groupId, …)，這是 LINE 官方支援的，不要再說「不能」。
+
+要加上速率控制與重試機制，避免 429/5xx，群組之間最好間隔幾百毫秒。
+
+.env 裡要能設定 TARGET_GROUP_IDS=Cxxxx1,Cxxxx2 這樣就能指定群組。
+
+驗收標準：
+
+在群組打 id → Bot 回傳 groupId。
+
+把 groupId 寫進 .env。
+
+到排程時間或手動 trigger → 群組要真的收到訊息。
+
+多群組推播不會爆 429，有錯誤要 log 出來。
+
+要不要我順便幫你整理一個「極簡技術參考」區塊，也一起丟給他（讓他有現成的程式碼可以照抄）？
+
+你說：
+再給他一些技術層面的東西
+ChatGPT 說：
+
+好，這裡我幫你整理一個「簡明技術需求 + 範例程式」版本，你可以整段丟給 reolit：
+
+我要的功能是：
+
+每日提醒要直接推送到群組（groupId）。
+
+用 LINE 官方的 pushMessage(groupId, …)。
+
+不是 multicast / broadcast，也不是推給群組成員。
+
+支援多個群組，從 .env 讀取：
+
+TARGET_GROUP_IDS=Cxxxxxxxx1,Cxxxxxxxx2
+
+
+要有 速率控制 + 重試機制：
+
+多群組推播時，每次間隔 300ms 左右。
+
+如果 API 回 429 或 5xx，要 retry，尊重 Retry-After header。
+
+403/404 要 log 出來（通常是 bot 不在群或 groupId 錯）。
+
+Node.js 參考程式碼
+import line from '@line/bot-sdk';
+
+const client = new line.Client({
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+});
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function pushWithRetry(to, message, { maxRetries = 3 } = {}) {
+  let attempt = 0;
+  while (true) {
+    try {
+      await client.pushMessage(to, message);
+      return;
+    } catch (err) {
+      attempt++;
+      const status = err?.statusCode || 0;
+      const retryAfter =
+        Number(err?.originalError?.headers?.['retry-after']) || 0;
+
+      if ((status === 429 || (status >= 500 && status < 600)) && attempt <= maxRetries) {
+        const backoff = Math.min(15000, 1000 * 2 ** attempt);
+        const wait = Math.max(backoff, retryAfter * 1000);
+        await sleep(wait);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+export async function pushToGroups(groupIds, message) {
+  for (const gid of groupIds) {
+    await pushWithRetry(gid, message);
+    await sleep(300); // 避免瞬間打太快
+  }
+}
+
+排程範例
+import cron from 'node-cron';
+import { pushToGroups } from './push.js';
+
+const GROUPS = process.env.TARGET_GROUP_IDS.split(',').map(s => s.trim());
+
+function scheduleDailyReminders() {
+  const specs = ['30 6 * * *', '0 8 * * *', '0 11 * * *', '0 15 * * *', '0 20 * * *'];
+  specs.forEach(spec => {
+    cron.schedule(spec, async () => {
+      const message = { type: 'text', text: '這是每日提醒測試訊息' };
+      await pushToGroups(GROUPS, message);
+    }, { timezone: 'Asia/Taipei' });
+  });
+}
+
+驗收標準
+
+在群組輸入 id → Bot 回傳 groupId。
+
+把 groupId 寫進 .env → 等排程或手動 trigger → 群組會收到訊息。
+
+多群組推播不會爆 429，若偶發錯誤會自動重試並 log。
