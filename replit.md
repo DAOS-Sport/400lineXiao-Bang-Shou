@@ -36,16 +36,14 @@ Preferred communication style: Simple, everyday language.
 - **Storage Strategy**: Raw event preservation in JSONB format for audit trails and debugging
 
 ### AI Integration
-- **LLM Service**: OpenAI GPT-4o-mini for natural language task extraction and processing suggestions
+- **LLM Service**: OpenAI GPT-4o-mini for natural language task extraction
 - **Context Analysis**: Reviews recent 20 messages with emphasis on latest 5 for task identification
 - **JSON Output**: Structured task extraction with error handling and fallback mechanisms
-- **Task Suggestions**: GPT-generated concise processing suggestions (limited to 30 characters for brevity and clarity)
 
 ### Scheduling System
-- **Cron Jobs**: node-cron with Asia/Taipei timezone for four daily reminders (06:30, 11:00, 15:00, 20:00)
+- **Cron Jobs**: node-cron with Asia/Taipei timezone for daily 06:30 reminders
 - **Group Isolation**: Strict per-group task processing with no cross-group data sharing
-- **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions
-- **Time Range Logic**: Each group receives tasks created from yesterday 00:00 to current time specific to that group (昨天+今天發送前的所有事項)
+- **Task Summarization**: AI-powered daily task summary generation before sending reminders
 
 ### Authentication & Authorization
 - **Multi-layer Security**: Support for both Basic Auth and Bearer Token authentication

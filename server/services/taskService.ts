@@ -20,20 +20,18 @@ export class TaskService {
 
       // 建立任務
       const taskData: CreateTaskData = {
-        id: crypto.randomUUID(),
         groupId: message.groupId,
-        taskIdSerial: taskSerial, // 匹配正確欄位名
-        authorUserId: message.userId, // 匹配正確欄位名
-        authorDisplayName: message.displayName || message.userId, // 匹配正確欄位名並處理 null
-        text: cleanText, // 匹配正確欄位名
+        taskSerial,
+        createdBy: message.userId,
+        creatorName: message.displayName,
+        description: cleanText,
         status: 'pending',
-        sourceMessageIds: [message.messageId] // 匹配正確欄位名
+        context: [message.messageId]
       };
 
       await storage.insertTask(taskData);
 
       await storage.insertAuditLog({
-        id: crypto.randomUUID(),
         level: 'info',
         category: 'webhook',
         message: '自動建立交辦任務',
@@ -48,7 +46,6 @@ export class TaskService {
     } catch (error: any) {
       console.error('建立任務失敗:', error);
       await storage.insertAuditLog({
-        id: crypto.randomUUID(),
         level: 'error',
         category: 'webhook',
         message: '建立任務失敗',
@@ -65,9 +62,9 @@ export class TaskService {
   async getOpenTasksByGroup(groupId: string): Promise<any[]> {
     const tasks = await storage.getTasksByGroupId(groupId, 'pending');
     return tasks.map(task => ({
-      serial: task.taskIdSerial, // 匹配正確欄位名
-      description: task.text, // 匹配正確欄位名
-      creator: task.authorDisplayName || task.authorUserId, // 匹配正確欄位名
+      serial: task.taskSerial,
+      description: task.description,
+      creator: task.creatorName || task.createdBy,
       createdAt: task.createdAt
     }));
   }
@@ -78,7 +75,7 @@ export class TaskService {
       return false;
     }
 
-    await storage.updateTaskStatus(task.id, 'completed', new Date());
+    await storage.updateTaskStatus(task._id, 'completed', new Date());
     return true;
   }
 }
