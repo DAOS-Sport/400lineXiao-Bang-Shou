@@ -1,5 +1,6 @@
 import { type CreateMessageData } from "@shared/schema";
 import { lineService } from "./lineService";
+import crypto from 'crypto';
 
 export class MessageService {
   async createMessageFromEvent(event: any): Promise<CreateMessageData> {

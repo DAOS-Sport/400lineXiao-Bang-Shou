@@ -198,13 +198,14 @@ async function processWebhookEvent(event: any) {
       return;
     }
 
-    // 儲存訊息（暫時容錯處理）
+    // 儲存訊息（詳細日誌錯誤處理）
     let savedMessage;
     try {
       const messageData = await messageService.createMessageFromEvent(event);
       savedMessage = await storage.insertMessage(messageData);
+      console.log(`💾 訊息已儲存: ${event.message.text?.substring(0, 30)}...`);
     } catch (error) {
-      console.log('🔧 暫時跳過訊息儲存，繼續處理指令');
+      console.error('❌ 訊息儲存失敗，但繼續處理指令:', error);
       savedMessage = null;
     }
 
@@ -238,6 +239,7 @@ async function processWebhookEvent(event: any) {
 
       // 4. 駿斯小助理記錄功能（僅限授權群組）
       if (text === '小助理請紀錄' && source.type === 'group') {
+        console.log(`🤖 偵測到「小助理請紀錄」指令來自群組 ${source.groupId}`);
         await handleJunsiAssistantExtraction(event);
       }
     }
@@ -343,13 +345,20 @@ async function handleAdminCommands(event: any, text: string) {
 async function handleJunsiAssistantExtraction(event: any) {
   try {
     const source = event.source;
+    console.log(`🔍 檢查群組 ${source.groupId} 的授權狀態...`);
     
     // 檢查群組授權
     const isAuthorized = await storage.isGroupAuthorized(source.groupId);
+    console.log(`🔐 群組 ${source.groupId} 授權狀態: ${isAuthorized}`);
+    
     if (!isAuthorized) {
+      console.log(`❌ 群組 ${source.groupId} 未授權，拒絕使用小助理功能`);
       await lineService.replyMessage(event.replyToken, "此群組未授權使用駿斯小助理功能，請聯繫系統管理員。");
       return;
     }
+    
+    console.log(`✅ 群組 ${source.groupId} 已授權，開始處理小助理請紀錄功能`);
+    
 
     const recentMessages = await storage.getRecentMessages(source.groupId, 20);
     
