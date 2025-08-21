@@ -2,9 +2,9 @@
 
 ## Overview
 
-This is a comprehensive LINE bot system designed as a group task management assistant. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, and scheduled daily reminders. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
+This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, and scheduled daily reminders. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
 
-The system automatically detects tasks when messages contain specific keywords (交辦), uses AI to extract actionable items from conversations, and provides daily task summaries at 06:30 Asia/Taipei time. It includes admin controls, user identification features, and a read-only management interface for message monitoring.
+The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, and authorized group management for GPT functionality.
 
 ## User Preferences
 
