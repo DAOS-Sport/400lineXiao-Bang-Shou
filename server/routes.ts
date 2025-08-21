@@ -213,6 +213,7 @@ async function processWebhookEvent(event: any) {
     if (event.message.type === 'text' && event.message.text) {
       const text = event.message.text.trim();
       const source = event.source;
+      console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
       // 1. ID 查詢指令（任何人可用，不分大小寫）
       if (text.toLowerCase() === 'id') {
@@ -238,6 +239,7 @@ async function processWebhookEvent(event: any) {
       }
 
       // 4. 駿斯小助理記錄功能（僅限授權群組）
+      console.log(`🔍 檢查是否為小助理指令: "${text}" === "小助理請紀錄" = ${text === '小助理請紀錄'}, 群組類型: ${source.type}`);
       if (text === '小助理請紀錄' && source.type === 'group') {
         console.log(`🤖 偵測到「小助理請紀錄」指令來自群組 ${source.groupId}`);
         await handleJunsiAssistantExtraction(event);
