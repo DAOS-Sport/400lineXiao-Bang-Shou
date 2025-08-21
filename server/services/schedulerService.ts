@@ -332,9 +332,9 @@ export class SchedulerService {
       
       message += `\n\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
-      // 🔒 自動推播：直接推送到群組
+      // 🔒 自動推播：推送給群組內的用戶（LINE API 限制無法直接推播到群組）
       console.log(`📤 正在自動推播任務提醒到群組 ${groupId.substring(0, 8)}...`);
-      await lineService.pushMessage(groupId, message);
+      await this.pushToGroupUsers(groupId, message);
       console.log(`✅ 群組 ${groupId.substring(0, 8)}... 任務提醒推播成功`);
       
       await storage.insertAuditLog({
@@ -366,7 +366,7 @@ export class SchedulerService {
       const fallbackMessage = `🔔 系統提醒\n📌 近期交辦整理（${dateStr}）${currentTime}\n\n${fallbackTasks}\n\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
       try {
-        await lineService.pushMessage(groupId, fallbackMessage);
+        await this.pushToGroupUsers(groupId, fallbackMessage);
         
         await storage.insertAuditLog({
           id: crypto.randomUUID(),
@@ -395,7 +395,42 @@ export class SchedulerService {
     }
   }
 
+  // 推播給群組內的用戶（LINE API 限制：無法直接推播到群組）
+  async pushToGroupUsers(groupId: string, message: string): Promise<void> {
+    try {
+      // 獲取群組內最近活躍的用戶（從訊息記錄中）
+      const recentMessages = await storage.getRecentMessages(groupId, 50);
+      const activeUserIds = [...new Set(recentMessages.map(msg => msg.userId).filter(Boolean))];
+      
+      console.log(`📤 準備推播給群組 ${groupId.substring(0, 8)}... 的 ${activeUserIds.length} 位用戶（LINE API 限制無法直接推播到群組）`);
+      
+      if (activeUserIds.length === 0) {
+        console.log(`⚠️ 群組 ${groupId} 沒有找到活躍用戶，跳過推播`);
+        return;
+      }
 
+      // 逐一推播給每個用戶（避免 API 限制）
+      let successCount = 0;
+      for (const userId of activeUserIds.slice(0, 5)) { // 限制最多推播給5位最活躍用戶
+        try {
+          await lineService.pushMessage(userId, message);
+          successCount++;
+          console.log(`✅ 推播成功給用戶 ${userId.substring(0, 8)}...`);
+          
+          // 避免 API 限制
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.log(`⚠️ 推播失敗給用戶 ${userId.substring(0, 8)}...:`, (error as Error).message);
+        }
+      }
+      
+      console.log(`📊 推播完成：成功 ${successCount}/${Math.min(activeUserIds.length, 5)} 位用戶`);
+      
+    } catch (error) {
+      console.error(`推播給群組用戶失敗:`, error);
+      throw error;
+    }
+  }
 
   // 手動觸發測試（可選）
   async triggerManualSummary(): Promise<void> {
