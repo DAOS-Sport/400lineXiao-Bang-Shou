@@ -332,10 +332,10 @@ export class SchedulerService {
       
       message += `\n\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
-      // 🔒 群組隔離推送：確保只推送到對應群組
-      console.log(`📤 正在推送任務提醒到群組 ${groupId.substring(0, 8)}...`);
-      await lineService.pushMessage(groupId, message);
-      console.log(`✅ 群組 ${groupId.substring(0, 8)}... 任務提醒推送成功`);
+      // 使用智能延遲發送機制（與水質報告相同）
+      console.log(`📤 準備群組任務提醒: ${groupId.substring(0, 8)}...`);
+      await lineService.scheduleGroupMessage(groupId, message, 'task_reminder');
+      console.log(`✅ 群組 ${groupId.substring(0, 8)}... 任務提醒已安排，等待群組互動時發送`);
       
       await storage.insertAuditLog({
         id: crypto.randomUUID(),
@@ -366,7 +366,7 @@ export class SchedulerService {
       const fallbackMessage = `🔔 系統提醒\n📌 近期交辦整理（${dateStr}）${currentTime}\n\n${fallbackTasks}\n\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
       
       try {
-        await lineService.pushMessage(groupId, fallbackMessage);
+        await lineService.scheduleGroupMessage(groupId, fallbackMessage, 'task_reminder');
         
         await storage.insertAuditLog({
           id: crypto.randomUUID(),
