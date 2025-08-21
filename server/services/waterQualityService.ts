@@ -132,8 +132,43 @@ export class WaterQualityService {
   // 獲取今日水質紀錄
   async getTodayWaterQualityRecords(): Promise<WaterQualityData[]> {
     try {
-      // 從記憶體快取獲取今日記錄
-      return waterQualityMemoryStore.getTodayRecords();
+      const today = dayjs().tz('Asia/Taipei').format('YYYY-MM-DD');
+      
+      // 先從記憶體快取獲取
+      const memoryRecords = waterQualityMemoryStore.getTodayRecords();
+      
+      // 同時從資料庫獲取（審計日誌中的水質記錄）
+      const auditLogs = await storage.getAuditLogs(100);
+      
+      const dbRecords = auditLogs
+        .filter(log => 
+          log.category === 'water_quality' && 
+          log.details?.date === today && 
+          log.details?.groupId === this.targetGroupId
+        )
+        .map(log => ({
+          date: log.details.date as string,
+          time: log.details.time as string,
+          cl: log.details.cl as number,
+          ph: log.details.ph as number,
+          waterTemp: log.details.waterTemp as number,
+          airTemp: log.details.airTemp as number,
+          messageId: log.details.messageId as string,
+          userId: log.details.userId as string
+        }))
+        .sort((a, b) => a.time.localeCompare(b.time));
+      
+      // 合併並去重（以 date + time 為鍵值）
+      const allRecords = [...memoryRecords, ...dbRecords];
+      const uniqueRecords = allRecords.reduce((acc, record) => {
+        const key = `${record.date}-${record.time}`;
+        if (!acc.find(r => `${r.date}-${r.time}` === key)) {
+          acc.push(record);
+        }
+        return acc;
+      }, [] as WaterQualityData[]);
+      
+      return uniqueRecords.sort((a, b) => a.time.localeCompare(b.time));
     } catch (error) {
       console.error('獲取今日水質紀錄失敗:', error);
       return [];
