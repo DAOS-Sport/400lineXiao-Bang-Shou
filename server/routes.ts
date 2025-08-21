@@ -311,7 +311,12 @@ async function processWebhookEvent(event: any) {
         }
       }
 
-      // 4. 水質監控（僅限指定群組）
+      // 4. 檢查待發送的群組訊息
+      if (source.type === 'group' && source.groupId) {
+        await lineService.checkAndSendPendingMessages(source.groupId, event.replyToken);
+      }
+
+      // 5. 水質監控（僅限指定群組）
       if (source.type === 'group' && source.groupId === 'C50c2a9623a78cc5f5e9f39557e3abfe6') {
         await waterQualityService.handleWaterQualityMessage(text, event.message.id, source.userId, source.groupId);
       }

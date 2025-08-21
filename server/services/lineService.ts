@@ -1,5 +1,6 @@
 import { Client, middleware } from '@line/bot-sdk';
 import { storage } from '../storage';
+import crypto from 'crypto';
 
 const config = {
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN || '',
@@ -62,29 +63,105 @@ export class LineService {
     }
   }
 
-  // 新增：發送訊息到群組（需要透過回覆或其他方式）
+  // 發送訊息到群組的替代方案
   async sendToGroup(groupId: string, text: string): Promise<void> {
-    console.log('🔍 嘗試發送訊息到群組:', groupId);
+    console.log('🔍 準備群組訊息:', groupId);
     console.log('📝 訊息內容:', text.substring(0, 50) + '...');
     
-    // 記錄到審計日誌，表示報告已生成
     try {
-      await storage.saveAuditLog(
-        'group_message_ready',
-        '水質報告已準備就緒，等待群組中的觸發',
-        'system',
-        {
+      // 方案：將報告存儲為待發送訊息，並在下次群組互動時發送
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'pending_group_message',
+        message: '水質報告等待發送到群組',
+        details: {
           groupId,
           messageContent: text,
           timestamp: new Date().toISOString(),
-          reportType: 'water_quality'
+          reportType: 'water_quality',
+          status: 'pending'
         }
+      });
+      
+      console.log('📊 水質報告已準備完成，等待群組互動時發送');
+      
+      // 嘗試立即發送（如果有最近的群組訊息可以回覆）
+      await this.tryImmediateSend(groupId, text);
+      
+    } catch (error) {
+      console.error('準備群組訊息失敗:', error);
+    }
+  }
+
+  // 嘗試立即發送到群組的方法
+  private async tryImmediateSend(groupId: string, text: string): Promise<void> {
+    try {
+      // 檢查是否有最近的群組訊息可以用來回覆
+      const recentMessages = await storage.getRecentMessages(groupId, 1);
+      
+      if (recentMessages.length > 0) {
+        const lastMessage = recentMessages[0];
+        // 檢查訊息是否在過去 5 分鐘內
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        
+        if (new Date(lastMessage.timestamp) > fiveMinutesAgo && lastMessage.replyToken) {
+          console.log('🎯 找到最近的訊息，嘗試回覆發送');
+          await this.replyMessage(lastMessage.replyToken, text);
+          
+          // 標記為已發送
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'info',
+            category: 'group_message_sent',
+            message: '水質報告已成功發送到群組',
+            details: { groupId, method: 'reply', timestamp: new Date().toISOString() }
+          });
+          
+          console.log('✅ 水質報告已通過回覆方式發送到群組');
+          return;
+        }
+      }
+      
+      console.log('⏳ 無法立即發送，將在下次群組互動時發送');
+      
+    } catch (error) {
+      console.log('⏳ 立即發送失敗，將在下次群組互動時發送');
+    }
+  }
+
+  // 檢查並發送待發送的群組訊息
+  async checkAndSendPendingMessages(groupId: string, replyToken: string): Promise<void> {
+    try {
+      // 查找該群組的待發送訊息
+      const pendingLogs = await storage.getAuditLogs(10);
+      const pendingMessage = pendingLogs.find(log => 
+        log.category === 'pending_group_message' && 
+        log.details?.groupId === groupId &&
+        log.details?.status === 'pending'
       );
       
-      console.log('📊 水質報告已準備完成，已記錄到系統日誌');
-      console.log('💡 下次在群組中觸發機器人時會看到報告');
+      if (pendingMessage) {
+        console.log('📤 發現待發送的群組訊息，立即發送');
+        await this.replyMessage(replyToken, pendingMessage.details.messageContent);
+        
+        // 標記為已發送
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'group_message_sent',
+          message: '待發送的水質報告已發送',
+          details: { 
+            groupId, 
+            originalLogId: pendingMessage.id,
+            timestamp: new Date().toISOString() 
+          }
+        });
+        
+        console.log('✅ 待發送的水質報告已成功發送');
+      }
     } catch (error) {
-      console.error('記錄群組訊息失敗:', error);
+      console.error('檢查待發送訊息失敗:', error);
     }
   }
 
