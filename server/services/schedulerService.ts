@@ -178,18 +178,31 @@ export class SchedulerService {
           await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
           console.log(`✅ 群組 ${groupId} 任務提醒完成`);
           
-          // 🕐 避免 LINE API 頻率限制：群組間延遲 300ms
+          // 🕐 避免 LINE API 頻率限制：群組間延遲 1000ms（加強）
           if (i < groupIds.length - 1) {
-            console.log(`⏱️ 等待 300ms 避免 API 限制...`);
-            await new Promise(resolve => setTimeout(resolve, 300));
+            console.log(`⏱️ 等待 1000ms 避免 API 限制...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         } catch (error: any) {
           console.error(`❌ 群組 ${groupId} 任務整理失敗:`, error);
-          // 如果是 API 限制錯誤，增加更長延遲
+          // 如果是 API 限制錯誤，增加更長延遲並記錄失敗
           if (error.statusCode === 429) {
-            console.log(`⚠️ API 限制錯誤，延遲 30 秒後繼續...`);
-            await new Promise(resolve => setTimeout(resolve, 30000));
+            console.log(`⚠️ API 限制錯誤，延遲 60 秒後繼續...`);
+            await new Promise(resolve => setTimeout(resolve, 60000));
           }
+          
+          // 記錄推送失敗到 audit log
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'error',
+            category: 'scheduler',
+            message: '群組任務推送完全失敗',
+            details: { 
+              groupId, 
+              originalError: error.message,
+              fallbackError: error.message
+            }
+          });
           await storage.insertAuditLog({
             id: crypto.randomUUID(),
             level: 'error',

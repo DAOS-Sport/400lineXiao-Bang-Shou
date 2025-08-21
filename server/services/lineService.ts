@@ -70,7 +70,9 @@ export class LineService {
         
         // 429 (Too Many Requests) 或 5xx 錯誤時重試
         if ((status === 429 || (status >= 500 && status < 600)) && attempt <= maxRetries) {
-          const backoff = Math.min(15000, 1000 * Math.pow(2, attempt));
+          // 增強退避策略：429 錯誤使用更長延遲
+          const baseBackoff = status === 429 ? 5000 : 1000; // 429 錯誤基礎延遲 5 秒
+          const backoff = Math.min(60000, baseBackoff * Math.pow(2, attempt)); // 最大 60 秒
           const wait = Math.max(backoff, retryAfter * 1000);
           console.log(`⏳ API 限制 (${status})，等待 ${wait}ms 後重試 (嘗試 ${attempt}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, wait));
