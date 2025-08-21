@@ -147,13 +147,37 @@ export class DatabaseStorage implements IStorage {
 
   // Tasks
   async insertTask(data: CreateTaskData): Promise<ITask> {
-    const taskData = {
-      ...data,
-      id: crypto.randomUUID(),
-      sourceMessageIds: data.sourceMessageIds || []
-    };
-    const [task] = await db.insert(tasks).values(taskData).returning();
-    return task as ITask;
+    // 使用交易來確保原子性操作，防止流水號競爭
+    return await db.transaction(async (tx) => {
+      // 先鎖定該群組的所有任務記錄（使用 SELECT FOR UPDATE）
+      await tx.execute(sql`
+        SELECT 1 FROM ${tasks}
+        WHERE group_id = ${data.groupId}
+        FOR UPDATE
+      `);
+      
+      // 在鎖定後取得下一個流水號
+      const result = await tx.execute(sql`
+        SELECT COALESCE(MAX(CAST(task_id_serial AS INTEGER)), 0) + 1 as serial
+        FROM ${tasks}
+        WHERE group_id = ${data.groupId}
+      `);
+      
+      const nextNumber = (result.rows[0] as any).serial || 1;
+      const taskSerial = nextNumber.toString().padStart(2, '0');
+      
+      // 創建任務資料
+      const taskData = {
+        ...data,
+        id: crypto.randomUUID(),
+        taskIdSerial: taskSerial, // 使用交易內產生的流水號
+        sourceMessageIds: data.sourceMessageIds || []
+      };
+      
+      // 插入任務
+      const [task] = await tx.insert(tasks).values(taskData).returning();
+      return task as ITask;
+    });
   }
 
   async getTaskById(id: string): Promise<ITask | null> {
@@ -195,15 +219,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextTaskSerial(groupId: string): Promise<string> {
-    // 找到該群組中最大的任務編號
-    const [lastTask] = await db.select({ taskIdSerial: tasks.taskIdSerial })
-      .from(tasks)
-      .where(eq(tasks.groupId, groupId))
-      .orderBy(desc(tasks.taskIdSerial))
-      .limit(1);
+    // 使用 FOR UPDATE 防止競爭條件
+    // 使用 SQL 直接取得並更新流水號，確保原子性操作
+    const result = await db.execute(sql`
+      WITH next_serial AS (
+        SELECT COALESCE(MAX(CAST(task_id_serial AS INTEGER)), 0) + 1 as serial
+        FROM ${tasks}
+        WHERE group_id = ${groupId}
+      )
+      SELECT serial FROM next_serial
+    `);
     
-    const lastSerial = lastTask ? parseInt(lastTask.taskIdSerial) : 0;
-    const nextNumber = lastSerial + 1;
+    // 取得查詢結果
+    const nextNumber = (result.rows[0] as any).serial || 1;
     
     return nextNumber.toString().padStart(2, '0');
   }

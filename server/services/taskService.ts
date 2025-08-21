@@ -15,14 +15,11 @@ export class TaskService {
         throw new Error('任務內容不能為空');
       }
 
-      // 取得下一個流水號
-      const taskSerial = await storage.getNextTaskSerial(message.groupId);
-
-      // 建立任務
+      // 建立任務 (流水號會在 insertTask 內自動產生，確保原子性)
       const taskData: CreateTaskData = {
         id: crypto.randomUUID(),
         groupId: message.groupId,
-        taskIdSerial: taskSerial, // 匹配正確欄位名
+        taskIdSerial: '', // 這個值會在 insertTask 內被覆蓋
         authorUserId: message.userId, // 匹配正確欄位名
         authorDisplayName: message.displayName || message.userId, // 匹配正確欄位名並處理 null
         text: cleanText, // 匹配正確欄位名
@@ -30,7 +27,7 @@ export class TaskService {
         sourceMessageIds: [message.messageId] // 匹配正確欄位名
       };
 
-      await storage.insertTask(taskData);
+      const createdTask = await storage.insertTask(taskData);
 
       await storage.insertAuditLog({
         id: crypto.randomUUID(),
@@ -39,7 +36,7 @@ export class TaskService {
         message: '自動建立交辦任務',
         details: {
           groupId: message.groupId,
-          taskSerial,
+          taskSerial: createdTask.taskIdSerial,
           description: cleanText,
           createdBy: message.userId
         }
