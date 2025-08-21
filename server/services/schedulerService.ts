@@ -82,14 +82,26 @@ export class SchedulerService {
       const endDate = now; // 現在時間
       const startDate = yesterday; // 昨天00:00
 
-      // 🔒 群組隔離處理：逐一處理每個群組，確保任務不跨群組
-      for (const groupId of groupIds) {
+      // 🔒 群組隔離處理：逐一處理每個群組，加入延遲避免 API 限制
+      for (let i = 0; i < groupIds.length; i++) {
+        const groupId = groupIds[i];
         try {
-          console.log(`🔒 開始處理群組 ${groupId} 的專屬任務提醒`);
+          console.log(`🔒 開始處理群組 ${groupId} 的專屬任務提醒 (${i + 1}/${groupIds.length})`);
           await this.processGroupDailySummaryWithSuggestions(groupId, startDate, endDate);
           console.log(`✅ 群組 ${groupId} 任務提醒完成`);
+          
+          // 🕐 避免 LINE API 頻率限制：群組間延遲 2 秒
+          if (i < groupIds.length - 1) {
+            console.log(`⏱️ 等待 2 秒避免 API 限制...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         } catch (error: any) {
           console.error(`❌ 群組 ${groupId} 任務整理失敗:`, error);
+          // 如果是 API 限制錯誤，增加更長延遲
+          if (error.statusCode === 429) {
+            console.log(`⚠️ API 限制錯誤，延遲 5 秒後繼續...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
           await storage.insertAuditLog({
             id: crypto.randomUUID(),
             level: 'error',
