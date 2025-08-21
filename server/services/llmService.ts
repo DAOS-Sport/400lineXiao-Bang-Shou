@@ -34,33 +34,38 @@ export class LLMService {
         return [];
       }
 
-      const prompt = `您是駿斯小助理，一位專業的員工助理。請分析以下群組對話記錄，萃取出可執行的代辦任務。
+      const prompt = `您是駿斯小助理，一位專業的員工助理。請仔細分析以下群組對話記錄，只有在發現明確的行動需求時才萃取任務。
 
 對話記錄：
 ${messageTexts}
 
-身為專業的員工助理，請遵循以下規則：
-1. 最近 5 則訊息為主要分析內容，前 5-15 則訊息作為補充參考
-2. 只萃取明確的行動項目，不包含閒聊或討論
-3. 將相似或重複的任務合併
-4. 任務描述要具體可執行，符合職場專業標準
-5. 保持原始語言（繁體中文）
-6. 每個任務用一句話描述，語調專業友善
+⚠️ 重要指示：
+1. 如果對話中沒有明確的任務或行動項目，請回傳空陣列 []
+2. 不要憑空創造任務或使用模板化內容
+3. 只萃取對話中真正提及的具體行動需求
+4. 將相關討論合併為單一任務，避免重複
+
+分析規則：
+- 尋找明確的動作詞：需要、請、麻煩、處理、確認、聯繫等
+- 識別具體對象：人名、部門、事項、時間、地點
+- 排除純粹的討論、詢問、回應
+- 每個真實任務用一句話簡潔描述
 
 請以 JSON 格式回傳結果：
 {
   "tasks": [
-    {"text": "具體任務描述"},
-    {"text": "另一個任務描述"}
+    {"text": "基於實際對話的具體任務"}
   ]
-}`;
+}
+
+如果沒有找到真正的任務，請回傳：{"tasks": []}`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o-mini" which was released for cost-effective usage. do not change this unless explicitly requested by the user
         messages: [
           {
             role: "system",
-            content: "您是駿斯小助理，一位專業的員工助理。您擅長從群組對話中萃取可執行的代辦事項，協助團隊提高工作效率。您的回應專業、友善且具建設性。"
+            content: "您是駿斯小助理，一位謹慎且專業的員工助理。您只會在對話中出現明確行動需求時才建立任務，絕不會憑空創造或使用模板內容。您會仔細區分真實任務和一般討論，並將相關事項整合為單一任務。"
           },
           {
             role: "user",
@@ -78,10 +83,12 @@ ${messageTexts}
         id: crypto.randomUUID(),
         level: 'info',
         category: 'llm',
-        message: 'GPT 任務萃取成功',
+        message: '駿斯小助理任務萃取成功',
         details: {
           messageCount: messages.length,
-          extractedTasks: result.tasks?.length || 0
+          extractedTasks: result.tasks?.length || 0,
+          inputMessages: messageTexts.substring(0, 200) + '...',
+          gptResponse: response.choices[0].message.content?.substring(0, 300) + '...'
         }
       });
 
