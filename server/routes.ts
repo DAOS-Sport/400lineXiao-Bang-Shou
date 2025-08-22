@@ -504,6 +504,7 @@ async function processWebhookEvent(event: any) {
         if (!isCompleteCommand && text.includes('交辦')) {
           console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
           try {
+            console.log(`🔍 DEBUG: 準備創建任務，replyToken: ${event.replyToken?.substring(0, 20)}...`);
             const taskResult = await taskService.createTaskFromMessage(savedMessage, text);
             console.log(`🎯 任務創建結果:`, taskResult);
             
