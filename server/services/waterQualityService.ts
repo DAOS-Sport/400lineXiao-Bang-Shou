@@ -7,6 +7,7 @@ import { storage } from '../storage';
 import { lineService } from './lineService';
 import { waterQualityMemoryStore } from './waterQualityMemoryStore';
 import { llmService } from './llmService';
+import { weatherService } from './weatherService';
 import { type IMessage } from "@shared/schema";
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
@@ -283,14 +284,25 @@ export class WaterQualityService {
     }
   }
 
-  // 生成每日水質報告（支援多群組）
+  // 生成每日水質報告（支援多群組，整合天氣預報）
   async generateDailyWaterQualityReport(groupId?: string): Promise<string> {
     try {
       const records = await this.getTodayWaterQualityRecords(groupId);
       const today = dayjs().tz('Asia/Taipei').format('YYYY-MM-DD (dddd)');
       
+      // 獲取天氣預報
+      const weatherForecasts = await weatherService.getHsinchuWeatherForecast();
+      const weatherAdvice = weatherService.generateWaterQualityAdvice(weatherForecasts);
+      
       if (records.length === 0) {
-        return `📊 ${today} 水質報告\n\n❌ 今日尚無水質紀錄`;
+        // 即使沒有水質記錄，也提供天氣和建議
+        let report = `📊 ${today} 水質報告\n\n❌ 今日尚無水質紀錄\n\n`;
+        report += weatherService.formatWeatherForecast(weatherForecasts);
+        report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
+        if (weatherAdvice.recommendations.length > 0) {
+          report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
+        }
+        return report;
       }
       
       let report = `📊 ${today} 水質報告\n`;
@@ -319,7 +331,18 @@ export class WaterQualityService {
       
       report += `\n💡 水質狀態評估：\n`;
       report += `   氯含量：${clStatus} (建議1.0-3.0)\n`;
-      report += `   酸鹼值：${phStatus} (建議7.2-7.8)`;
+      report += `   酸鹼值：${phStatus} (建議7.2-7.8)\n\n`;
+      
+      // 添加天氣預報部分
+      report += weatherService.formatWeatherForecast(weatherForecasts);
+      report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
+      
+      if (weatherAdvice.recommendations.length > 0) {
+        report += `\n💡 管理建議：`;
+        weatherAdvice.recommendations.forEach((rec, index) => {
+          report += `\n   ${index + 1}. ${rec}`;
+        });
+      }
       
       return report;
     } catch (error) {
