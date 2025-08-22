@@ -424,8 +424,8 @@ export class WaterQualityService {
         try {
           const report = await this.generateDailyWaterQualityReport(groupId);
           
-          // 使用智能延遲發送機制
-          await lineService.sendToGroup(groupId, report);
+          // 直接推送到群組（不等待互動）
+          await lineService.pushMessage(groupId, report);
           
           console.log(`✅ 水質報告已安排發送至群組: ${groupId}`);
         } catch (error) {
