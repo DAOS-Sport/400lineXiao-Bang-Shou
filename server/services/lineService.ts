@@ -253,93 +253,10 @@ export class LineService {
 
   // 檢查並發送待發送的群組訊息
   async checkAndSendPendingMessages(groupId: string, replyToken: string): Promise<void> {
-    try {
-      console.log(`🔎 checkAndSendPendingMessages 被調用，群組: ${groupId}`);
-      
-      // 查找該群組的待發送訊息（增加查找範圍）
-      const pendingLogs = await storage.getAuditLogs(50);
-      console.log(`📋 查詢到 ${pendingLogs.length} 筆審計日誌`);
-      
-      const pendingMessage = pendingLogs.find(log => {
-        const isMatch = log.category === 'pending_group_message' && 
-                       log.details?.groupId === groupId &&
-                       log.details?.status === 'pending';
-        
-        if (log.category === 'pending_group_message') {
-          console.log(`🔍 檢查待發送訊息: 群組 ${log.details?.groupId} vs ${groupId}, 狀態: ${log.details?.status}`);
-        }
-        
-        return isMatch;
-      });
-      
-      // 檢查是否已經有已發送的記錄（避免重複發送）
-      if (pendingMessage) {
-        const sentMessages = pendingLogs.filter(log => 
-          log.category === 'group_message_sent' && 
-          log.details?.groupId === groupId &&
-          log.details?.originalLogId === pendingMessage.id
-        );
-        
-        if (sentMessages.length > 0) {
-          console.log(`📭 群組 ${groupId} 的待發送訊息已經發送過了，跳過重複發送`);
-          return;
-        }
-        
-        // 同時檢查是否有相同內容的報告在近期已發送（額外防護）
-        const recentSentMessages = pendingLogs.filter(log => 
-          log.category === 'group_message_sent' && 
-          log.details?.groupId === groupId &&
-          new Date(log.timestamp).getTime() > (Date.now() - 60 * 60 * 1000) // 1小時內
-        );
-        
-        if (recentSentMessages.length > 0) {
-          console.log(`🕒 群組 ${groupId} 在 1 小時內已發送過報告，跳過重複發送`);
-          return;
-        }
-      }
-      
-      console.log(`📤 找到待發送訊息:`, !!pendingMessage);
-      
-      if (pendingMessage) {
-        console.log('📤 發現待發送的群組訊息，立即發送');
-        console.log(`📤 訊息內容預覽: ${pendingMessage.details.messageContent?.substring(0, 50)}...`);
-        
-        await this.replyMessage(replyToken, pendingMessage.details.messageContent);
-        
-        // 標記為已發送 - 更新原記錄的狀態
-        await storage.insertAuditLog({
-          id: crypto.randomUUID(),
-          level: 'info',
-          category: 'group_message_sent',
-          message: '待發送的水質報告已發送',
-          details: { 
-            groupId, 
-            originalLogId: pendingMessage.id,
-            timestamp: new Date().toISOString(),
-            status: 'sent'
-          }
-        });
-        
-        // 同時更新原始待發送記錄的狀態（透過新增一筆狀態更新記錄）
-        await storage.insertAuditLog({
-          id: crypto.randomUUID(),
-          level: 'info', 
-          category: 'pending_group_message',
-          message: '水質報告狀態更新',
-          details: {
-            ...pendingMessage.details,
-            status: 'sent',
-            sentAt: new Date().toISOString()
-          }
-        });
-        
-        console.log('✅ 待發送的水質報告已成功發送');
-      } else {
-        console.log(`📭 群組 ${groupId} 目前沒有待發送的訊息`);
-      }
-    } catch (error) {
-      console.error('檢查待發送訊息失敗:', error);
-    }
+    // 🚫 臨時禁用待發送訊息檢查機制 - 避免重複發送水質報告
+    console.log(`🔎 checkAndSendPendingMessages 被調用，群組: ${groupId} - 已禁用避免重複發送`);
+    console.log(`📭 群組 ${groupId} 目前沒有待發送的訊息`);
+    return;
   }
 
   async getGroupSummary(groupId: string): Promise<any> {
