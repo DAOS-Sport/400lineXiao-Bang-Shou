@@ -304,28 +304,66 @@ async function processWebhookEvent(event: any) {
       if (source.type === 'group') {
         // 支持三種格式：交辦01完成、任務01完成、任務01已完成
         const completeTaskPattern = /^(交辦|任務)(\d+)(完成|已完成)$/i;
-        console.log(`🔍 檢查完成指令: "${text}" vs 正則: ${completeTaskPattern}`);
         const match = text.match(completeTaskPattern);
-        console.log(`🔍 匹配結果:`, match);
         if (match) {
           const taskType = match[1]; // 交辦 或 任務
           const taskSerial = match[2].padStart(2, '0'); // 確保是兩位數格式 01, 02...
           console.log(`✅ 偵測到完成任務指令: ${taskType}${taskSerial}完成 來自群組 ${source.groupId}`);
           
-          // 先獲取任務內容以便生成感謝訊息
-          const tasks = await storage.getTasksByGroupId(source.groupId, 'pending');
-          const task = tasks.find(t => t.taskIdSerial === taskSerial);
-          
-          const success = await taskService.completeTaskBySerial(source.groupId, taskSerial, source.userId);
-          if (success && task) {
-            // 生成 GPT 溫馨感謝訊息
-            const thankYouMessage = await taskService.generateCompletionMessage(task.text);
-            await lineService.replyMessage(event.replyToken, `✅ ${taskType}${taskSerial}已完成！\n${thankYouMessage}`);
-          } else if (success) {
-            await lineService.replyMessage(event.replyToken, `✅ ${taskType}${taskSerial}已完成！\n謝謝您的辛勞！`);
-          } else {
-            await lineService.replyMessage(event.replyToken, `❌ 找不到${taskType}${taskSerial}或該任務已完成`);
+          try {
+            // 先獲取任務內容以便生成感謝訊息
+            const tasks = await storage.getTasksByGroupId(source.groupId, 'pending');
+            const task = tasks.find(t => t.taskIdSerial === taskSerial);
+            
+            if (task) {
+              console.log(`📋 找到任務 ${taskSerial}: ${task.text.substring(0, 50)}...`);
+              
+              const success = await taskService.completeTaskBySerial(source.groupId, taskSerial, source.userId);
+              if (success) {
+                // 生成 GPT 溫馨感謝訊息
+                console.log(`💝 開始生成感謝訊息...`);
+                const thankYouMessage = await taskService.generateCompletionMessage(task.text);
+                console.log(`💝 感謝訊息生成成功: "${thankYouMessage}"`);
+                
+                const replyText = `✅ ${taskType}${taskSerial}已完成！\n${thankYouMessage}`;
+                console.log(`📤 準備回覆: "${replyText}"`);
+                
+                await lineService.replyMessage(event.replyToken, replyText);
+                console.log(`✅ 回覆訊息已發送`);
+                
+                // 記錄成功完成
+                await storage.insertAuditLog({
+                  id: crypto.randomUUID(),
+                  level: 'info',
+                  category: 'task',
+                  message: '任務完成回覆已發送',
+                  details: {
+                    groupId: source.groupId,
+                    taskSerial,
+                    userId: source.userId,
+                    replyText,
+                    thankYouMessage
+                  }
+                });
+              } else {
+                const errorText = `❌ 找不到${taskType}${taskSerial}或該任務已完成`;
+                console.log(`📤 回覆錯誤訊息: "${errorText}"`);
+                await lineService.replyMessage(event.replyToken, errorText);
+              }
+            } else {
+              const notFoundText = `❌ 找不到${taskType}${taskSerial}`;
+              console.log(`📤 回覆未找到訊息: "${notFoundText}"`);
+              await lineService.replyMessage(event.replyToken, notFoundText);
+            }
+          } catch (error) {
+            console.error(`❌ 處理任務完成失敗:`, error);
+            try {
+              await lineService.replyMessage(event.replyToken, `❌ 處理${taskType}${taskSerial}完成時發生錯誤`);
+            } catch (replyError) {
+              console.error(`❌ 回覆錯誤訊息也失敗:`, replyError);
+            }
           }
+          return; // 處理完成後直接返回，避免繼續處理其他邏輯
         }
       }
 
