@@ -45,6 +45,7 @@ export interface IStorage {
   // Audit Logs
   insertAuditLog(data: CreateAuditLogData): Promise<IAuditLog>;
   getAuditLogs(limit?: number): Promise<IAuditLog[]>;
+  getAuditLogsByCategory(category: string): Promise<IAuditLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -345,6 +346,23 @@ export class DatabaseStorage implements IStorage {
       return logsResult as IAuditLog[];
     } catch (error) {
       console.error('獲取審計日誌失敗:', error);
+      if (process.env.NODE_ENV === 'development') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getAuditLogsByCategory(category: string): Promise<IAuditLog[]> {
+    try {
+      const logsResult = await db.select().from(auditLogs)
+        .where(eq(auditLogs.category, category))
+        .orderBy(desc(auditLogs.timestamp))
+        .limit(1000);
+      
+      return logsResult as IAuditLog[];
+    } catch (error) {
+      console.error('按分類獲取審計日誌失敗:', error);
       if (process.env.NODE_ENV === 'development') {
         return [];
       }
