@@ -66,7 +66,41 @@ export class LineService {
       } catch (error: any) {
         attempt++;
         const status = error?.statusCode || 0;
-        const retryAfter = Number(error?.originalError?.response?.headers?.['retry-after']) || 0;
+        const response = error?.originalError?.response;
+        const headers = response?.headers || {};
+        const responseData = response?.data || {};
+        
+        // 提取 Rate Limit 相關 headers
+        const rateLimitLimit = headers['x-ratelimit-limit'] || headers['x-line-ratelimit-limit'] || 'unknown';
+        const rateLimitRemaining = headers['x-ratelimit-remaining'] || headers['x-line-ratelimit-remaining'] || 'unknown';
+        const rateLimitReset = headers['x-ratelimit-reset'] || headers['x-line-ratelimit-reset'] || 'unknown';
+        const retryAfter = Number(headers['retry-after']) || 0;
+        
+        // 完整的錯誤詳情
+        const errorDetails = {
+          targetId: to,
+          statusCode: status,
+          errorMessage: error.message,
+          retryAttempt: attempt,
+          maxRetries: maxRetries,
+          responseBody: responseData,
+          rateLimitHeaders: {
+            limit: rateLimitLimit,
+            remaining: rateLimitRemaining,
+            reset: rateLimitReset,
+            retryAfter: retryAfter
+          },
+          timestamp: new Date().toISOString()
+        };
+        
+        console.log(`📊 LINE API 詳細錯誤 (嘗試 ${attempt}/${maxRetries}):`, {
+          statusCode: status,
+          rateLimitLimit,
+          rateLimitRemaining,
+          rateLimitReset,
+          retryAfter,
+          responseBody: responseData
+        });
         
         // 403/404 錯誤視為永久失敗，不重試
         if (status === 403 || status === 404) {
@@ -79,11 +113,8 @@ export class LineService {
             category: 'line_api',
             message: 'LINE 推送永久失敗',
             details: {
-              targetId: to,
-              statusCode: status,
-              errorMessage: error.message,
-              reason: status === 403 ? 'Bot 被踢出群組或權限不足' : 'ID 不存在或無效',
-              timestamp: new Date().toISOString()
+              ...errorDetails,
+              reason: status === 403 ? 'Bot 被踢出群組或權限不足' : 'ID 不存在或無效'
             }
           });
           
@@ -94,12 +125,23 @@ export class LineService {
         
         // 429 (Too Many Requests) 或 5xx 錯誤時重試
         if ((status === 429 || (status >= 500 && status < 600)) && attempt < maxRetries) {
+          // 記錄重試詳情
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'warn',
+            category: 'line_api',
+            message: `LINE 推送重試 ${attempt}/${maxRetries}`,
+            details: errorDetails
+          });
+          
           // 指數退避策略，尊重 Retry-After header
           const baseBackoff = status === 429 ? 2000 : 1000; // 429 錯誤基礎延遲 2 秒
           const exponentialBackoff = baseBackoff * Math.pow(2, attempt - 1);
           const wait = Math.max(exponentialBackoff, retryAfter * 1000);
           
           console.log(`⏳ API 限制 (${status})，等待 ${wait}ms 後重試 (嘗試 ${attempt}/${maxRetries})`);
+          console.log(`   Rate Limit: ${rateLimitRemaining}/${rateLimitLimit}, Reset: ${rateLimitReset}, Retry-After: ${retryAfter}s`);
+          
           await new Promise(resolve => setTimeout(resolve, wait));
           continue;
         }
@@ -107,19 +149,13 @@ export class LineService {
         // 其他錯誤或重試次數用盡
         console.error(`❌ LINE 推送失敗 (${status})，已重試 ${attempt} 次:`, error.message);
         
-        // 記錄失敗到 audit logs
+        // 記錄最終失敗到 audit logs
         await storage.insertAuditLog({
           id: crypto.randomUUID(),
           level: 'error',
           category: 'line_api',
           message: 'LINE 推送最終失敗',
-          details: {
-            targetId: to,
-            statusCode: status,
-            errorMessage: error.message,
-            retryAttempts: attempt,
-            timestamp: new Date().toISOString()
-          }
+          details: errorDetails
         });
         
         // 設置 retryAttempt 屬性供上層記錄
