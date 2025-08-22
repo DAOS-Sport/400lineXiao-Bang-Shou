@@ -4,7 +4,7 @@
 
 This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant with specialized monitoring capabilities. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, scheduled daily reminders, comprehensive message backup functionality, dedicated water quality monitoring for swimming pool facilities, and wind forecast services. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
 
-The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 08:00, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, authorized group management for GPT functionality, a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00, specialized water quality monitoring for group C50c2a9623a78cc5f5e9f39557e3abfe6 with daily reports at 13:00, 17:30, and 20:30, and wind forecast services for group C360be1fe6ea876a4df3ca0497bca4e3b at 06:00, 12:00, and 21:30.
+The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, authorized group management for GPT functionality, a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00, specialized water quality monitoring for group C50c2a9623a78cc5f5e9f39557e3abfe6 with daily reports at 13:00, 17:30, and 20:30, and wind forecast services for group C360be1fe6ea876a4df3ca0497bca4e3b at 06:00, 12:00, and 21:30.
 
 ## User Preferences
 
@@ -17,6 +17,7 @@ Preferred communication style: Simple, everyday language.
 - ✅ 改善重複完成任務處理：當用戶嘗試完成已完成任務時，顯示友善提醒而非錯誤訊息
 - ✅ 增強群組隔離檢測：添加詳細DEBUG日誌追蹤群組ID使用情況
 - ✅ 驗證系統架構：確認webhook處理邏輯正確使用來源群組ID進行回覆
+- ✅ 調整推播時間：移除08:00推播，改為每日4次 (06:30, 11:00, 15:00, 20:00)
 
 ### 群組隔離問題分析
 **現象**：不同群組的任務完成回覆都出現在同一個群組中
@@ -76,7 +77,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Scheduling System
 - **Cron Jobs**: node-cron with Asia/Taipei timezone for:
-  - Five daily task reminders (06:30, 08:00, 11:00, 15:00, 20:00)
+  - Four daily task reminders (06:30, 11:00, 15:00, 20:00)
   - Daily message backup at 02:00
   - Daily water quality reports at 13:00, 17:30, and 20:30 (for authorized groups)
   - Daily wind forecast reports at 06:00, 12:00, and 21:30 (for group C360be1fe6ea876a4df3ca0497bca4e3b)
