@@ -259,6 +259,79 @@ ${taskTexts}
       return '';
     }
   }
+
+  // 整理長任務內容
+  async organizeTaskContent(taskText: string): Promise<string | null> {
+    try {
+      console.log(`🤖 開始整理長任務內容 (${taskText.length} 字符)`);
+
+      const prompt = `請將以下交辦事項內容進行整理，要求：
+1. 保留所有重要信息和具體細節
+2. 去除重複的內容
+3. 按邏輯順序重組
+4. 使用簡潔清晰的表達
+5. 保持專業的交辦語氣
+6. 如果有多個任務項目，請用數字列表標示
+
+請整理以下內容：
+${taskText}
+
+請直接回覆整理後的內容，不要包含其他說明文字。`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 1000
+      });
+
+      const organizedContent = response.choices[0]?.message?.content?.trim();
+      
+      if (!organizedContent) {
+        console.warn('⚠️ GPT 回覆為空');
+        return null;
+      }
+
+      console.log(`✅ 任務整理完成: ${taskText.length} → ${organizedContent.length} 字符`);
+      
+      // 記錄成功
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'llm',
+        message: 'GPT 任務內容整理成功',
+        details: {
+          originalLength: taskText.length,
+          organizedLength: organizedContent.length,
+          compressionRatio: ((taskText.length - organizedContent.length) / taskText.length * 100).toFixed(1) + '%'
+        }
+      });
+
+      return organizedContent;
+
+    } catch (error) {
+      console.error('❌ GPT 任務整理失敗:', error);
+      
+      // 記錄錯誤
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'llm',
+        message: 'GPT 任務內容整理失敗',
+        details: {
+          error: (error as Error).message,
+          originalLength: taskText.length
+        }
+      });
+
+      return null;
+    }
+  }
 }
 
 export const llmService = new LLMService();
