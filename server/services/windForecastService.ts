@@ -88,11 +88,8 @@ export class WindForecastService {
         beaufortScale: beaufort
       });
       
-      // 獲取6小時內的氣象預報數據
-      const forecastData = await this.get6HourForecast(token, windSpeedValue, windDirectionValue);
-      forecasts.push(...forecastData);
-      
-      console.log(`🔮 已生成6小時內風力預報數據`);
+      // 不需要6小時風力預報數據了，改為天氣預報
+      console.log(`✅ 當前風力資料已取得`);
 
       // 記錄成功獲取風力數據
       await storage.insertAuditLog({
@@ -129,69 +126,81 @@ export class WindForecastService {
   }
 
   /**
-   * 獲取6小時內的氣象預報數據
+   * 獲取6小時內的天氣預報數據（降雨和天氣狀況）
    */
-  private async get6HourForecast(token: string, currentWindSpeed: number, currentWindDirection: number): Promise<WindForecastData[]> {
+  private async get6HourWeatherForecast(token: string): Promise<string> {
     try {
-      // 使用中央氣象署鄉鎮預報 API 獲取新竹市預報
-      const forecastUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-051?Authorization=${token}&format=JSON&locationName=東區&elementName=WS,WD`;
+      // 使用中央氣象署鄉鎮預報 API 獲取新竹市天氣預報
+      const forecastUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-051?Authorization=${token}&format=JSON&locationName=東區&elementName=Wx,PoP12h,T,RH`;
       
-      console.log('🔍 查詢新竹市東區6小時氣象預報...');
+      console.log('🌤️ 查詢新竹市東區6小時天氣預報...');
       const response = await fetch(forecastUrl);
       
       if (!response.ok) {
-        console.warn('⚠️ 無法獲取預報數據，使用基於當前風況的預測');
-        return this.generatePredictiveForecast(currentWindSpeed, currentWindDirection);
+        console.warn('⚠️ 無法獲取天氣預報，使用簡化預測');
+        return this.generateSimpleWeatherForecast();
       }
       
       const data = await response.json();
-      const forecasts: WindForecastData[] = [];
       
       if (data.records?.locations?.[0]?.location?.[0]) {
         const location = data.records.locations[0].location[0];
-        const windSpeedElement = location.weatherElement?.find((el: any) => el.elementName === 'WS');
-        const windDirElement = location.weatherElement?.find((el: any) => el.elementName === 'WD');
+        const wxElement = location.weatherElement?.find((el: any) => el.elementName === 'Wx'); // 天氣現象
+        const popElement = location.weatherElement?.find((el: any) => el.elementName === 'PoP12h'); // 降雨機率
         
-        if (windSpeedElement?.time && windDirElement?.time) {
-          // 取得未來6小時的預報數據
-          const now = new Date();
-          const sixHoursLater = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+        if (wxElement?.time?.[0] && popElement?.time?.[0]) {
+          const weatherDesc = wxElement.time[0].elementValue?.[0]?.value || '晴時多雲';
+          const rainProb = popElement.time[0].elementValue?.[0]?.value || '10';
           
-          for (let i = 0; i < Math.min(6, windSpeedElement.time.length); i++) {
-            const timeData = windSpeedElement.time[i];
-            const dirTimeData = windDirElement.time[i];
-            
-            if (timeData?.elementValue?.[0]?.value && dirTimeData?.elementValue?.[0]?.value) {
-              const forecastTime = new Date(timeData.startTime);
-              
-              if (forecastTime <= sixHoursLater) {
-                const windSpeed = parseFloat(timeData.elementValue[0].value);
-                const windDirText = dirTimeData.elementValue[0].value;
-                const beaufort = this.getBeaufortScale(windSpeed);
-                
-                forecasts.push({
-                  time: forecastTime.toISOString(),
-                  windSpeed: Math.round(windSpeed * 10) / 10,
-                  windDirection: windDirText || this.convertDegreesToDirection(currentWindDirection),
-                  description: this.getWindDescription(beaufort),
-                  beaufortScale: beaufort
-                });
-              }
-            }
-          }
-          
-          console.log(`✅ 成功取得 ${forecasts.length} 筆6小時內預報數據`);
-          return forecasts;
+          return this.formatWeatherForecast(weatherDesc, parseInt(rainProb));
         }
       }
       
-      console.warn('⚠️ 預報數據格式不符預期，使用預測數據');
-      return this.generatePredictiveForecast(currentWindSpeed, currentWindDirection);
+      console.warn('⚠️ 天氣預報數據格式不符預期，使用簡化預測');
+      return this.generateSimpleWeatherForecast();
       
     } catch (error) {
-      console.warn('⚠️ 取得預報數據失敗，使用預測數據:', (error as Error).message);
-      return this.generatePredictiveForecast(currentWindSpeed, currentWindDirection);
+      console.warn('⚠️ 取得天氣預報失敗:', (error as Error).message);
+      return this.generateSimpleWeatherForecast();
     }
+  }
+
+  /**
+   * 格式化天氣預報（40字以內）
+   */
+  private formatWeatherForecast(weatherDesc: string, rainProb: number): string {
+    let forecast = '';
+    
+    // 降雨狀況
+    if (rainProb >= 70) {
+      forecast += '高機率降雨';
+    } else if (rainProb >= 30) {
+      forecast += '可能降雨';
+    } else {
+      forecast += '降雨機率低';
+    }
+    
+    // 天氣狀況
+    if (weatherDesc.includes('晴')) {
+      forecast += '，陽光普照適合戶外活動';
+    } else if (weatherDesc.includes('雲')) {
+      forecast += '，多雲天氣溫度適中';
+    } else if (weatherDesc.includes('陰')) {
+      forecast += '，陰天涼爽無陽光直射';
+    } else if (weatherDesc.includes('雨')) {
+      forecast += '，雨天請注意防護措施';
+    } else {
+      forecast += '，天氣穩定適合練習';
+    }
+    
+    return forecast;
+  }
+
+  /**
+   * 簡化天氣預測（備用）
+   */
+  private generateSimpleWeatherForecast(): string {
+    return '降雨機率低，多雲天氣溫度適中，適合戶外高爾夫練習活動';
   }
 
   /**
@@ -459,29 +468,22 @@ export class WindForecastService {
         report += `📊 風級：${current.beaufortScale}級（${current.description}）\n`;
       }
       
-      // 顯示未來6小時預報
-      report += `\n【6小時風力預報】\n`;
+      // 獲取並顯示6小時天氣預報
+      const weatherForecast = await this.get6HourWeatherForecast(process.env.CWA_API_KEY || '');
+      report += `\n【6小時天氣預報】\n`;
+      report += `${weatherForecast}\n`;
       
       let maxWindLevel = 0;
-      let criticalWindPeriods = [];
+      let criticalWindPeriods: any[] = [];
       
-      // 跳過當前風況，顯示預報數據
-      for (let i = 1; i < Math.min(7, forecasts.length); i++) {
-        const forecast = forecasts[i];
-        const forecastTime = dayjs(forecast.time).tz('Asia/Taipei');
-        
-        report += `\n${forecastTime.format('HH:mm')}\n`;
-        report += `💨 風速：${forecast.windSpeed} m/s\n`;
-        report += `🧭 風向：${forecast.windDirection}風\n`;
-        report += `📊 風級：${forecast.beaufortScale}級（${forecast.description}）\n`;
-        
-        // 追蹤最高風級和關鍵時段
-        maxWindLevel = Math.max(maxWindLevel, forecast.beaufortScale);
-        if (forecast.beaufortScale >= 6) {
+      // 分析當前風力等級
+      if (forecasts.length > 0) {
+        maxWindLevel = forecasts[0].beaufortScale;
+        if (forecasts[0].beaufortScale >= 6) {
           criticalWindPeriods.push({
-            time: forecastTime.format('HH:mm'),
-            level: forecast.beaufortScale,
-            speed: forecast.windSpeed
+            time: dayjs(forecasts[0].time).tz('Asia/Taipei').format('HH:mm'),
+            level: forecasts[0].beaufortScale,
+            speed: forecasts[0].windSpeed
           });
         }
       }
