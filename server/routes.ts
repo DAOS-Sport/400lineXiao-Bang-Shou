@@ -309,10 +309,12 @@ async function processWebhookEvent(event: any) {
           const taskType = match[1]; // 交辦 或 任務
           const taskSerial = match[2].padStart(2, '0'); // 確保是兩位數格式 01, 02...
           console.log(`✅ 偵測到完成任務指令: ${taskType}${taskSerial}完成 來自群組 ${source.groupId}`);
+          console.log(`🔍 DEBUG: 檢查任務 ${taskSerial} 在群組 ${source.groupId} 中的狀態`);
           
           try {
             // 先檢查任務是否存在（任何狀態）
             const allTasks = await storage.getTasksByGroupId(source.groupId); // 不指定狀態，獲取所有任務
+            console.log(`🔍 DEBUG: 群組 ${source.groupId} 中共有 ${allTasks.length} 個任務`);
             const existingTask = allTasks.find(t => t.taskIdSerial === taskSerial);
             
             if (existingTask && existingTask.status === 'completed') {
@@ -325,10 +327,11 @@ async function processWebhookEvent(event: any) {
               } catch (replyError) {
                 console.error(`❌ 回覆失敗:`, replyError);
                 try {
+                  console.log(`🔍 DEBUG: 準備推送到群組 ${source.groupId}: "${alreadyCompletedText}"`);
                   await lineService.pushMessage(source.groupId, alreadyCompletedText);
-                  console.log(`✅ 改用推送方式發送已完成提醒`);
+                  console.log(`✅ 改用推送方式發送已完成提醒到群組 ${source.groupId}`);
                 } catch (pushError) {
-                  console.error(`❌ 推送也失敗:`, pushError);
+                  console.error(`❌ 推送到群組 ${source.groupId} 也失敗:`, pushError);
                 }
               }
               return;
@@ -353,10 +356,11 @@ async function processWebhookEvent(event: any) {
                   console.error(`❌ 回覆訊息發送失敗:`, replyError);
                   // 嘗試推送而非回覆
                   try {
+                    console.log(`🔍 DEBUG: 準備推送任務完成訊息到群組 ${source.groupId}: "${replyText.substring(0, 50)}..."`);
                     await lineService.pushMessage(source.groupId, replyText);
-                    console.log(`✅ 改用推送方式發送完成訊息`);
+                    console.log(`✅ 改用推送方式發送完成訊息到群組 ${source.groupId}`);
                   } catch (pushError) {
-                    console.error(`❌ 推送也失敗:`, pushError);
+                    console.error(`❌ 推送到群組 ${source.groupId} 也失敗:`, pushError);
                   }
                 }
                 

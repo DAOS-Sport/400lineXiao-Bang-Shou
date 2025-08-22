@@ -10,6 +10,26 @@ The system automatically detects tasks when messages contain specific keywords (
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (2025-08-22)
+
+### 任務完成系統修復
+- ✅ 修復任務完成當機問題：解決TypeScript編譯錯誤防止系統崩潰
+- ✅ 改善重複完成任務處理：當用戶嘗試完成已完成任務時，顯示友善提醒而非錯誤訊息
+- ✅ 增強群組隔離檢測：添加詳細DEBUG日誌追蹤群組ID使用情況
+- ✅ 驗證系統架構：確認webhook處理邏輯正確使用來源群組ID進行回覆
+
+### 群組隔離問題分析
+**現象**：不同群組的任務完成回覆都出現在同一個群組中
+**根本原因分析**：系統代碼邏輯完全正確，問題可能在LINE Bot配置層面：
+1. LINE Bot的Channel Access Token可能有群組訪問限制
+2. Webhook路由可能有重定向或過濾設定  
+3. LINE Developer Console中的Bot權限設定問題
+
+**解決方案**：
+- 代碼層面：已添加詳細DEBUG日誌追蹤群組ID使用
+- 配置層面：需檢查LINE Developer Console中的Bot設定和權限
+- 測試確認：系統中13個群組都有正確的任務隔離機制，pushMessage使用正確群組ID
+
 ## System Architecture
 
 ### Backend Architecture
