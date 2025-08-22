@@ -71,10 +71,11 @@ Preferred communication style: Simple, everyday language.
 - **Water Quality Monitoring**: Specialized monitoring for multiple swimming pool facilities:
   - Single pool monitoring with temperature data
   - Multi-pool monitoring with additional equipment tracking (加藥量, 鍋爐狀態)
-- **Wind Forecast Service**: Dedicated wind prediction for specific location (24.77662974487106, 121.01465928420598):
+- **Wind Forecast Service**: Dedicated wind and weather prediction for golf driving range (24.77662974487106, 121.01465928420598):
   - Three daily reports at 06:00, 12:00, and 21:30
-  - Real-time wind speed, direction, and Beaufort scale
-  - Safety recommendations based on wind conditions
+  - Current wind conditions from C0D660 新竹東區工研院氣象站 (3.71km away)
+  - 6-hour weather forecast with rain probability and sunshine conditions (40 characters max)
+  - Golf course operation recommendations and safety alerts
   - Exclusive to group C360be1fe6ea876a4df3ca0497bca4e3b
 
 ### Authentication & Authorization
