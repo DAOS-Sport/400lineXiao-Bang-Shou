@@ -372,6 +372,155 @@ ${organizedContent}
       return null;
     }
   }
+
+  /**
+   * 使用 GPT 智能識別並解析整天對話中的水質記錄
+   */
+  async extractWaterQualityFromMessages(messages: IMessage[]): Promise<WaterQualityRecord[]> {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY 未設定');
+      }
+
+      const messageTexts = messages
+        .filter(m => m.text && m.text.trim())
+        .map(m => {
+          const time = new Date(m.timestamp).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+          const author = m.displayName || m.userId;
+          return `[${time}] ${author}: ${m.text}`;
+        })
+        .join('\n');
+
+      if (!messageTexts.trim()) {
+        return [];
+      }
+
+      const prompt = `您是專業的水質監測助理。請仔細分析以下群組對話記錄，識別所有水質相關的記錄。
+
+對話記錄：
+${messageTexts}
+
+🎯 任務目標：
+1. 識別任何提到水質數據的訊息（不管格式如何）
+2. 提取 CL（氯氣）、PH（酸鹼值）、水溫、氣溫等數值
+3. 推算或識別記錄的日期時間
+4. 整理成統一格式
+
+📋 識別規則：
+- 尋找包含數字的訊息，可能是水質數據
+- 關鍵字：CL、PH、氯、酸鹼、水溫、氣溫、溫度
+- 日期格式：民國年（如 114/8/22）或其他日期格式
+- 數值可能有空格或其他符號分隔
+
+⚠️ 重要：
+- 只提取真正的水質數據，不要憑空創造
+- 如果數據不完整，盡量推估合理值
+- 時間可以根據訊息時間戳推算
+
+請以 JSON 格式回傳結果：
+{
+  "waterQualityRecords": [
+    {
+      "date": "2025-08-22",
+      "time": "08:45", 
+      "cl": 2.6,
+      "ph": 7.6,
+      "waterTemp": 30.5,
+      "airTemp": 34,
+      "source": "原始訊息內容",
+      "author": "記錄者姓名",
+      "confidence": 0.95
+    }
+  ]
+}
+
+如果沒有找到水質記錄，請回傳：{"waterQualityRecords": []}`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o-mini" which was released for cost-effective usage. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "system",
+            content: "您是專業的水質監測分析師，擅長從各種格式的對話中準確識別和解析水質數據。您會仔細分析每條訊息，不遺漏任何可能的水質記錄。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      const result = JSON.parse(response.choices[0]?.message?.content || '{"waterQualityRecords": []}');
+      console.log(`🤖 GPT 識別水質記錄: 找到 ${result.waterQualityRecords?.length || 0} 筆記錄`);
+      
+      return result.waterQualityRecords || [];
+    } catch (error) {
+      console.error('GPT 水質識別失敗:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 生成水質分析報告
+   */
+  async generateWaterQualityAnalysis(records: WaterQualityRecord[]): Promise<string> {
+    try {
+      if (!process.env.OPENAI_API_KEY || records.length === 0) {
+        return '';
+      }
+
+      const recordsText = records.map(record => 
+        `${record.date} ${record.time} - CL:${record.cl} PH:${record.ph} 水溫:${record.waterTemp}°C 氣溫:${record.airTemp}°C (記錄者:${record.author})`
+      ).join('\n');
+
+      const prompt = `請分析以下水質監測記錄，提供專業的水質狀況評估：
+
+水質記錄：
+${recordsText}
+
+📊 請提供：
+1. 整體水質狀況評估
+2. CL、PH、溫度趨勢分析
+3. 異常值警告（如有）
+4. 改善建議
+5. 下次檢測重點
+
+請用繁體中文回覆，語調專業但易懂，控制在 200 字內。`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o-mini" which was released for cost-effective usage. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "system", 
+            content: "您是專業的水質監測專家，提供準確且實用的水質分析建議。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      });
+
+      return response.choices[0]?.message?.content || '';
+    } catch (error) {
+      console.error('生成水質分析失敗:', error);
+      return '';
+    }
+  }
+}
+
+// 水質記錄介面
+interface WaterQualityRecord {
+  date: string;
+  time: string;
+  cl: number;
+  ph: number;
+  waterTemp: number;
+  airTemp: number;
+  source: string;
+  author: string;
+  confidence: number;
 }
 
 export const llmService = new LLMService();

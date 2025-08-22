@@ -69,7 +69,16 @@ export class SchedulerService {
     });
     this.cronJobs.push(eveningWaterQualityReportJob);
 
-    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 + 每日13:00&17:30&20:30水質報告 (Asia/Taipei)');
+    // 🤖 每日 21:00 執行 GPT 智能水質分析 (補充識別遺漏的記錄)
+    const gptWaterQualityAnalysisJob = cron.schedule('0 21 * * *', async () => {
+      console.log('21:00 GPT 智能水質分析開始執行');
+      await this.performGPTWaterQualityAnalysis();
+    }, {
+      timezone: 'Asia/Taipei'
+    });
+    this.cronJobs.push(gptWaterQualityAnalysisJob);
+
+    console.log('排程服務已啟動 - 每日五次任務提醒 (06:30, 08:00, 11:00, 15:00, 20:00) + 每日02:00備份 + 每日13:00&17:30&20:30水質報告 + 每日21:00 GPT智能水質分析 (Asia/Taipei)');
   }
 
   stop(): void {
@@ -428,6 +437,71 @@ export class SchedulerService {
   async triggerManualSummary(): Promise<void> {
     console.log('手動觸發每日任務整理...');
     await this.dailyTaskSummary();
+  }
+
+  /**
+   * 🤖 執行 GPT 智能水質分析
+   */
+  private async performGPTWaterQualityAnalysis(): Promise<void> {
+    try {
+      console.log('🤖 開始執行 GPT 智能水質分析...');
+      
+      // 支援的水質監測群組
+      const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      
+      for (const groupId of waterQualityGroups) {
+        try {
+          console.log(`🔍 分析群組 ${groupId.substring(0, 8)}... 的水質對話`);
+          await waterQualityService.processWaterQualityWithGPT(groupId);
+          
+          // 群組間延遲避免過載
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.error(`❌ 群組 ${groupId} GPT 水質分析失敗:`, error);
+          
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'error',
+            category: 'gpt_water_quality',
+            message: 'GPT 水質分析失敗',
+            details: { 
+              groupId,
+              error: (error as Error).message,
+              scheduledBy: 'scheduler_service'
+            }
+          });
+        }
+      }
+      
+      console.log('✅ GPT 智能水質分析完成');
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'gpt_water_quality',
+        message: 'GPT 智能水質分析完成',
+        details: { 
+          analysisTime: new Date().toISOString(),
+          groupsProcessed: waterQualityGroups.length,
+          scheduledBy: 'scheduler_service'
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ GPT 水質分析總體處理失敗:', error);
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'gpt_water_quality',
+        message: 'GPT 水質分析總體失敗',
+        details: { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          analysisTime: new Date().toISOString()
+        }
+      });
+    }
   }
 
   /**

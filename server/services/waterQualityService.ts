@@ -6,6 +6,8 @@
 import { storage } from '../storage';
 import { lineService } from './lineService';
 import { waterQualityMemoryStore } from './waterQualityMemoryStore';
+import { llmService } from './llmService';
+import { type IMessage } from "@shared/schema";
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
@@ -387,6 +389,133 @@ export class WaterQualityService {
     
     if (data) {
       await this.saveWaterQualityRecord(data, groupId);
+    }
+  }
+
+  /**
+   * 🤖 使用 GPT 智能分析整天對話，識別並處理所有水質記錄
+   */
+  async processWaterQualityWithGPT(groupId: string): Promise<void> {
+    try {
+      console.log(`🤖 開始 GPT 智能水質分析 - 群組: ${groupId}`);
+      
+      // 支援的群組檢查
+      const supportedGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      if (!supportedGroups.includes(groupId)) {
+        console.log(`❌ 群組 ${groupId} 不支援水質監測`);
+        return;
+      }
+
+      // 獲取今天該群組的所有對話記錄 (擴大範圍到昨天，確保不遺漏)
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 0, 0, 0); // 從昨天開始
+      
+      const logs = await storage.getAuditLogs(500); // 獲取更多記錄以確保完整性
+      const todayMessages = logs.filter(log => 
+        log.timestamp >= startOfDay &&
+        log.message === '訊息已儲存' &&
+        log.details &&
+        typeof log.details === 'object' &&
+        'groupId' in log.details &&
+        (log.details as any).groupId === groupId &&
+        'text' in log.details
+      );
+
+      if (todayMessages.length === 0) {
+        console.log(`📭 群組 ${groupId} 今天沒有對話記錄`);
+        return;
+      }
+
+      // 轉換為 IMessage 格式
+      const messages: IMessage[] = todayMessages.map(log => ({
+        id: log.id,
+        text: (log.details as any).text || '',
+        userId: (log.details as any).userId || '',
+        groupId: groupId,
+        displayName: (log.details as any).displayName || '',
+        timestamp: log.timestamp,
+        messageId: (log.details as any).messageId || ''
+      }));
+
+      console.log(`📊 分析 ${messages.length} 條對話記錄...`);
+
+      // 使用 GPT 智能識別水質記錄
+      const gptWaterQualityRecords = await llmService.extractWaterQualityFromMessages(messages);
+      
+      if (gptWaterQualityRecords.length === 0) {
+        console.log('🔍 GPT 未識別到水質記錄');
+        return;
+      }
+
+      console.log(`🎯 GPT 識別到 ${gptWaterQualityRecords.length} 筆水質記錄`);
+
+      // 將 GPT 識別的記錄轉換為系統格式並保存
+      for (const gptRecord of gptWaterQualityRecords) {
+        const waterQualityData: WaterQualityData = {
+          date: gptRecord.date,
+          time: gptRecord.time,
+          cl: gptRecord.cl,
+          ph: gptRecord.ph,
+          waterTemp: gptRecord.waterTemp,
+          airTemp: gptRecord.airTemp,
+          messageId: crypto.randomUUID(), // 生成新的 messageId
+          userId: 'gpt-processed'
+        };
+
+        // 檢查是否已存在相同記錄（避免重複）
+        const existingRecords = waterQualityMemoryStore.getTodayRecords();
+        const isDuplicate = existingRecords.some(existing => 
+          existing.date === waterQualityData.date &&
+          existing.time === waterQualityData.time &&
+          existing.cl === waterQualityData.cl &&
+          existing.ph === waterQualityData.ph
+        );
+
+        if (!isDuplicate) {
+          await this.saveWaterQualityRecord(waterQualityData, groupId);
+          console.log(`✅ GPT 識別記錄已保存: ${gptRecord.date} ${gptRecord.time} - CL:${gptRecord.cl} PH:${gptRecord.ph} (${gptRecord.author})`);
+        } else {
+          console.log(`⏭️ 跳過重複記錄: ${gptRecord.date} ${gptRecord.time}`);
+        }
+      }
+
+      // 生成 GPT 分析報告
+      const analysisReport = await llmService.generateWaterQualityAnalysis(gptWaterQualityRecords);
+      
+      if (analysisReport) {
+        // 發送分析報告到群組
+        const reportMessage = `🤖 AI 水質智能分析報告\n\n${analysisReport}\n\n📊 已識別並處理 ${gptWaterQualityRecords.length} 筆水質記錄`;
+        await lineService.sendToGroup(groupId, reportMessage);
+        console.log(`📊 GPT 水質分析報告已發送到群組 ${groupId}`);
+      }
+
+      // 記錄處理結果到 audit logs
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'water_quality_gpt',
+        message: 'GPT 水質智能分析完成',
+        details: {
+          groupId,
+          messagesAnalyzed: messages.length,
+          recordsFound: gptWaterQualityRecords.length,
+          analysisGenerated: !!analysisReport
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ GPT 水質分析失敗:', error);
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'water_quality_gpt',
+        message: 'GPT 水質智能分析失敗',
+        details: { 
+          groupId, 
+          error: (error as Error).message 
+        }
+      });
     }
   }
 }
