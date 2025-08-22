@@ -304,7 +304,9 @@ async function processWebhookEvent(event: any) {
       if (source.type === 'group') {
         // 支持三種格式：交辦01完成、任務01完成、任務01已完成
         const completeTaskPattern = /^(交辦|任務)(\d+)(完成|已完成)$/i;
+        console.log(`🔍 檢查完成指令: "${text}" vs 正則: ${completeTaskPattern}`);
         const match = text.match(completeTaskPattern);
+        console.log(`🔍 匹配結果:`, match);
         if (match) {
           const taskType = match[1]; // 交辦 或 任務
           const taskSerial = match[2].padStart(2, '0'); // 確保是兩位數格式 01, 02...
