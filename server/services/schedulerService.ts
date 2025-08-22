@@ -166,17 +166,17 @@ export class SchedulerService {
 
   private async dailyTaskSummary(): Promise<void> {
     try {
-      // 獲取所有有待辦任務的群組
+      // 🔒 修復：只獲取有未完成任務的群組 (排除已完成任務)
       const allPendingTasks = await storage.getTasksByStatus('pending');
       const groupIds: string[] = [];
       allPendingTasks.forEach(task => {
-        if (!groupIds.includes(task.groupId)) {
+        if (task.status === 'pending' && !groupIds.includes(task.groupId)) {
           groupIds.push(task.groupId);
         }
       });
       
       if (groupIds.length === 0) {
-        console.log('目前沒有任何群組有待辦任務，跳過任務整理');
+        console.log('✅ 所有任務均已完成，無需任務提醒');
         return;
       }
 

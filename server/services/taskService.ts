@@ -226,48 +226,75 @@ export class TaskService {
   async generateCompletionMessage(taskText: string): Promise<string> {
     try {
       if (!process.env.OPENAI_API_KEY) {
-        return '謝謝您的辛勞！任務完成辛苦了！';
+        return this.getRandomThankYouMessage();
       }
 
-      const prompt = `根據以下已完成的任務內容，生成一句溫馨的感謝回應：
+      const prompt = `根據以下已完成的任務內容，生成一句不重複的感謝回應：
 
 任務內容: ${taskText.substring(0, 100)}
 
 要求：
-1. 根據任務難易度和重要性調整感謝語氣
-2. 使用溫暖正面的表達
-3. 控制在20字以內
+1. 每次都要產生完全不同的回應內容
+2. 根據任務類型給予個人化感謝
+3. 控制在15字以內
 4. 使用繁體中文
-5. 體現團隊合作精神
+5. 語氣要親切自然，避免公式化
 
-範例：
-- 簡單任務："謝謝您！效率超讚！"
-- 複雜任務："辛苦了！這個任務處理得很棒！"  
-- 重要任務："太感謝了！公司有您真好！"
+多樣化範例：
+- "太棒了！處理超快的！"
+- "您真厲害！搞定這個了！"  
+- "感謝協助！辛苦您了！"
+- "完美解決！謝謝幫忙！"
+- "效率王者！感恩您！"
+- "任務達成！您太強了！"
 
-請直接回覆感謝語句，不要包含其他說明。`;
+請直接回覆一句感謝話，要與以往不同，不要重複。`;
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 50
+        temperature: 0.9, // 提高創造性
+        max_tokens: 30
       });
 
       const message = response.choices[0]?.message?.content?.trim();
       
-      if (message && message.length <= 30) {
+      if (message && message.length <= 20 && message.length >= 5) {
         return message;
       } else {
-        return '謝謝您！任務完成辛苦了！';
+        return this.getRandomThankYouMessage();
       }
       
     } catch (error) {
       console.error('❌ 生成完成訊息失敗:', error);
-      return '謝謝您！任務完成辛苦了！';
+      return this.getRandomThankYouMessage();
     }
+  }
+
+  // 備用的多樣化感謝訊息
+  private getRandomThankYouMessage(): string {
+    const messages = [
+      '太棒了！處理超快的！',
+      '您真厲害！搞定這個了！',
+      '感謝協助！辛苦您了！',
+      '完美解決！謝謝幫忙！',
+      '效率王者！感恩您！',
+      '任務達成！您太強了！',
+      '超讚的！謝謝處理！',
+      '快速搞定！您好棒！',
+      '辛苦了！工作完成！',
+      '感謝配合！效率滿分！',
+      '處理得很好！讚讚！',
+      '謝謝幫助！超級棒！',
+      '完成了！您太神了！',
+      '好厲害！謝謝完成！',
+      '速度超快！感謝您！'
+    ];
+    
+    const randomIndex = Math.floor(Math.random() * messages.length);
+    return messages[randomIndex];
   }
 }
 
