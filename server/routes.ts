@@ -503,7 +503,26 @@ async function processWebhookEvent(event: any) {
         // 只有在不是完成指令的情況下，才進行交辦偵測
         if (!isCompleteCommand && text.includes('交辦')) {
           console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
-          await taskService.createTaskFromMessage(savedMessage, text);
+          const taskResult = await taskService.createTaskFromMessage(savedMessage, text);
+          
+          // 如果成功創建任務，自動回覆確認
+          if (taskResult) {
+            const confirmationText = `✅ 已登記交辦任務-${taskResult.taskSerial}`;
+            console.log(`📤 準備回覆任務創建確認: "${confirmationText}"`);
+            
+            try {
+              await lineService.replyMessage(event.replyToken, confirmationText);
+              console.log(`✅ 任務創建確認已發送`);
+            } catch (replyError) {
+              console.error(`❌ 回覆任務創建確認失敗:`, replyError);
+              try {
+                await lineService.pushMessage(source.groupId, confirmationText);
+                console.log(`✅ 改用推送方式發送任務創建確認到群組 ${source.groupId}`);
+              } catch (pushError) {
+                console.error(`❌ 推送任務創建確認也失敗:`, pushError);
+              }
+            }
+          }
         }
       }
 

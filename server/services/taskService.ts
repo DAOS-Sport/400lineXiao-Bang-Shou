@@ -6,7 +6,7 @@ import crypto from "crypto";
 import OpenAI from "openai";
 
 export class TaskService {
-  async createTaskFromMessage(message: IMessage, text: string): Promise<void> {
+  async createTaskFromMessage(message: IMessage, text: string): Promise<{ taskSerial: string; taskText: string } | null> {
     try {
       if (!message.groupId) {
         throw new Error('只能在群組中建立任務');
@@ -58,7 +58,7 @@ export class TaskService {
       const recentTasks = await this.getRecentSimilarTasks(message.groupId, finalTaskText);
       if (recentTasks.length > 0) {
         console.log(`⚠️ 發現相似任務，跳過創建: ${recentTasks[0].taskIdSerial}`);
-        return;
+        return null;
       }
 
       // 建立任務 (流水號會在 insertTask 內自動產生，確保原子性)
@@ -88,6 +88,12 @@ export class TaskService {
         }
       });
 
+      // 返回創建的任務資訊
+      return {
+        taskSerial: createdTask.taskIdSerial,
+        taskText: finalTaskText
+      };
+
     } catch (error: any) {
       console.error('建立任務失敗:', error);
       await storage.insertAuditLog({
@@ -101,7 +107,7 @@ export class TaskService {
           groupId: message.groupId
         }
       });
-      throw error;
+      return null;
     }
   }
 
@@ -234,20 +240,20 @@ export class TaskService {
 任務內容: ${taskText.substring(0, 100)}
 
 要求：
-1. 使用霸道總裁語氣，自信、讚賞、有威嚴但不失溫度
-2. 字數控制在25-40字之間，比較有份量感
-3. 根據任務類型給出相對應的評價
-4. 體現任務完成的具體價值和意義
-5. 使用繁體中文，語氣要霸氣但正面
+1. 使用霸道總裁語氣，自信、直接、帶有威嚴的讚賞
+2. 字數控制在20-30字之間
+3. 語氣要霸氣、自信，體現上位者的認可
+4. 使用繁體中文，要有「我很滿意」的霸氣感
+5. 避免過於溫柔，要展現總裁的威嚴和讚賞
 
 霸道總裁風格範例：
-- 打掃類："很好，這種專業的執行力正是我要的。環境品質直接反映團隊水準，你做得相當出色。"
-- 文件類："完美的整理能力，這種細緻度讓我刮目相看。有條理的工作正是高效率的關鍵。"
-- 聯絡類："優秀的溝通協調，這種效率讓我很滿意。能快速解決問題的人才是我最需要的。"
-- 確認類："非常謹慎的確認工作，這種嚴謹度符合我的標準。細節決定成敗，你證明了自己。"
-- 收款類："款項處理得相當專業，這種精準度正是財務工作的核心。我對你的表現很滿意。"
+- 打掃類："很好，這種執行力我很滿意。環境品質正是我要的專業水準。"
+- 文件類："完美的整理，這種效率符合我的標準。繼續保持這種表現。"
+- 聯絡類："出色的溝通協調，這種能力正是我需要的。你證明了自己。"
+- 確認類："謹慎的確認工作，這種嚴謹度讓我刮目相看。做得不錯。"
+- 買餐類："貼心的服務，這種細心正是優秀員工的表現。我很認可。"
 
-請根據任務內容，生成一句霸道總裁風格的讚賞話語。語氣要自信、有威嚴但讚賞，字數25-40字。`;
+請生成20-30字的霸道總裁風格讚賞話語，要有威嚴感和認可感。`;
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       
@@ -260,7 +266,7 @@ export class TaskService {
 
       const message = response.choices[0]?.message?.content?.trim();
       
-      if (message && message.length <= 45 && message.length >= 20) {
+      if (message && message.length <= 35 && message.length >= 20) {
         return message;
       } else {
         return this.getRandomThankYouMessage();
@@ -276,32 +282,37 @@ export class TaskService {
   private getRandomThankYouMessage(): string {
     const messagesByType = {
       cleaning: [
-        '很好，這種專業的執行力正是我要的。環境品質直接反映團隊水準，你做得相當出色。',
-        '優秀的清潔工作，這種細緻度讓我刮目相看。完美的環境正是高效率的基礎。',
-        '相當專業的打掃成果，這種品質符合我的標準。你證明了自己的專業能力。'
+        '很好，這種執行力我很滿意。環境品質正是我要的專業水準。',
+        '出色的清潔工作，這種細緻度符合我的標準。繼續保持。',
+        '專業的打掃成果，這種品質讓我刮目相看。做得不錯。'
       ],
       document: [
-        '完美的整理能力，這種細緻度讓我很滿意。有條理的工作正是高效率的關鍵。',
-        '非常專業的文件處理，這種精準度符合我的要求。你的工作效率令我印象深刻。',
-        '優秀的資料歸檔工作，這種系統性思維正是我需要的。你做得相當出色。'
+        '完美的整理，這種效率符合我的標準。繼續保持這種表現。',
+        '專業的文件處理，這種精準度正是我要的。你證明了自己。',
+        '優秀的資料歸檔，這種系統性思維讓我很認可。做得好。'
       ],
       communication: [
-        '優秀的溝通協調，這種效率讓我很滿意。能快速解決問題的人才是我最需要的。',
-        '相當專業的聯絡工作，這種及時性符合我的標準。你證明了自己的執行力。',
-        '很好的協調能力，這種溝通技巧正是團隊成功的關鍵。我對你的表現很滿意。'
+        '出色的溝通協調，這種能力正是我需要的。你證明了自己。',
+        '專業的聯絡工作，這種及時性符合我的標準。我很滿意。',
+        '很好的協調能力，這種效率正是我要的。繼續保持。'
       ],
       verification: [
-        '非常謹慎的確認工作，這種嚴謹度符合我的標準。細節決定成敗，你證明了自己。',
-        '優秀的核實能力，這種專業度讓我刮目相看。精確的工作正是品質的保證。',
-        '相當專業的檢驗工作，這種細緻度符合我的要求。你的專業能力令我印象深刻。'
+        '謹慎的確認工作，這種嚴謹度讓我刮目相看。做得不錯。',
+        '出色的核實能力，這種專業度符合我的標準。我很認可。',
+        '專業的檢驗工作，這種細緻度正是我要的。你證明了自己。'
+      ],
+      service: [
+        '貼心的服務，這種細心正是優秀員工的表現。我很認可。',
+        '周到的安排，這種體貼度符合我的標準。做得很好。',
+        '專業的服務態度，這種用心讓我很滿意。繼續保持。'
       ],
       general: [
-        '出色的執行力，這種效率正是我要的。能快速完成任務的人才是團隊的核心。',
-        '非常專業的工作成果，這種品質讓我很滿意。你證明了自己的價值和能力。',
-        '優秀的任務完成度，這種專業水準符合我的標準。繼續保持這種卓越表現。',
-        '相當出色的工作效率，這種執行力讓我刮目相看。你的表現超出了我的期待。',
-        '很好的任務處理，這種專業度正是成功的關鍵。我對你的工作能力很滿意。',
-        '完美的任務達成，這種品質符合我的要求。你用實力證明了自己的專業價值。'
+        '出色的執行力，這種效率正是我要的。你證明了自己。',
+        '專業的工作成果，這種品質讓我很滿意。做得不錯。',
+        '優秀的任務完成度，這種水準符合我的標準。我很認可。',
+        '很好的工作效率，這種執行力讓我刮目相看。繼續保持。',
+        '專業的任務處理，這種能力正是我需要的。你做得很好。',
+        '完美的任務達成，這種品質符合我的要求。我很滿意。'
       ]
     };
     
