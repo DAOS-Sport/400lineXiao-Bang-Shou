@@ -2,9 +2,9 @@
 
 ## Overview
 
-This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant with specialized water quality monitoring capabilities. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, scheduled daily reminders, comprehensive message backup functionality, and dedicated water quality monitoring for swimming pool facilities. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
+This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant with specialized monitoring capabilities. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, scheduled daily reminders, comprehensive message backup functionality, dedicated water quality monitoring for swimming pool facilities, and wind forecast services. The architecture follows a headless API approach with strict group isolation to ensure data security and proper boundary management.
 
-The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 08:00, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, authorized group management for GPT functionality, a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00, and specialized water quality monitoring for group C50c2a9623a78cc5f5e9f39557e3abfe6 with daily reports at 22:00.
+The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides daily task summaries at 06:30, 08:00, 11:00, 15:00, and 20:00 Asia/Taipei time. It includes admin controls, user identification features, authorized group management for GPT functionality, a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00, specialized water quality monitoring for group C50c2a9623a78cc5f5e9f39557e3abfe6 with daily reports at 13:00, 17:30, and 20:30, and wind forecast services for group C360be1fe6ea876a4df3ca0497bca4e3b at 06:00, 12:00, and 21:30.
 
 ## User Preferences
 
@@ -58,7 +58,8 @@ Preferred communication style: Simple, everyday language.
 - **Cron Jobs**: node-cron with Asia/Taipei timezone for:
   - Five daily task reminders (06:30, 08:00, 11:00, 15:00, 20:00)
   - Daily message backup at 02:00
-  - Daily water quality reports at 13:00, 17:30, and 20:30 (for authorized group)
+  - Daily water quality reports at 13:00, 17:30, and 20:30 (for authorized groups)
+  - Daily wind forecast reports at 06:00, 12:00, and 21:30 (for group C360be1fe6ea876a4df3ca0497bca4e3b)
 - **Group Push**: Direct push to LINE groups using pushMessage(groupId) API
   - 300ms delay between groups to avoid rate limiting
   - Automatic retry with exponential backoff for 429/5xx errors
@@ -70,6 +71,11 @@ Preferred communication style: Simple, everyday language.
 - **Water Quality Monitoring**: Specialized monitoring for multiple swimming pool facilities:
   - Single pool monitoring with temperature data
   - Multi-pool monitoring with additional equipment tracking (加藥量, 鍋爐狀態)
+- **Wind Forecast Service**: Dedicated wind prediction for specific location (24.77662974487106, 121.01465928420598):
+  - Three daily reports at 06:00, 12:00, and 21:30
+  - Real-time wind speed, direction, and Beaufort scale
+  - Safety recommendations based on wind conditions
+  - Exclusive to group C360be1fe6ea876a4df3ca0497bca4e3b
 
 ### Authentication & Authorization
 - **Multi-layer Security**: Support for both Basic Auth and Bearer Token authentication
