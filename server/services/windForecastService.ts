@@ -295,21 +295,24 @@ export class WindForecastService {
   }
 
   /**
-   * 生成風力預報報告
+   * 生成風力預報報告（高爾夫球場專用版本）
    */
   async generateWindForecastReport(): Promise<string> {
     try {
       const forecasts = await this.getWindForecast();
       const now = dayjs().tz('Asia/Taipei');
       
-      let report = `🌬️ 風力預測報告\n`;
+      let report = `🏌️ 高爾夫球場風力預報\n`;
       report += `📍 位置：${this.locationName}\n`;
       report += `📊 座標：${this.latitude.toFixed(4)}, ${this.longitude.toFixed(4)}\n`;
       report += `⏰ 報告時間：${now.format('MM/DD HH:mm')}\n`;
       report += `━━━━━━━━━━━━━━━━\n\n`;
 
       // 顯示未來6小時的風力預報
-      report += `【未來6小時風力預測】\n`;
+      report += `【風力預測數據】\n`;
+      
+      let maxWindLevel = 0;
+      let criticalWindPeriods = [];
       
       for (let i = 0; i < Math.min(2, forecasts.length); i++) {
         const forecast = forecasts[i];
@@ -319,28 +322,146 @@ export class WindForecastService {
         report += `💨 風速：${forecast.windSpeed} m/s\n`;
         report += `🧭 風向：${forecast.windDirection}風\n`;
         report += `📊 風級：${forecast.beaufortScale}級（${forecast.description}）\n`;
+        
+        // 追蹤最高風級和關鍵時段
+        maxWindLevel = Math.max(maxWindLevel, forecast.beaufortScale);
+        if (forecast.beaufortScale >= 6) {
+          criticalWindPeriods.push({
+            time: forecastTime.format('HH:mm'),
+            level: forecast.beaufortScale,
+            speed: forecast.windSpeed
+          });
+        }
       }
 
-      // 風力評估
-      report += `\n━━━━━━━━━━━━━━━━\n`;
-      report += `💡 風力評估：\n`;
+      // 使用 GPT 分析風力並提供高爾夫球場建議
+      const golfAdvice = await this.generateGolfCourseAdvice(forecasts, maxWindLevel, criticalWindPeriods);
       
-      const maxWind = Math.max(...forecasts.slice(0, 2).map(f => f.beaufortScale));
-      if (maxWind >= 7) {
-        report += `⚠️ 注意：預測有${maxWind}級風，請注意安全\n`;
-        report += `建議暫停戶外活動`;
-      } else if (maxWind >= 5) {
-        report += `⚡ 風力較強，戶外活動需謹慎\n`;
-        report += `建議做好防風準備`;
-      } else {
-        report += `✅ 風力適中，適合一般活動`;
-      }
+      report += `\n━━━━━━━━━━━━━━━━\n`;
+      report += golfAdvice;
 
       return report;
 
     } catch (error) {
       console.error('生成風力報告失敗:', error);
-      return `🌬️ 風力預測報告\n\n❌ 系統錯誤，請聯繫管理員`;
+      return `🏌️ 高爾夫球場風力預報\n\n❌ 系統錯誤，請聯繫管理員`;
+    }
+  }
+
+  /**
+   * 使用 GPT 生成高爾夫球場專用建議
+   */
+  private async generateGolfCourseAdvice(forecasts: WindForecastData[], maxWindLevel: number, criticalPeriods: any[]): Promise<string> {
+    try {
+      // 準備 GPT 分析的數據
+      const windData = forecasts.map(f => ({
+        time: dayjs(f.time).tz('Asia/Taipei').format('HH:mm'),
+        windSpeed: f.windSpeed,
+        windDirection: f.windDirection,
+        beaufortScale: f.beaufortScale,
+        description: f.description
+      }));
+
+      const prompt = `你是專業的高爾夫球場管理顧問。根據以下風力預報數據，為室外高爾夫練習場提供專業建議：
+
+風力預報數據：
+${JSON.stringify(windData, null, 2)}
+
+最高風級：${maxWindLevel}級
+關鍵時段：${criticalPeriods.length > 0 ? JSON.stringify(criticalPeriods) : '無'}
+
+請提供以下格式的建議（繁體中文）：
+
+🏌️ 球場營運建議：
+[針對練習場營運的具體建議]
+
+🕸️ 防護網管理：
+[根據風級給出網子升降建議]
+- 6級風以上：建議降網
+- 7級風以上：必須降網並特別注意安全
+
+⛳ 打球條件評估：
+[評估風力對打球的影響]
+
+🚨 安全提醒：
+[任何安全相關的重要提醒]
+
+請保持專業、簡潔，重點關注實際操作建議。`;
+
+      // 這裡應該調用 LLM 服務，但目前先提供基本邏輯
+      let advice = `🏌️ 球場營運建議：\n`;
+      
+      if (maxWindLevel >= 7) {
+        advice += `⚠️ 7級以上強風預警！建議暫停營業並立即降網\n`;
+        advice += `📞 通知所有客戶取消預約，確保人員安全\n\n`;
+      } else if (maxWindLevel >= 6) {
+        advice += `⚡ 6級風力影響，建議提前降網防護\n`;
+        advice += `👥 減少同時段練習人數，加強現場巡視\n\n`;
+      } else if (maxWindLevel >= 4) {
+        advice += `🌬️ 中等風力，適合練習但需注意球路偏移\n`;
+        advice += `📋 提醒客戶調整揮桿力道和方向\n\n`;
+      } else {
+        advice += `✅ 風力適中，練習條件良好\n`;
+        advice += `🎯 適合進行精準度練習和長距離訓練\n\n`;
+      }
+
+      advice += `🕸️ 防護網管理：\n`;
+      if (criticalPeriods.length > 0) {
+        for (const period of criticalPeriods) {
+          if (period.level >= 7) {
+            advice += `🚨 ${period.time} - ${period.level}級風 (${period.speed}m/s)：必須降網！\n`;
+          } else if (period.level >= 6) {
+            advice += `⚠️ ${period.time} - ${period.level}級風 (${period.speed}m/s)：建議降網\n`;
+          }
+        }
+      } else {
+        advice += `✅ 風力穩定，防護網可正常使用\n`;
+      }
+
+      advice += `\n⛳ 打球條件評估：\n`;
+      const avgWind = forecasts.reduce((sum, f) => sum + f.beaufortScale, 0) / forecasts.length;
+      if (avgWind >= 5) {
+        advice += `🎯 風力較強，球路受影響明顯，建議：\n`;
+        advice += `   • 選擇較重的練習球\n`;
+        advice += `   • 調整擊球角度和力道\n`;
+        advice += `   • 選擇順風或側風位置練習\n`;
+      } else {
+        advice += `🎯 風力適中，適合各種練習項目\n`;
+      }
+
+      advice += `\n🚨 安全提醒：\n`;
+      if (maxWindLevel >= 6) {
+        advice += `⚠️ 強風時段務必：\n`;
+        advice += `   • 確認防護網已降下\n`;
+        advice += `   • 增派安全人員巡查\n`;
+        advice += `   • 準備應急疏散預案\n`;
+        advice += `   • 密切關注天氣變化`;
+      } else {
+        advice += `✅ 目前風力安全，維持正常作業即可`;
+      }
+
+      return advice;
+
+    } catch (error) {
+      console.error('生成高爾夫建議失敗:', error);
+      
+      // 備用建議邏輯
+      let fallbackAdvice = `🏌️ 球場營運建議：\n`;
+      if (maxWindLevel >= 6) {
+        fallbackAdvice += `⚠️ ${maxWindLevel}級風力，建議降網並加強安全管理\n\n`;
+        fallbackAdvice += `🕸️ 防護網管理：\n`;
+        fallbackAdvice += `🚨 請立即降網，確保練習場安全\n\n`;
+        fallbackAdvice += `🚨 安全提醒：\n`;
+        fallbackAdvice += `強風時段請特別注意客戶安全`;
+      } else {
+        fallbackAdvice += `✅ 風力適中，適合正常營業\n\n`;
+        fallbackAdvice += `🕸️ 防護網管理：\n`;
+        fallbackAdvice += `✅ 防護網可正常使用\n\n`;
+        fallbackAdvice += `⛳ 打球條件評估：\n`;
+        fallbackAdvice += `適合各種練習項目`;
+      }
+      
+      return fallbackAdvice;
     }
   }
 
