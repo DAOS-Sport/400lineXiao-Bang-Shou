@@ -265,18 +265,18 @@ ${taskTexts}
     try {
       console.log(`🤖 開始整理長任務內容 (${taskText.length} 字符)`);
 
-      const prompt = `請將以下交辦事項內容進行整理，要求：
-1. 保留所有重要信息和具體細節
-2. 去除重複的內容
-3. 按邏輯順序重組
-4. 使用簡潔清晰的表達
+      const prompt = `請將以下交辦事項內容進行精簡整理，嚴格要求：
+1. 總字數必須控制在 300 字以內
+2. 保留最核心的重要信息，去除冗餘細節
+3. 合併相似或重複的項目
+4. 使用簡潔明瞭的表達
 5. 保持專業的交辦語氣
-6. 如果有多個任務項目，請用數字列表標示
+6. 用簡短的條列式呈現
 
-請整理以下內容：
+請整理以下內容（務必縮減至300字內）：
 ${taskText}
 
-請直接回覆整理後的內容，不要包含其他說明文字。`;
+請直接回覆精簡後的內容，不要包含其他說明文字。`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -297,7 +297,45 @@ ${taskText}
         return null;
       }
 
-      console.log(`✅ 任務整理完成: ${taskText.length} → ${organizedContent.length} 字符`);
+      // 驗證字數限制，如果超過 300 字則進行二次精簡
+      let finalContent = organizedContent;
+      if (organizedContent.length > 300) {
+        console.log(`⚠️ 內容仍超過 300 字 (${organizedContent.length}字)，進行二次精簡...`);
+        
+        const secondPrompt = `以下內容仍然太長，請進一步精簡至 250 字以內：
+${organizedContent}
+
+要求：
+- 只保留最核心的關鍵信息
+- 合併相同性質的項目
+- 使用最簡短的表達
+- 字數嚴格控制在 250 字內
+
+請直接回覆精簡後的內容。`;
+
+        try {
+          const secondResponse = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ role: "user", content: secondPrompt }],
+            temperature: 0.1,
+            max_tokens: 500
+          });
+
+          const compactContent = secondResponse.choices[0]?.message?.content?.trim();
+          if (compactContent && compactContent.length <= 300) {
+            finalContent = compactContent;
+            console.log(`✅ 二次精簡成功: ${organizedContent.length} → ${finalContent.length} 字符`);
+          } else {
+            console.warn(`⚠️ 二次精簡失敗，使用截斷方式`);
+            finalContent = organizedContent.substring(0, 297) + '...';
+          }
+        } catch (error) {
+          console.warn('⚠️ 二次精簡失敗，使用截斷方式:', error);
+          finalContent = organizedContent.substring(0, 297) + '...';
+        }
+      }
+
+      console.log(`✅ 任務整理完成: ${taskText.length} → ${finalContent.length} 字符 (${finalContent.length <= 300 ? '✅' : '❌'} 符合300字限制)`);
       
       // 記錄成功
       await storage.insertAuditLog({
@@ -307,12 +345,14 @@ ${taskText}
         message: 'GPT 任務內容整理成功',
         details: {
           originalLength: taskText.length,
-          organizedLength: organizedContent.length,
-          compressionRatio: ((taskText.length - organizedContent.length) / taskText.length * 100).toFixed(1) + '%'
+          organizedLength: finalContent.length,
+          compressionRatio: ((taskText.length - finalContent.length) / taskText.length * 100).toFixed(1) + '%',
+          withinLimit: finalContent.length <= 300,
+          requiresSecondPass: organizedContent.length > 300
         }
       });
 
-      return organizedContent;
+      return finalContent;
 
     } catch (error) {
       console.error('❌ GPT 任務整理失敗:', error);
