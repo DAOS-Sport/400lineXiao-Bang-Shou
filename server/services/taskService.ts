@@ -229,26 +229,28 @@ export class TaskService {
         return this.getRandomThankYouMessage();
       }
 
-      const prompt = `根據以下已完成的任務內容，生成一句不重複的感謝回應：
+      const prompt = `根據以下已完成的任務內容，生成一句針對性的感謝回應：
 
 任務內容: ${taskText.substring(0, 100)}
 
 要求：
-1. 每次都要產生完全不同的回應內容
-2. 根據任務類型給予個人化感謝
+1. 根據任務類型和內容給出相對應的感謝語句
+2. 體現任務完成的具體效果或品質
 3. 控制在15字以內
 4. 使用繁體中文
-5. 語氣要親切自然，避免公式化
+5. 語氣親切自然
 
-多樣化範例：
-- "太棒了！處理超快的！"
-- "您真厲害！搞定這個了！"  
-- "感謝協助！辛苦您了！"
-- "完美解決！謝謝幫忙！"
-- "效率王者！感恩您！"
-- "任務達成！您太強了！"
+針對性範例：
+- 打掃類："感謝您！掃得超乾淨！"
+- 文件類："整理得好完整！謝謝！"
+- 聯絡類："溝通順利！您好棒！"
+- 確認類："核實得很仔細！讚！"
+- 檢查類："檢查得很徹底！棒！"
+- 製作類："製作精美！太厲害了！"
+- 處理類："處理得很妥當！感謝！"
+- 收款類："款項確認完畢！謝謝！"
 
-請直接回覆一句感謝話，要與以往不同，不要重複。`;
+請根據任務的具體內容，回覆一句針對該任務類型的感謝話。`;
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       
@@ -273,27 +275,45 @@ export class TaskService {
     }
   }
 
-  // 備用的多樣化感謝訊息
+  // 備用的針對性感謝訊息（按任務類型分類）
   private getRandomThankYouMessage(): string {
-    const messages = [
-      '太棒了！處理超快的！',
-      '您真厲害！搞定這個了！',
-      '感謝協助！辛苦您了！',
-      '完美解決！謝謝幫忙！',
-      '效率王者！感恩您！',
-      '任務達成！您太強了！',
-      '超讚的！謝謝處理！',
-      '快速搞定！您好棒！',
-      '辛苦了！工作完成！',
-      '感謝配合！效率滿分！',
-      '處理得很好！讚讚！',
-      '謝謝幫助！超級棒！',
-      '完成了！您太神了！',
-      '好厲害！謝謝完成！',
-      '速度超快！感謝您！'
-    ];
+    const messagesByType = {
+      cleaning: [
+        '感謝您！掃得超乾淨！',
+        '打掃得真仔細！讚！',
+        '環境整理完美！謝謝！'
+      ],
+      document: [
+        '整理得好完整！謝謝！',
+        '文件處理得很棒！',
+        '資料歸檔超整齊！'
+      ],
+      communication: [
+        '溝通順利！您好棒！',
+        '聯絡得很及時！謝謝！',
+        '協調處理得很好！'
+      ],
+      verification: [
+        '核實得很仔細！讚！',
+        '確認工作很到位！',
+        '檢驗結果很準確！'
+      ],
+      general: [
+        '太棒了！處理超快的！',
+        '您真厲害！搞定這個了！',
+        '完美解決！謝謝幫忙！',
+        '效率滿分！感謝您！',
+        '任務達成！您太強了！',
+        '辛苦了！工作完成！'
+      ]
+    };
     
+    // 隨機選擇一個分類，然後從該分類中隨機選一個訊息
+    const categories = Object.keys(messagesByType);
+    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+    const messages = messagesByType[randomCategory as keyof typeof messagesByType];
     const randomIndex = Math.floor(Math.random() * messages.length);
+    
     return messages[randomIndex];
   }
 }
