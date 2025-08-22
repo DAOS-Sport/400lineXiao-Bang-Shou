@@ -117,13 +117,18 @@ Preferred communication style: Simple, everyday language.
 ### Water Quality Monitoring
 - **Dual Recognition System**: 
   - Traditional RegEx-based parsing for Taiwanese date format (民國年) and water quality parameters
-  - **🤖 NEW: GPT Intelligent Analysis** - AI-powered conversation analysis to identify water quality records regardless of format variations
+  - **🤖 GPT Intelligent Analysis** - AI-powered conversation analysis to identify water quality records regardless of format variations
 - **Memory Caching**: In-memory storage for daily water quality data with automatic cleanup
 - **Data Validation**: Comprehensive validation for chlorine levels, pH values, and temperature readings
 - **Report Generation**: 
   - Automated daily summaries with status evaluation and trend analysis
-  - **🤖 NEW: AI-Generated Analysis Reports** - GPT-powered professional water quality assessments with improvement recommendations
+  - **🤖 AI-Generated Analysis Reports** - GPT-powered professional water quality assessments with improvement recommendations
+  - **🌤️ NEW: Real Weather Integration** - Central Weather Administration API integration for Hsinchu Science Park weather forecasts
 - **Smart Scheduling**: Daily 21:00 GPT analysis to catch any missed records from irregular conversation formats
+- **Weather-Based Recommendations**: 
+  - Real-time weather data affects water quality management suggestions
+  - UV index considerations for chlorine management
+  - Temperature and rainfall impact on water treatment protocols
 
 ### Development Tools
 - **ESBuild**: Fast bundling for production server builds
