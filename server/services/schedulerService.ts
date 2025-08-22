@@ -7,6 +7,7 @@ import { simpleBackupService } from "./simpleBackupService";
 import { waterQualityService } from "./waterQualityService";
 import { windForecastService } from "./windForecastService";
 import { getYesterday, formatDate } from "../utils/time";
+import crypto from 'crypto';
 
 export class SchedulerService {
   private cronJobs: cron.ScheduledTask[] = [];
@@ -25,8 +26,8 @@ export class SchedulerService {
 
     taskSchedules.forEach(({ time, name }) => {
       const job = cron.schedule(time, async () => {
-        console.log(`${name} 任務提醒開始執行`);
-        await this.dailyTaskSummary();
+        console.log(`${name} 任務提醒時間點標記 - 等待群組互動觸發`);
+        await this.markTaskReminderAvailable(name);
       }, {
         timezone: 'Asia/Taipei'
       });
@@ -42,28 +43,28 @@ export class SchedulerService {
     });
     this.cronJobs.push(backupJob);
 
-    // 每日 13:00 發送水質報告 (收集 00:00-12:50 數據)
+    // 每日 13:00 水質報告標記 - 等待群組互動觸發
     const morningWaterQualityReportJob = cron.schedule('0 13 * * *', async () => {
-      console.log('13:00 水質報告開始執行 (00:00-12:50 數據)');
-      await waterQualityService.sendDailyWaterQualityReport();
+      console.log('13:00 水質報告時間點標記 - 等待群組互動觸發');
+      await this.markWaterQualityReportAvailable('13:00');
     }, {
       timezone: 'Asia/Taipei'
     });
     this.cronJobs.push(morningWaterQualityReportJob);
 
-    // 每日 17:30 發送水質報告 (收集 00:00-17:20 數據)
+    // 每日 17:30 水質報告標記 - 等待群組互動觸發
     const afternoonWaterQualityReportJob = cron.schedule('30 17 * * *', async () => {
-      console.log('17:30 水質報告開始執行 (00:00-17:20 數據)');
-      await waterQualityService.sendDailyWaterQualityReport();
+      console.log('17:30 水質報告時間點標記 - 等待群組互動觸發');
+      await this.markWaterQualityReportAvailable('17:30');
     }, {
       timezone: 'Asia/Taipei'
     });
     this.cronJobs.push(afternoonWaterQualityReportJob);
 
-    // 每日 20:30 發送水質報告 (收集 00:00-20:20 數據)
+    // 每日 20:30 水質報告標記 - 等待群組互動觸發
     const eveningWaterQualityReportJob = cron.schedule('30 20 * * *', async () => {
-      console.log('20:30 水質報告開始執行 (00:00-20:20 數據)');
-      await waterQualityService.sendDailyWaterQualityReport();
+      console.log('20:30 水質報告時間點標記 - 等待群組互動觸發');
+      await this.markWaterQualityReportAvailable('20:30');
     }, {
       timezone: 'Asia/Taipei'
     });
@@ -87,8 +88,8 @@ export class SchedulerService {
 
     windForecastSchedules.forEach(({ time, name }) => {
       const job = cron.schedule(time, async () => {
-        console.log(`🌬️ ${name} 開始執行`);
-        await windForecastService.sendWindForecastReport();
+        console.log(`🌬️ ${name} 時間點標記 - 等待群組互動觸發`);
+        await this.markWindForecastAvailable(name);
       }, {
         timezone: 'Asia/Taipei'
       });
@@ -576,6 +577,60 @@ export class SchedulerService {
         }
       });
     }
+  }
+
+  // 標記任務提醒可用時間點
+  private async markTaskReminderAvailable(timeSlot: string): Promise<void> {
+    const today = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
+    
+    await storage.insertAuditLog({
+      id: crypto.randomUUID(),
+      level: 'info',
+      category: 'pending_task_reminder',
+      message: `任務提醒 ${timeSlot} 已標記為可觸發`,
+      details: {
+        timeSlot,
+        date: today,
+        status: 'awaiting_trigger',
+        type: 'task_reminder'
+      }
+    });
+  }
+
+  // 標記水質報告可用時間點
+  private async markWaterQualityReportAvailable(timeSlot: string): Promise<void> {
+    const today = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
+    
+    await storage.insertAuditLog({
+      id: crypto.randomUUID(),
+      level: 'info',
+      category: 'pending_water_quality',
+      message: `水質報告 ${timeSlot} 已標記為可觸發`,
+      details: {
+        timeSlot,
+        date: today,
+        status: 'awaiting_trigger',
+        type: 'water_quality_report'
+      }
+    });
+  }
+
+  // 標記風力預報可用時間點
+  private async markWindForecastAvailable(timeSlot: string): Promise<void> {
+    const today = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
+    
+    await storage.insertAuditLog({
+      id: crypto.randomUUID(),
+      level: 'info',
+      category: 'pending_wind_forecast',
+      message: `風力預報 ${timeSlot} 已標記為可觸發`,
+      details: {
+        timeSlot,
+        date: today,
+        status: 'awaiting_trigger',
+        type: 'wind_forecast'
+      }
+    });
   }
 }
 

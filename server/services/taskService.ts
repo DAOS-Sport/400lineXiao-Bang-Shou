@@ -316,6 +316,107 @@ export class TaskService {
     
     return messages[randomIndex];
   }
+
+  // 為特定群組生成任務摘要（供回覆觸發使用）
+  async generateTaskSummaryForGroup(groupId: string): Promise<string> {
+    try {
+      console.log(`🚀 為群組 ${groupId} 生成任務摘要...`);
+      
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+      
+      const todayEnd = new Date();
+      
+      // 獲取昨天+今天的未完成任務
+      const tasks = await storage.getTasksByGroupId(groupId, 'pending');
+      const relevantTasks = tasks.filter(task => 
+        new Date(task.createdAt) >= yesterdayStart && 
+        new Date(task.createdAt) <= todayEnd
+      );
+      
+      let summary = '';
+      
+      if (relevantTasks.length === 0) {
+        // 使用 GPT 生成勵志語
+        const motivationalMessage = await this.getMotivationalQuote();
+        summary = `目前沒有待處理的交辦事項，工作進度良好！\n\n${motivationalMessage}\n\n如果有新的任務需要處理，請使用「交辦」關鍵字。`;
+      } else {
+        summary = `📋 目前有 ${relevantTasks.length} 項待處理事項：\n\n`;
+        
+        relevantTasks.forEach((task, index) => {
+          const createdDate = new Date(task.createdAt).toLocaleDateString('zh-TW', { 
+            timeZone: 'Asia/Taipei',
+            month: 'numeric',
+            day: 'numeric'
+          });
+          
+          summary += `${index + 1}. ${task.taskIdSerial} - ${task.text}\n`;
+          summary += `   👤 交辦人：${task.authorDisplayName || task.authorUserId}\n`;
+          summary += `   📅 建立：${createdDate}\n\n`;
+        });
+        
+        // 使用 GPT 生成勵志語
+        const motivationalMessage = await this.getMotivationalQuote();
+        summary += `💡 ${motivationalMessage}\n\n`;
+        summary += `如果交辦已完成，記得輸入「交辦XX完成」`;
+      }
+      
+      console.log(`✅ 群組 ${groupId} 任務摘要生成成功`);
+      return summary;
+      
+    } catch (error) {
+      console.error(`❌ 生成群組 ${groupId} 任務摘要失敗:`, error);
+      return '⚠️ 無法生成任務摘要，請稍後再試';
+    }
+  }
+
+  // 獲取每日勵志語
+  private async getMotivationalQuote(): Promise<string> {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        // 備用固定勵志語
+        const fallbackQuotes = [
+          '今天也要加油！每個小進步都值得慶祝',
+          '團隊合作，讓工作更有效率',
+          '保持積極的態度，成功就在眼前',
+          '每一項完成的任務都是向目標邁進的一步',
+          '專注當下，做好每一件事'
+        ];
+        return fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
+      }
+      
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // 使用最新模型
+        messages: [
+          {
+            role: "system",
+            content: "你是一個正向的工作助理。請生成一句20字以內的中文工作勵志語，要溫暖、正面、適合團隊工作環境。不要使用過於熱血或誇張的表達。"
+          },
+          {
+            role: "user",
+            content: "請給我一句今日工作勵志語"
+          }
+        ],
+        max_tokens: 50,
+        temperature: 0.8
+      });
+      
+      const quote = response.choices[0]?.message?.content?.trim();
+      return quote || '今天也要加油！每個小進步都值得慶祝';
+      
+    } catch (error) {
+      console.warn('⚠️ 生成勵志語失敗，使用備用訊息:', error);
+      const fallbackQuotes = [
+        '今天也要加油！每個小進步都值得慶祝',
+        '團隊合作，讓工作更有效率',
+        '保持積極的態度，成功就在眼前'
+      ];
+      return fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
+    }
+  }
 }
 
 export const taskService = new TaskService();

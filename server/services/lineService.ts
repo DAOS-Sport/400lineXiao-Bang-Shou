@@ -251,12 +251,31 @@ export class LineService {
     }
   }
 
-  // 檢查並發送待發送的群組訊息
+  // 檢查並發送待發送的群組訊息 - 回覆觸發模式
   async checkAndSendPendingMessages(groupId: string, replyToken: string): Promise<void> {
-    // 🚫 臨時禁用待發送訊息檢查機制 - 避免重複發送水質報告
-    console.log(`🔎 checkAndSendPendingMessages 被調用，群組: ${groupId} - 已禁用避免重複發送`);
-    console.log(`📭 群組 ${groupId} 目前沒有待發送的訊息`);
-    return;
+    try {
+      console.log(`🔎 檢查群組 ${groupId.substring(0, 8)}... 是否有待回覆的內容`);
+      
+      const today = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
+      const now = new Date();
+      
+      // 檢查是否有待觸發的任務提醒
+      const pendingTaskReminder = await this.checkAndTriggerTaskReminder(groupId, replyToken, today, now);
+      if (pendingTaskReminder) return;
+      
+      // 檢查是否有待觸發的水質報告
+      const pendingWaterQuality = await this.checkAndTriggerWaterQualityReport(groupId, replyToken, today);
+      if (pendingWaterQuality) return;
+      
+      // 檢查是否有待觸發的風力預報
+      const pendingWindForecast = await this.checkAndTriggerWindForecast(groupId, replyToken, today);
+      if (pendingWindForecast) return;
+      
+      console.log(`📭 群組 ${groupId.substring(0, 8)}... 目前沒有待觸發的內容`);
+      
+    } catch (error) {
+      console.error(`❌ 檢查待發送訊息失敗 (群組 ${groupId}):`, error);
+    }
   }
 
   async getGroupSummary(groupId: string): Promise<any> {
@@ -284,6 +303,212 @@ export class LineService {
     } catch (error) {
       console.error('獲取用戶資訊失敗:', error);
       return null;
+    }
+  }
+
+  // 檢查並觸發任務提醒
+  private async checkAndTriggerTaskReminder(groupId: string, replyToken: string, today: string, now: Date): Promise<boolean> {
+    try {
+      // 檢查是否有待觸發的任務提醒
+      const currentTime = now.toLocaleTimeString('zh-TW', { 
+        timeZone: 'Asia/Taipei', 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
+      
+      const pendingLogs = await storage.getAuditLogsByCategory('pending_task_reminder');
+      const todayPending = pendingLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details && 
+        'status' in log.details &&
+        log.details.date === today &&
+        log.details.status === 'awaiting_trigger'
+      );
+      
+      if (todayPending.length > 0) {
+        console.log(`⏰ 找到 ${todayPending.length} 個待觸發的任務提醒`);
+        
+        // 找最近的時間點
+        const latestLog = todayPending[todayPending.length - 1];
+        const timeSlot = latestLog.details && typeof latestLog.details === 'object' && 'timeSlot' in latestLog.details ? latestLog.details.timeSlot : '';
+        
+        // 生成任務提醒內容
+        const summaryText = await this.generateTaskSummary(groupId);
+        
+        await this.replyMessage(replyToken, `⏰ ${timeSlot} 任務提醒\n${summaryText}`);
+        
+        // 標記為已發送
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'task_reminder_sent',
+          message: `任務提醒已回覆發送 (${timeSlot})`,
+          details: {
+            groupId,
+            timeSlot,
+            date: today,
+            method: 'reply_trigger'
+          }
+        });
+        
+        // 清除待觸發標記
+        await this.clearPendingTriggers('pending_task_reminder', today);
+        
+        console.log(`✅ 任務提醒已通過回覆觸發發送 (${timeSlot})`);
+        return true;
+      }
+      
+    } catch (error) {
+      console.error('檢查任務提醒觸發失敗:', error);
+    }
+    return false;
+  }
+
+  // 檢查並觸發水質報告
+  private async checkAndTriggerWaterQualityReport(groupId: string, replyToken: string, today: string): Promise<boolean> {
+    try {
+      // 只有水質監測群組才觸發
+      const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      if (!waterQualityGroups.includes(groupId)) {
+        return false;
+      }
+      
+      const pendingLogs = await storage.getAuditLogsByCategory('pending_water_quality');
+      const todayPending = pendingLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details && 
+        'status' in log.details &&
+        log.details.date === today &&
+        log.details.status === 'awaiting_trigger'
+      );
+      
+      if (todayPending.length > 0) {
+        console.log(`💧 找到 ${todayPending.length} 個待觸發的水質報告`);
+        
+        const latestLog = todayPending[todayPending.length - 1];
+        const timeSlot = latestLog.details && typeof latestLog.details === 'object' && 'timeSlot' in latestLog.details ? latestLog.details.timeSlot : '';
+        
+        // 使用 waterQualityService 生成報告
+        const { waterQualityService } = await import('./waterQualityService');
+        const reportText = await waterQualityService.generateWaterQualityReport(groupId);
+        
+        await this.replyMessage(replyToken, `💧 ${timeSlot} 水質檢測報告\n${reportText}`);
+        
+        // 標記為已發送
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'water_quality_sent',
+          message: `水質報告已回覆發送 (${timeSlot})`,
+          details: {
+            groupId,
+            timeSlot,
+            date: today,
+            method: 'reply_trigger'
+          }
+        });
+        
+        // 清除待觸發標記
+        await this.clearPendingTriggers('pending_water_quality', today);
+        
+        console.log(`✅ 水質報告已通過回覆觸發發送 (${timeSlot})`);
+        return true;
+      }
+      
+    } catch (error) {
+      console.error('檢查水質報告觸發失敗:', error);
+    }
+    return false;
+  }
+
+  // 檢查並觸發風力預報
+  private async checkAndTriggerWindForecast(groupId: string, replyToken: string, today: string): Promise<boolean> {
+    try {
+      // 只有風力預報群組才觸發
+      const windForecastGroup = 'C360be1fe6ea876a4df3ca0497bca4e3b';
+      if (groupId !== windForecastGroup) {
+        return false;
+      }
+      
+      const pendingLogs = await storage.getAuditLogsByCategory('pending_wind_forecast');
+      const todayPending = pendingLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details && 
+        'status' in log.details &&
+        log.details.date === today &&
+        log.details.status === 'awaiting_trigger'
+      );
+      
+      if (todayPending.length > 0) {
+        console.log(`🌬️ 找到 ${todayPending.length} 個待觸發的風力預報`);
+        
+        const latestLog = todayPending[todayPending.length - 1];
+        const timeSlot = latestLog.details && typeof latestLog.details === 'object' && 'timeSlot' in latestLog.details ? latestLog.details.timeSlot : '';
+        
+        // 使用 windForecastService 生成預報
+        const { windForecastService } = await import('./windForecastService');
+        const forecastText = await windForecastService.generateWindForecastReport();
+        
+        await this.replyMessage(replyToken, `🌬️ ${timeSlot}\n${forecastText}`);
+        
+        // 標記為已發送
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'wind_forecast_sent',
+          message: `風力預報已回覆發送 (${timeSlot})`,
+          details: {
+            groupId,
+            timeSlot,
+            date: today,
+            method: 'reply_trigger'
+          }
+        });
+        
+        // 清除待觸發標記
+        await this.clearPendingTriggers('pending_wind_forecast', today);
+        
+        console.log(`✅ 風力預報已通過回覆觸發發送 (${timeSlot})`);
+        return true;
+      }
+      
+    } catch (error) {
+      console.error('檢查風力預報觸發失敗:', error);
+    }
+    return false;
+  }
+
+  // 生成任務提醒摘要
+  private async generateTaskSummary(groupId: string): Promise<string> {
+    try {
+      const { taskService } = await import('./taskService');
+      return await taskService.generateTaskSummaryForGroup(groupId);
+    } catch (error) {
+      console.error('生成任務摘要失敗:', error);
+      return '⚠️ 無法生成任務摘要，請稍後再試';
+    }
+  }
+
+  // 清除待觸發標記
+  private async clearPendingTriggers(category: string, date: string): Promise<void> {
+    try {
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'trigger_cleared',
+        message: `已清除 ${date} 的 ${category} 待觸發標記`,
+        details: {
+          category,
+          date,
+          clearedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('清除待觸發標記失敗:', error);
     }
   }
 

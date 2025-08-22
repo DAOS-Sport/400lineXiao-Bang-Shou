@@ -446,6 +446,19 @@ export class WaterQualityService {
   }
 
   // 發送每日水質報告
+  // 生成單一群組水質報告（供回覆觸發使用）
+  async generateWaterQualityReport(groupId: string): Promise<string> {
+    try {
+      console.log(`🚀 為群組 ${groupId} 生成水質報告...`);
+      const report = await this.generateDailyWaterQualityReport(groupId);
+      console.log(`✅ 群組 ${groupId} 水質報告生成成功`);
+      return report;
+    } catch (error) {
+      console.error(`❌ 群組 ${groupId} 水質報告生成失敗:`, error);
+      return `💧 水質檢測報告\n\n❌ 無法生成報告，請稍後再試`;
+    }
+  }
+
   async sendDailyWaterQualityReport(): Promise<void> {
     try {
       console.log('🚀 開始生成水質報告...');
