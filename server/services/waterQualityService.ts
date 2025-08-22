@@ -33,48 +33,84 @@ interface WaterQualityData {
 export class WaterQualityService {
   private readonly targetGroupId = 'C50c2a9623a78cc5f5e9f39557e3abfe6';
 
-  // 解析水質訊息
+  // 解析水質訊息（改善版，支援多種格式）
   parseWaterQualityMessage(text: string, messageId: string, userId: string): WaterQualityData | null {
     try {
       const lines = text.split('\n').map(line => line.trim());
+      const fullText = text.replace(/\n/g, ' '); // 也檢查整行格式
       
-      // 解析日期和時間 (支援 114/8/21 12.10 和 114/8/21 17:05 格式)
-      const dateTimePattern = /(\d{3})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})[.:](\d{2})/;
-      const dateTimeMatch = lines[0]?.match(dateTimePattern);
+      // 多種日期時間格式支援
+      let year = '', month = '', day = '', hour = '', minute = '';
       
-      if (!dateTimeMatch) return null;
+      // 格式1: 114/8/21 12.10 (同行)
+      const dateTimePattern1 = /(\d{3})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})[.:](\d{2})/;
+      const dateTimeMatch1 = fullText.match(dateTimePattern1);
       
-      const [, year, month, day, hour, minute] = dateTimeMatch;
+      // 格式2: 114/8/22 06:21 (分行或同行)
+      const datePattern = /(\d{3})\/(\d{1,2})\/(\d{1,2})/;
+      const timePattern = /(\d{1,2}):(\d{2})/;
+      
+      if (dateTimeMatch1) {
+        [, year, month, day, hour, minute] = dateTimeMatch1;
+      } else {
+        // 尋找日期和時間（可能在不同行）
+        const dateMatch = fullText.match(datePattern);
+        const timeMatch = fullText.match(timePattern);
+        
+        if (dateMatch && timeMatch) {
+          [, year, month, day] = dateMatch;
+          [, hour, minute] = timeMatch;
+        } else {
+          console.log('❌ 無法解析日期時間格式:', fullText);
+          return null;
+        }
+      }
+      
       const fullYear = parseInt(year) + 1911; // 民國年轉西元年
       const date = `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
       const time = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
       
-      // 解析水質數據
+      // 解析水質數據（支援多種格式）
       let cl = 0, ph = 0, waterTemp = 0, airTemp = 0;
       
+      // 檢查整個文本中的數值
+      const clMatch = fullText.match(/CL\s+([\d.]+)/);
+      const phMatch = fullText.match(/PH\s+([\d.]+)/);
+      const waterTempMatch = fullText.match(/水溫\s+([\d.]+)/);
+      const airTempMatch = fullText.match(/氣溫\s+([\d.]+)/);
+      
+      if (clMatch) cl = parseFloat(clMatch[1]);
+      if (phMatch) ph = parseFloat(phMatch[1]);
+      if (waterTempMatch) waterTemp = parseFloat(waterTempMatch[1]);
+      if (airTempMatch) airTemp = parseFloat(airTempMatch[1]);
+      
+      // 也檢查逐行格式
       for (const line of lines) {
-        if (line.startsWith('CL')) {
-          const clMatch = line.match(/CL\s+([\d.]+)/);
-          if (clMatch) cl = parseFloat(clMatch[1]);
+        if (line.startsWith('CL') && cl === 0) {
+          const lineClMatch = line.match(/CL\s+([\d.]+)/);
+          if (lineClMatch) cl = parseFloat(lineClMatch[1]);
         }
-        if (line.startsWith('PH')) {
-          const phMatch = line.match(/PH\s+([\d.]+)/);
-          if (phMatch) ph = parseFloat(phMatch[1]);
+        if (line.startsWith('PH') && ph === 0) {
+          const linePhMatch = line.match(/PH\s+([\d.]+)/);
+          if (linePhMatch) ph = parseFloat(linePhMatch[1]);
         }
-        if (line.includes('水溫')) {
-          const tempMatch = line.match(/水溫\s+([\d.]+)/);
-          if (tempMatch) waterTemp = parseFloat(tempMatch[1]);
+        if (line.includes('水溫') && waterTemp === 0) {
+          const lineTempMatch = line.match(/水溫\s+([\d.]+)/);
+          if (lineTempMatch) waterTemp = parseFloat(lineTempMatch[1]);
         }
-        if (line.includes('氣溫')) {
-          const tempMatch = line.match(/氣溫\s+([\d.]+)/);
-          if (tempMatch) airTemp = parseFloat(tempMatch[1]);
+        if (line.includes('氣溫') && airTemp === 0) {
+          const lineAirTempMatch = line.match(/氣溫\s+([\d.]+)/);
+          if (lineAirTempMatch) airTemp = parseFloat(lineAirTempMatch[1]);
         }
       }
       
       // 驗證必要數據
       if (cl === 0 || ph === 0 || waterTemp === 0 || airTemp === 0) {
+        console.log('❌ 水質數據不完整:', { cl, ph, waterTemp, airTemp });
         return null;
       }
+      
+      console.log('✅ 成功解析水質數據:', { date, time, cl, ph, waterTemp, airTemp });
       
       return {
         date,
@@ -125,15 +161,21 @@ export class WaterQualityService {
     }
   }
 
-  // 檢查是否為水質紀錄訊息
+  // 檢查是否為水質紀錄訊息（改善版）
   isWaterQualityMessage(text: string): boolean {
-    const hasDateTime = /\d{3}\/\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}/.test(text);
+    // 支援多種日期時間格式
+    const hasDateTime1 = /\d{3}\/\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}/.test(text); // 114/8/21 12.10
+    const hasDateTime2 = /\d{3}\/\d{1,2}\/\d{1,2}/.test(text) && /\d{1,2}:\d{2}/.test(text); // 114/8/22 和 06:21 分開
+    
     const hasCL = /CL\s+[\d.]+/.test(text);
     const hasPH = /PH\s+[\d.]+/.test(text);
     const hasWaterTemp = /水溫\s+[\d.]+/.test(text);
     const hasAirTemp = /氣溫\s+[\d.]+/.test(text);
     
-    return hasDateTime && hasCL && hasPH && hasWaterTemp && hasAirTemp;
+    const hasDateTime = hasDateTime1 || hasDateTime2;
+    const hasAllData = hasCL && hasPH && hasWaterTemp && hasAirTemp;
+    
+    return hasDateTime && hasAllData;
   }
 
   // 檢查是否為多池水質紀錄訊息（新群組格式）
