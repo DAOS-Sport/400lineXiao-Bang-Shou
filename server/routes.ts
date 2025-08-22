@@ -328,8 +328,19 @@ async function processWebhookEvent(event: any) {
                 const replyText = `✅ ${taskType}${taskSerial}已完成！\n${thankYouMessage}`;
                 console.log(`📤 準備回覆: "${replyText}"`);
                 
-                await lineService.replyMessage(event.replyToken, replyText);
-                console.log(`✅ 回覆訊息已發送`);
+                try {
+                  await lineService.replyMessage(event.replyToken, replyText);
+                  console.log(`✅ 回覆訊息已發送`);
+                } catch (replyError) {
+                  console.error(`❌ 回覆訊息發送失敗:`, replyError);
+                  // 嘗試推送而非回覆
+                  try {
+                    await lineService.pushMessage(source.groupId, replyText);
+                    console.log(`✅ 改用推送方式發送完成訊息`);
+                  } catch (pushError) {
+                    console.error(`❌ 推送也失敗:`, pushError);
+                  }
+                }
                 
                 // 記錄成功完成
                 await storage.insertAuditLog({
@@ -351,9 +362,21 @@ async function processWebhookEvent(event: any) {
                 await lineService.replyMessage(event.replyToken, errorText);
               }
             } else {
-              const notFoundText = `❌ 找不到${taskType}${taskSerial}`;
+              const notFoundText = `❌ 找不到${taskType}${taskSerial}或該任務已完成`;
               console.log(`📤 回覆未找到訊息: "${notFoundText}"`);
-              await lineService.replyMessage(event.replyToken, notFoundText);
+              try {
+                await lineService.replyMessage(event.replyToken, notFoundText);
+                console.log(`✅ 未找到任務回覆已發送`);
+              } catch (replyError) {
+                console.error(`❌ 未找到任務回覆發送失敗:`, replyError);
+                // 嘗試推送而非回覆
+                try {
+                  await lineService.pushMessage(source.groupId, notFoundText);
+                  console.log(`✅ 改用推送方式發送未找到任務訊息`);
+                } catch (pushError) {
+                  console.error(`❌ 推送也失敗:`, pushError);
+                }
+              }
             }
           } catch (error) {
             console.error(`❌ 處理任務完成失敗:`, error);
