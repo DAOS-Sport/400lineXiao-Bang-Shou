@@ -40,12 +40,20 @@ export class WindForecastService {
         return this.getSimulatedWindData();
       }
 
-      // 使用中央氣象署自動氣象站 API (O-A0001-001) - 真實即時風力資料
-      const url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${token}&format=JSON&limit=50`;
+      // 使用中央氣象署自動氣象站 API - 優先使用新竹附近氣象站
+      const preferredStations = ['C0D680', 'C0D670', 'C0D690']; // 香山濕地、海天一線、外湖
+      let url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${token}&format=JSON&StationId=${preferredStations.join(',')}&limit=10`;
       
-      console.log('🔍 查詢附近氣象站即時風力資料...');
-      const response = await fetch(url);
+      console.log('🔍 查詢新竹附近指定氣象站風力資料...');
+      let response = await fetch(url);
       
+      if (!response.ok) {
+        // 如果指定站點失敗，改用一般查詢
+        console.log('⚠️ 指定氣象站查詢失敗，改用一般搜尋...');
+        url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${token}&format=JSON&limit=100`;
+        response = await fetch(url);
+      }
+
       if (!response.ok) {
         throw new Error(`氣象署 API 回應錯誤: ${response.status}`);
       }
@@ -56,29 +64,29 @@ export class WindForecastService {
         throw new Error('無法獲取氣象站資料');
       }
 
-      // 尋找距離目標座標最近且有風力資料的氣象站
+      // 優先順序：香山濕地 > 海天一線 > 外湖 > 其他新竹站點 > 最近站點
       let bestStation = null;
-      let minDistance = Infinity;
+      const stationPriority = {
+        'C0D680': 1, // 香山濕地 (最近)
+        'C0D670': 2, // 海天一線
+        'C0D690': 3, // 外湖
+      };
       
       for (const station of data.records.Station) {
-        const coords = station.GeoInfo?.Coordinates?.[1]; // 使用 WGS84 座標
-        if (!coords) continue;
-        
-        const stationLat = parseFloat(coords.StationLatitude);
-        const stationLon = parseFloat(coords.StationLongitude);
-        
-        // 計算距離
-        const distance = Math.sqrt(
-          Math.pow(stationLat - this.latitude, 2) + 
-          Math.pow(stationLon - this.longitude, 2)
-        );
-        
-        // 檢查是否有風力資料
         const windSpeed = station.WeatherElement?.WindSpeed;
         const windDirection = station.WeatherElement?.WindDirection;
         
-        if (windSpeed && windDirection && distance < minDistance) {
-          minDistance = distance;
+        if (!windSpeed || !windDirection) continue;
+        
+        // 如果是優先氣象站，直接使用
+        if (stationPriority[station.StationId]) {
+          bestStation = station;
+          console.log(`🏆 使用新竹優先氣象站: ${station.StationName} (${station.StationId})`);
+          break;
+        }
+        
+        // 否則選擇第一個有風力資料的站點
+        if (!bestStation) {
           bestStation = station;
         }
       }
