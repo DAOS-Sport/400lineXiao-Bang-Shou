@@ -310,7 +310,7 @@ export class SchedulerService {
       // 降級處理：直接推送原始任務列表
       const fallbackTasks = taskData.map(task => `${task.serial}. ${task.description}`).join('\n');
       const dateStr = formatDate(startDate);
-      const fallbackMessage = `📌 昨日交辦整理（${dateStr}）\n${fallbackTasks}\n—— 合計 ${yesterdayTasks.length} 項（皆未完成）`;
+      const fallbackMessage = `📌 昨日交辦整理（${dateStr}）\n${fallbackTasks}\n—— 合計 ${yesterdayTasks.length} 項（皆未完成）\n\n✅ 如果交辦已完成\n記得輸入 交辦XX完成\n\n💪 專注當下，每個小步驟都是進步的開始`;
       
       try {
         await lineService.pushMessage(groupId, fallbackMessage);
@@ -368,6 +368,9 @@ export class SchedulerService {
       // 使用 LLM 生成處理建議
       const suggestions = await llmService.generateTaskSuggestions(taskData);
       
+      // 使用 LLM 生成每日勵志語
+      const motivationalQuote = await llmService.generateDailyMotivationalQuote();
+      
       // 組合推送訊息
       const dateStr = formatDate(startDate);
       const currentTime = new Date().toLocaleString('zh-TW', { 
@@ -384,6 +387,11 @@ export class SchedulerService {
       }
       
       message += `\n\n—— 合計 ${recentTasks.length} 項（皆未完成）`;
+      message += `\n\n✅ 如果交辦已完成\n記得輸入 交辦XX完成`;
+      
+      if (motivationalQuote) {
+        message += `\n\n💪 ${motivationalQuote}`;
+      }
       
       // 🔒 自動推播：直接推送到群組
       console.log(`📤 正在自動推播任務提醒到群組 ${groupId.substring(0, 8)}...`);

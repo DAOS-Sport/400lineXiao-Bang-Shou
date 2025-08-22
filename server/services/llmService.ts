@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { type IMessage } from "@shared/schema";
 import { storage } from "../storage";
+import crypto from 'crypto';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '',
@@ -257,6 +258,86 @@ ${taskTexts}
       });
       
       return '';
+    }
+  }
+
+  async generateDailyMotivationalQuote(): Promise<string> {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return '今天是充滿可能性的一天，讓我們一起努力！';
+      }
+
+      // 獲取當前日期作為隨機種子，確保每天都不同
+      const today = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
+      
+      const prompt = `請為工作團隊生成一句正向且實用的勵志語，用於今日（${today}）的任務提醒中。
+
+要求：
+- 使用繁體中文
+- 總字數控制在 25 字以內
+- 內容要正向積極，能激勵工作士氣
+- 避免陳腔濫調，要有新意和啟發性
+- 適合職場環境，專業但親切
+- 可以包含時間管理、效率提升、團隊合作等主題
+- 每天都要不同，具有獨特性
+
+範例風格：
+「專注當下，每個小步驟都是進步的開始」
+「團隊合作讓困難變得簡單，讓目標變得可達」
+「今天的努力是明天成功的基石」`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini", // the newest OpenAI model is "gpt-4o-mini" which was released for cost-effective usage. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "system",
+            content: "你是一位專業的企業教練和激勵專家，擅長創造具有啟發性且實用的工作勵志語，幫助團隊保持正向的工作態度。"
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.8, // 提高創意性，確保每天不同
+        max_tokens: 80
+      });
+
+      const quote = response.choices[0].message.content?.trim() || '今天是充滿可能性的一天，讓我們一起努力！';
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'llm',
+        message: 'GPT 每日勵志語生成成功',
+        details: {
+          date: today,
+          quoteLength: quote.length,
+          quote: quote
+        }
+      });
+
+      return quote;
+
+    } catch (error: any) {
+      console.error('LLM 勵志語生成失敗:', error);
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'llm',
+        message: 'LLM 勵志語生成失敗',
+        details: { error: error.message }
+      });
+      
+      // 降級處理：回傳預設勵志語
+      const fallbackQuotes = [
+        '專注當下，每個小步驟都是進步的開始',
+        '團隊合作讓困難變得簡單，讓目標變得可達',
+        '今天的努力是明天成功的基石',
+        '保持積極，讓每一天都充滿成就感',
+        '用心做事，用情待人，成功就在不遠處'
+      ];
+      const randomIndex = new Date().getDate() % fallbackQuotes.length;
+      return fallbackQuotes[randomIndex];
     }
   }
 
