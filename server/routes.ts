@@ -294,10 +294,17 @@ async function processWebhookEvent(event: any) {
         return;
       }
 
-      // 2. 交辦偵測（所有群組皆可使用）
-      if (text.includes('交辦') && source.type === 'group' && savedMessage) {
-        console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
-        await taskService.createTaskFromMessage(savedMessage, text);
+      // 2. 交辦偵測（所有群組皆可使用）- 先檢查是否為完成指令，避免誤判
+      if (source.type === 'group' && savedMessage) {
+        // 檢查是否為完成指令，如果是則跳過交辦偵測
+        const completeTaskPattern = /^(交辦|任務)(\d+)(完成|已完成)$/i;
+        const isCompleteCommand = completeTaskPattern.test(text);
+        
+        // 只有在不是完成指令的情況下，才進行交辦偵測
+        if (!isCompleteCommand && text.includes('交辦')) {
+          console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
+          await taskService.createTaskFromMessage(savedMessage, text);
+        }
       }
 
       // 2.1 任務完成標記（所有群組皆可使用）- 支持多種格式
