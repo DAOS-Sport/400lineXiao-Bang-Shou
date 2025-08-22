@@ -300,6 +300,23 @@ async function processWebhookEvent(event: any) {
         await taskService.createTaskFromMessage(savedMessage, text);
       }
 
+      // 2.1 任務完成標記（所有群組皆可使用）
+      if (source.type === 'group') {
+        const completeTaskPattern = /^完成任務\s*(\d+)$|^任務(\d+)完成$|^(\d+)完成$/i;
+        const match = text.match(completeTaskPattern);
+        if (match) {
+          const taskSerial = match[1] || match[2] || match[3];
+          console.log(`✅ 偵測到完成任務指令: 任務 ${taskSerial} 來自群組 ${source.groupId}`);
+          
+          const success = await taskService.completeTaskBySerial(source.groupId, taskSerial, source.userId);
+          if (success) {
+            await lineService.replyMessage(event.replyToken, `✅ 任務 ${taskSerial} 已標記為完成！`);
+          } else {
+            await lineService.replyMessage(event.replyToken, `❌ 找不到任務 ${taskSerial} 或該任務已完成`);
+          }
+        }
+      }
+
       // 3. 管理員指令
       const isAdmin = await storage.isAdmin(source.userId);
       if (isAdmin) {
