@@ -166,30 +166,45 @@ export class LineService {
   }
 
   // 發送訊息到群組的替代方案
-  async sendToGroup(groupId: string, text: string): Promise<void> {
+  async sendToGroup(groupId: string, text: string, reportType: string = 'general'): Promise<void> {
     console.log('🔍 準備群組訊息:', groupId);
     console.log('📝 訊息內容:', text.substring(0, 50) + '...');
     
     try {
+      // 判斷報告類型
+      let messageType = 'general';
+      let message = '報告等待發送到群組';
+      
+      if (text.includes('🏌️') || text.includes('風力預報')) {
+        messageType = 'wind_forecast';
+        message = '風力預報等待發送到群組';
+      } else if (text.includes('💧') || text.includes('水質')) {
+        messageType = 'water_quality';
+        message = '水質報告等待發送到群組';
+      } else if (text.includes('📋') || text.includes('任務')) {
+        messageType = 'task_summary';
+        message = '任務提醒等待發送到群組';
+      }
+      
       // 方案：將報告存儲為待發送訊息，並在下次群組互動時發送
       await storage.insertAuditLog({
         id: crypto.randomUUID(),
         level: 'info',
         category: 'pending_group_message',
-        message: '水質報告等待發送到群組',
+        message: message,
         details: {
           groupId,
           messageContent: text,
           timestamp: new Date().toISOString(),
-          reportType: 'water_quality',
+          reportType: messageType,
           status: 'pending'
         }
       });
       
-      console.log('📊 水質報告已準備完成，等待群組互動時發送');
+      console.log(`📊 ${messageType === 'wind_forecast' ? '風力預報' : messageType === 'water_quality' ? '水質報告' : '訊息'}已準備完成，等待群組互動時發送`);
       
       // 嘗試立即發送（如果有最近的群組訊息可以回覆）
-      await this.tryImmediateSend(groupId, text);
+      await this.tryImmediateSend(groupId, text, messageType);
       
     } catch (error) {
       console.error('準備群組訊息失敗:', error);
@@ -197,7 +212,7 @@ export class LineService {
   }
 
   // 嘗試立即發送到群組的方法
-  private async tryImmediateSend(groupId: string, text: string): Promise<void> {
+  private async tryImmediateSend(groupId: string, text: string, messageType: string = 'general'): Promise<void> {
     try {
       // 檢查是否有最近的群組訊息可以用來回覆
       const recentMessages = await storage.getRecentMessages(groupId, 1);
@@ -211,16 +226,20 @@ export class LineService {
           console.log('🎯 找到最近的訊息，嘗試直接推送到群組');
           await this.pushMessage(groupId, text);
           
-          // 標記為已發送
+          // 標記為已發送 - 根據訊息類型調整描述
+          const messageDescription = messageType === 'wind_forecast' ? '風力預報' : 
+                                   messageType === 'water_quality' ? '水質報告' : 
+                                   messageType === 'task_summary' ? '任務提醒' : '訊息';
+          
           await storage.insertAuditLog({
             id: crypto.randomUUID(),
             level: 'info',
             category: 'group_message_sent',
-            message: '水質報告已成功發送到群組',
-            details: { groupId, method: 'reply', timestamp: new Date().toISOString() }
+            message: `${messageDescription}已成功發送到群組`,
+            details: { groupId, method: 'push', messageType, timestamp: new Date().toISOString() }
           });
           
-          console.log('✅ 水質報告已通過回覆方式發送到群組');
+          console.log(`✅ ${messageDescription}已通過推送方式發送到群組`);
           return;
         }
       }

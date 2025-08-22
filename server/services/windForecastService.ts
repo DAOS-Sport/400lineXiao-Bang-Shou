@@ -628,8 +628,8 @@ ${JSON.stringify(windData, null, 2)}
       
       const report = await this.generateWindForecastReport();
       
-      // 發送到指定群組
-      await lineService.sendToGroup(this.targetGroupId, report);
+      // 直接推送到指定群組（不等待互動）
+      await lineService.pushMessage(this.targetGroupId, report);
       
       console.log(`✅ 風力預報已發送到群組 ${this.targetGroupId}`);
       
