@@ -40,19 +40,12 @@ export class WindForecastService {
         return this.getSimulatedWindData();
       }
 
-      // 使用中央氣象署自動氣象站 API - 優先使用新竹附近氣象站
-      const preferredStations = ['C0D680', 'C0D670', 'C0D690']; // 香山濕地、海天一線、外湖
-      let url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${token}&format=JSON&StationId=${preferredStations.join(',')}&limit=10`;
+      // 固定使用新竹東區工研院氣象站 (最近距離)
+      const targetStationId = 'C0D660'; // 新竹市東區工研院光復院區
+      const url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${token}&format=JSON&StationId=${targetStationId}`;
       
-      console.log('🔍 查詢新竹附近指定氣象站風力資料...');
-      let response = await fetch(url);
-      
-      if (!response.ok) {
-        // 如果指定站點失敗，改用一般查詢
-        console.log('⚠️ 指定氣象站查詢失敗，改用一般搜尋...');
-        url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${token}&format=JSON&limit=100`;
-        response = await fetch(url);
-      }
+      console.log('🏢 查詢新竹東區工研院氣象站風力資料...');
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`氣象署 API 回應錯誤: ${response.status}`);
@@ -61,77 +54,56 @@ export class WindForecastService {
       const data = await response.json();
       
       if (!data.records?.Station?.length) {
-        throw new Error('無法獲取氣象站資料');
+        throw new Error('無法獲取新竹東區氣象站資料');
       }
 
-      // 優先順序：香山濕地 > 海天一線 > 外湖 > 其他新竹站點 > 最近站點
-      let bestStation = null;
-      const stationPriority = {
-        'C0D680': 1, // 香山濕地 (最近)
-        'C0D670': 2, // 海天一線
-        'C0D690': 3, // 外湖
-      };
+      // 直接使用指定的新竹東區氣象站
+      const bestStation = data.records.Station[0];
       
-      for (const station of data.records.Station) {
-        const windSpeed = station.WeatherElement?.WindSpeed;
-        const windDirection = station.WeatherElement?.WindDirection;
-        
-        if (!windSpeed || !windDirection) continue;
-        
-        // 如果是優先氣象站，直接使用
-        if (stationPriority[station.StationId]) {
-          bestStation = station;
-          console.log(`🏆 使用新竹優先氣象站: ${station.StationName} (${station.StationId})`);
-          break;
-        }
-        
-        // 否則選擇第一個有風力資料的站點
-        if (!bestStation) {
-          bestStation = station;
-        }
+      // 檢查是否有風力資料
+      const windSpeed = bestStation.WeatherElement?.WindSpeed;
+      const windDirection = bestStation.WeatherElement?.WindDirection;
+      
+      if (!windSpeed || !windDirection) {
+        throw new Error('新竹東區氣象站當前無風力資料');
       }
+      
+      console.log(`🎯 使用指定氣象站: ${bestStation.StationName} (${bestStation.StationId})`);
+      console.log(`📍 新竹市東區工研院光復院區 - 距離最近`);
+      console.log(`💨 當前風力: ${windSpeed} m/s, ${windDirection}°`);
 
       const forecasts: WindForecastData[] = [];
       
-      if (bestStation) {
-        const windSpeed = parseFloat(bestStation.WeatherElement.WindSpeed);
-        const windDirection = parseFloat(bestStation.WeatherElement.WindDirection);
-        const obsTime = bestStation.ObsTime?.DateTime || new Date().toISOString();
-        const beaufort = this.getBeaufortScale(windSpeed);
-        
-        console.log(`✅ 使用氣象站: ${bestStation.StationName}`);
-        console.log(`📍 距離: ${(minDistance * 111).toFixed(1)} 公里`);
-        console.log(`💨 當前風力: ${windSpeed} m/s, ${windDirection}°`);
-        
-        // 當前風力資料
-        forecasts.push({
-          time: obsTime,
-          windSpeed: windSpeed,
-          windDirection: this.convertDegreesToDirection(windDirection),
-          description: this.getWindDescription(beaufort),
-          beaufortScale: beaufort
-        });
-        
-        // 生成3小時後的預測（基於當前風力的簡單預測）
-        const futureTime = new Date();
-        futureTime.setHours(futureTime.getHours() + 3);
-        
-        const predictedWindSpeed = Math.max(0, windSpeed + (Math.random() - 0.5) * 4);
-        const predictedBeaufort = this.getBeaufortScale(predictedWindSpeed);
-        
-        forecasts.push({
-          time: futureTime.toISOString(),
-          windSpeed: Math.round(predictedWindSpeed * 10) / 10,
-          windDirection: this.convertDegreesToDirection(windDirection + (Math.random() - 0.5) * 60),
-          description: this.getWindDescription(predictedBeaufort),
-          beaufortScale: predictedBeaufort
-        });
-        
-        console.log(`🔮 3小時後預測: ${predictedWindSpeed.toFixed(1)} m/s, ${predictedBeaufort}級風`);
-      } else {
-        console.warn('⚠️ 找不到附近有風力資料的氣象站，使用鄰近站點備用資料');
-        return await this.getWindFromNearbyStation(token);
-      }
+      const windSpeedValue = parseFloat(windSpeed);
+      const windDirectionValue = parseFloat(windDirection);
+      const obsTime = bestStation.ObsTime?.DateTime || new Date().toISOString();
+      const beaufort = this.getBeaufortScale(windSpeedValue);
+      
+      // 當前風力資料
+      forecasts.push({
+        time: obsTime,
+        windSpeed: windSpeedValue,
+        windDirection: this.convertDegreesToDirection(windDirectionValue),
+        description: this.getWindDescription(beaufort),
+        beaufortScale: beaufort
+      });
+      
+      // 生成3小時後的預測（基於當前風力的簡單預測）
+      const futureTime = new Date();
+      futureTime.setHours(futureTime.getHours() + 3);
+      
+      const predictedWindSpeed = Math.max(0, windSpeedValue + (Math.random() - 0.5) * 4);
+      const predictedBeaufort = this.getBeaufortScale(predictedWindSpeed);
+      
+      forecasts.push({
+        time: futureTime.toISOString(),
+        windSpeed: Math.round(predictedWindSpeed * 10) / 10,
+        windDirection: this.convertDegreesToDirection(windDirectionValue + (Math.random() - 0.5) * 60),
+        description: this.getWindDescription(predictedBeaufort),
+        beaufortScale: predictedBeaufort
+      });
+      
+      console.log(`🔮 3小時後預測: ${predictedWindSpeed.toFixed(1)} m/s, ${predictedBeaufort}級風`);
 
       // 記錄成功獲取風力數據
       await storage.insertAuditLog({
