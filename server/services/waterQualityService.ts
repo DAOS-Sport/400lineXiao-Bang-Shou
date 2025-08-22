@@ -352,57 +352,90 @@ export class WaterQualityService {
         return report;
       }
       
-      // 🔧 簡化版水質報告格式
-      const dateStr = dayjs().tz('Asia/Taipei').format('M/D');
+      // 📊 詳細版水質報告格式 (結合兩張圖優點)
+      const now = dayjs().tz('Asia/Taipei');
+      const dayOfWeek = now.format('dddd');
+      const dayOfWeekChinese = {
+        'Monday': '週一', 'Tuesday': '週二', 'Wednesday': '週三', 
+        'Thursday': '週四', 'Friday': '週五', 'Saturday': '週六', 'Sunday': '週日'
+      }[dayOfWeek] || dayOfWeek;
       
-      let report = `🏊‍♂️ 游泳池水質日報\n`;
-      report += `📅 日期: ${dateStr} | 📊 檢測: ${records.length}次\n`;
-      report += `━━━━━━━━━━━━━━━━\n`;
+      let report = `📊 ${now.format('YYYY-MM-DD')} (${dayOfWeekChinese}) 水質報告\n`;
+      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
       
-      // 統計分析
+      // 【檢測數據】- 使用第二張圖的簡潔表格格式
+      report += `【檢測數據】\n\n`;
+      report += `🕐 時間  🧪 CL  🔵 PH  🌊 水溫  🌡️ 氣溫\n`;
+      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      
+      records.forEach((record, index) => {
+        report += `${record.time}  ${record.cl}  ${record.ph}  ${record.waterTemp}°C  ${record.airTemp}°C\n`;
+      });
+      
+      // 【數據分析】
       const avgCL = (records.reduce((sum, r) => sum + r.cl, 0) / records.length);
       const avgPH = (records.reduce((sum, r) => sum + r.ph, 0) / records.length);
       const avgWaterTemp = (records.reduce((sum, r) => sum + r.waterTemp, 0) / records.length);
       const avgAirTemp = (records.reduce((sum, r) => sum + r.airTemp, 0) / records.length);
       
-      // 數據範圍
-      const clRange = [Math.min(...records.map(r => r.cl)), Math.max(...records.map(r => r.cl))];
-      const phRange = [Math.min(...records.map(r => r.ph)), Math.max(...records.map(r => r.ph))];
-      const waterTempRange = [Math.min(...records.map(r => r.waterTemp)), Math.max(...records.map(r => r.waterTemp))];
-      const airTempRange = [Math.min(...records.map(r => r.airTemp)), Math.max(...records.map(r => r.airTemp))];
+      report += `\n【數據分析】\n`;
+      report += `平均氯含量: ${avgCL.toFixed(2)} mg/L\n`;
+      report += `平均pH值: ${avgPH.toFixed(2)}\n`;
+      report += `平均水溫: ${avgWaterTemp.toFixed(1)}°C\n`;
+      report += `氣溫範圍: ${Math.min(...records.map(r => r.airTemp))}°C - ${Math.max(...records.map(r => r.airTemp))}°C\n`;
       
-      report += `\n【數據摘要】\n`;
-      report += `🧪 氯含量: ${avgCL.toFixed(1)} mg/L (範圍 ${clRange[0]}-${clRange[1]})\n`;
-      report += `⚖️  pH值: ${avgPH.toFixed(1)} (範圍 ${phRange[0]}-${phRange[1]})\n`;
-      report += `🌡️ 水溫: ${avgWaterTemp.toFixed(1)}°C (範圍 ${waterTempRange[0]}-${waterTempRange[1]}°C)\n`;
-      report += `🌤️ 氣溫: ${airTempRange[0]}-${airTempRange[1]}°C\n`;
+      // 【水質評估】
+      const clStatus = (avgCL >= 1.0 && avgCL <= 3.0);
+      const phStatus = (avgPH >= 7.2 && avgPH <= 7.8);
       
-      // 水質狀態評估
-      const clStatus = (avgCL >= 1.0 && avgCL <= 3.0) ? '✅' : '⚠️';
-      const phStatus = (avgPH >= 7.2 && avgPH <= 7.8) ? '✅' : '⚠️';
+      report += `\n【水質評估】\n`;
+      report += `氯含量狀況: ${clStatus ? '✅' : '⚠️'} ${clStatus ? '正常' : '異常'}\n`;
+      report += `pH值狀況: ${phStatus ? '✅' : '⚠️'} ${phStatus ? '正常' : '異常'}\n`;
       
-      report += `\n【狀況評估】\n`;
-      report += `${clStatus} 氯含量 | ${phStatus} pH值\n`;
-      
-      // 簡化趨勢分析 (首末對比)
+      // 【趨勢分析】
       if (records.length >= 2) {
         const firstRecord = records[0];
         const lastRecord = records[records.length - 1];
         const clTrend = lastRecord.cl - firstRecord.cl;
+        const phTrend = lastRecord.ph - firstRecord.ph;
         
-        report += `\n【趨勢】 ${firstRecord.time}→${lastRecord.time}\n`;
-        report += `氯含量: ${clTrend > 0 ? '↗️' : clTrend < 0 ? '↘️' : '→'} ${clTrend > 0 ? '+' : ''}${clTrend.toFixed(1)} mg/L\n`;
+        report += `\n【趨勢分析】\n`;
+        report += `氯含量變化: ${clTrend > 0 ? '📈' : clTrend < 0 ? '📉' : '➡️'} ${clTrend > 0 ? '上升' : clTrend < 0 ? '下降' : '穩定'} (${clTrend > 0 ? '+' : ''}${clTrend.toFixed(1)})\n`;
+        report += `pH值變化: ${phTrend > 0 ? '📈' : phTrend < 0 ? '📉' : '➡️'} ${phTrend > 0 ? '上升' : phTrend < 0 ? '下降' : '穩定'} (${phTrend > 0 ? '+' : ''}${phTrend.toFixed(1)})\n`;
       }
       
-      // 管理建議 (簡化)
-      if (clStatus === '✅' && phStatus === '✅') {
-        report += `\n💚 水質良好，持續監控即可\n`;
+      // 【管理建議】
+      report += `\n【管理建議】\n`;
+      if (clStatus && phStatus) {
+        report += `✅ 水質各項指標正常，各項指數\n`;
+        report += `   均在標準範圍內\n`;
+        report += `✅ 營運：持續正常，維持當前\n`;
+        report += `   管理作業即可\n`;
       } else {
-        report += `\n⚠️ 需要調整水質參數\n`;
+        let suggestions = [];
+        if (!clStatus) {
+          if (avgCL < 1.0) {
+            suggestions.push('氯含量偏低，建議適量加氯');
+          } else if (avgCL > 3.0) {
+            suggestions.push('氯含量偏高，建議暫停加氯，增加循環');
+          }
+        }
+        if (!phStatus) {
+          if (avgPH < 7.2) {
+            suggestions.push('pH值偏低，建議添加pH調升劑');
+          } else if (avgPH > 7.8) {
+            suggestions.push('pH值偏高，建議添加pH調降劑');
+          }
+        }
+        report += `⚠️ ${suggestions.join('\n⚠️ ')}\n`;
       }
       
-      if (avgAirTemp >= 35) {
-        report += `🔥 高溫警示: ${Math.max(...records.map(r => r.airTemp))}°C\n`;
+      // 高溫警示
+      const maxAirTemp = Math.max(...records.map(r => r.airTemp));
+      if (maxAirTemp >= 35) {
+        report += `🔥 高溫警示: 氣溫達 ${maxAirTemp}°C\n`;
+        report += `   請特別注意水質變化，考慮增加\n`;
+        report += `   檢測頻率及循環時間\n`;
       }
       
       return report;
