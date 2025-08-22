@@ -3,6 +3,7 @@ import { type IMessage, type CreateTaskData } from "@shared/schema";
 import { messageService } from "./messageService";
 import { llmService } from "./llmService";
 import crypto from "crypto";
+import OpenAI from "openai";
 
 export class TaskService {
   async createTaskFromMessage(message: IMessage, text: string): Promise<void> {
@@ -169,6 +170,104 @@ export class TaskService {
     }
     
     return matrix[str2.length][str1.length];
+  }
+
+  // 根據群組和任務序號完成任務
+  async completeTaskBySerial(groupId: string, taskSerial: string, userId: string): Promise<boolean> {
+    try {
+      // 查找該群組的特定序號任務
+      const tasks = await storage.getTasksByGroupId(groupId, 'pending');
+      const task = tasks.find(t => t.taskIdSerial === taskSerial);
+      
+      if (!task) {
+        console.log(`❌ 找不到群組 ${groupId} 的任務 ${taskSerial}`);
+        return false;
+      }
+
+      // 標記為完成
+      await storage.updateTaskStatus(task.id, 'completed', new Date());
+      
+      // 記錄完成操作
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'info',
+        category: 'task',
+        message: '任務標記完成',
+        details: {
+          groupId,
+          taskSerial,
+          completedBy: userId,
+          taskDescription: task.text.substring(0, 50) + (task.text.length > 50 ? '...' : '')
+        }
+      });
+
+      console.log(`✅ 任務 ${taskSerial} 已完成，由 ${userId} 標記`);
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ 完成任務失敗:`, error);
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'task',
+        message: '任務完成標記失敗',
+        details: { 
+          error: (error as Error).message,
+          groupId,
+          taskSerial,
+          userId
+        }
+      });
+      return false;
+    }
+  }
+
+  // 生成任務完成的溫馨回應
+  async generateCompletionMessage(taskText: string): Promise<string> {
+    try {
+      if (!process.env.OPENAI_API_KEY) {
+        return '謝謝您的辛勞！任務完成辛苦了！';
+      }
+
+      const prompt = `根據以下已完成的任務內容，生成一句溫馨的感謝回應：
+
+任務內容: ${taskText.substring(0, 100)}
+
+要求：
+1. 根據任務難易度和重要性調整感謝語氣
+2. 使用溫暖正面的表達
+3. 控制在20字以內
+4. 使用繁體中文
+5. 體現團隊合作精神
+
+範例：
+- 簡單任務："謝謝您！效率超讚！"
+- 複雜任務："辛苦了！這個任務處理得很棒！"  
+- 重要任務："太感謝了！公司有您真好！"
+
+請直接回覆感謝語句，不要包含其他說明。`;
+
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 50
+      });
+
+      const message = response.choices[0]?.message?.content?.trim();
+      
+      if (message && message.length <= 30) {
+        return message;
+      } else {
+        return '謝謝您！任務完成辛苦了！';
+      }
+      
+    } catch (error) {
+      console.error('❌ 生成完成訊息失敗:', error);
+      return '謝謝您！任務完成辛苦了！';
+    }
   }
 }
 

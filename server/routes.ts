@@ -300,19 +300,27 @@ async function processWebhookEvent(event: any) {
         await taskService.createTaskFromMessage(savedMessage, text);
       }
 
-      // 2.1 任務完成標記（所有群組皆可使用）
+      // 2.1 任務完成標記（所有群組皆可使用）- 格式：交辦01完成
       if (source.type === 'group') {
-        const completeTaskPattern = /^完成任務\s*(\d+)$|^任務(\d+)完成$|^(\d+)完成$/i;
+        const completeTaskPattern = /^交辦(\d+)完成$/i;
         const match = text.match(completeTaskPattern);
         if (match) {
-          const taskSerial = match[1] || match[2] || match[3];
-          console.log(`✅ 偵測到完成任務指令: 任務 ${taskSerial} 來自群組 ${source.groupId}`);
+          const taskSerial = match[1].padStart(2, '0'); // 確保是兩位數格式 01, 02...
+          console.log(`✅ 偵測到完成任務指令: 交辦${taskSerial}完成 來自群組 ${source.groupId}`);
+          
+          // 先獲取任務內容以便生成感謝訊息
+          const tasks = await storage.getTasksByGroupId(source.groupId, 'pending');
+          const task = tasks.find(t => t.taskIdSerial === taskSerial);
           
           const success = await taskService.completeTaskBySerial(source.groupId, taskSerial, source.userId);
-          if (success) {
-            await lineService.replyMessage(event.replyToken, `✅ 任務 ${taskSerial} 已標記為完成！`);
+          if (success && task) {
+            // 生成 GPT 溫馨感謝訊息
+            const thankYouMessage = await taskService.generateCompletionMessage(task.text);
+            await lineService.replyMessage(event.replyToken, `✅ 交辦${taskSerial}已完成！\n${thankYouMessage}`);
+          } else if (success) {
+            await lineService.replyMessage(event.replyToken, `✅ 交辦${taskSerial}已完成！\n謝謝您的辛勞！`);
           } else {
-            await lineService.replyMessage(event.replyToken, `❌ 找不到任務 ${taskSerial} 或該任務已完成`);
+            await lineService.replyMessage(event.replyToken, `❌ 找不到交辦${taskSerial}或該任務已完成`);
           }
         }
       }
