@@ -232,6 +232,179 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 資料庫查看介面 - 任務
+  app.get('/api/admin/tasks', async (req, res) => {
+    try {
+      const { groupId, status, limit = 50 } = req.query;
+      let tasks;
+      
+      if (groupId) {
+        tasks = await storage.getTasksByGroupId(groupId as string, status as string);
+      } else {
+        tasks = await storage.getAllTasks();
+      }
+      
+      // 限制返回數量
+      const limitedTasks = tasks.slice(0, parseInt(limit as string));
+      
+      res.json({
+        success: true,
+        total: tasks.length,
+        displayed: limitedTasks.length,
+        tasks: limitedTasks.map(task => ({
+          id: task.id,
+          serial: task.taskIdSerial,
+          text: task.text,
+          status: task.status,
+          groupId: task.groupId,
+          author: task.authorDisplayName,
+          createdAt: task.createdAt,
+          completedAt: task.completedAt
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: (error as Error).message 
+      });
+    }
+  });
+
+  // 資料庫查看介面 - 審計日誌
+  app.get('/api/admin/audit-logs', async (req, res) => {
+    try {
+      const { category, limit = 100 } = req.query;
+      const logs = await storage.getAuditLogs(parseInt(limit as string));
+      
+      let filteredLogs = logs;
+      if (category) {
+        filteredLogs = logs.filter(log => log.category === category);
+      }
+      
+      res.json({
+        success: true,
+        total: filteredLogs.length,
+        logs: filteredLogs.map(log => ({
+          id: log.id,
+          level: log.level,
+          category: log.category,
+          message: log.message,
+          timestamp: log.timestamp,
+          details: log.details
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: (error as Error).message 
+      });
+    }
+  });
+
+  // 簡單的查看介面
+  app.get('/admin', (req, res) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>LINE 小秘書 - 後台管理</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+          .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+          .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+          .btn { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+          .btn:hover { background: #0056b3; }
+          pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; white-space: pre-wrap; }
+          input, select { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>🤖 LINE 小秘書 - 後台管理</h1>
+          
+          <div class="section">
+            <h3>📋 交辦任務查看</h3>
+            <input type="text" id="groupId" placeholder="群組ID (可選)" style="width: 300px;">
+            <select id="status">
+              <option value="">所有狀態</option>
+              <option value="pending">進行中</option>
+              <option value="completed">已完成</option>
+            </select>
+            <button class="btn" onclick="loadTasks()">查看任務</button>
+            <div id="tasksResult"></div>
+          </div>
+
+          <div class="section">
+            <h3>📊 系統日誌查看</h3>
+            <select id="logCategory">
+              <option value="">所有類別</option>
+              <option value="webhook">Webhook處理</option>
+              <option value="water_quality">水質監控</option>
+              <option value="task_cleanup">任務清理</option>
+              <option value="database_cleanup">資料庫清理</option>
+            </select>
+            <button class="btn" onclick="loadLogs()">查看日誌</button>
+            <div id="logsResult"></div>
+          </div>
+
+          <div class="section">
+            <h3>🏊‍♂️ 水質報告</h3>
+            <button class="btn" onclick="loadWaterReport()">生成今日水質報告</button>
+            <div id="waterResult"></div>
+          </div>
+        </div>
+
+        <script>
+          async function loadTasks() {
+            const groupId = document.getElementById('groupId').value;
+            const status = document.getElementById('status').value;
+            const params = new URLSearchParams();
+            if (groupId) params.append('groupId', groupId);
+            if (status) params.append('status', status);
+            
+            try {
+              const response = await fetch('/api/admin/tasks?' + params);
+              const data = await response.json();
+              document.getElementById('tasksResult').innerHTML = 
+                '<h4>查詢結果 (' + data.displayed + '/' + data.total + ')</h4><pre>' + 
+                JSON.stringify(data.tasks, null, 2) + '</pre>';
+            } catch (error) {
+              document.getElementById('tasksResult').innerHTML = '<p style="color: red;">查詢失敗: ' + error.message + '</p>';
+            }
+          }
+
+          async function loadLogs() {
+            const category = document.getElementById('logCategory').value;
+            const params = new URLSearchParams();
+            if (category) params.append('category', category);
+            
+            try {
+              const response = await fetch('/api/admin/audit-logs?' + params);
+              const data = await response.json();
+              document.getElementById('logsResult').innerHTML = 
+                '<h4>日誌記錄 (' + data.total + ')</h4><pre>' + 
+                JSON.stringify(data.logs, null, 2) + '</pre>';
+            } catch (error) {
+              document.getElementById('logsResult').innerHTML = '<p style="color: red;">查詢失敗: ' + error.message + '</p>';
+            }
+          }
+
+          async function loadWaterReport() {
+            try {
+              const response = await fetch('/api/water-quality/report');
+              const data = await response.json();
+              document.getElementById('waterResult').innerHTML = 
+                '<h4>水質報告</h4><pre>' + data.report + '</pre>';
+            } catch (error) {
+              document.getElementById('waterResult').innerHTML = '<p style="color: red;">生成失敗: ' + error.message + '</p>';
+            }
+          }
+        </script>
+      </body>
+      </html>
+    `);
+  });
+
   // 啟動排程服務
   schedulerService.start();
 
