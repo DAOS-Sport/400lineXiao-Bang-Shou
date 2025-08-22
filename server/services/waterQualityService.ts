@@ -312,8 +312,12 @@ export class WaterQualityService {
       // 合併並去重（以 date + time + poolType 為鍵值）
       const allRecords = [...memoryRecords, ...dbRecords];
       const uniqueRecords = allRecords.reduce((acc, record) => {
-        const key = `${record.date}-${record.time}-${record.poolType || 'default'}`;
-        if (!acc.find(r => `${r.date}-${r.time}-${r.poolType || 'default'}` === key)) {
+        const poolType = (record as any).poolType || 'default';
+        const key = `${record.date}-${record.time}-${poolType}`;
+        if (!acc.find(r => {
+          const rPoolType = (r as any).poolType || 'default';
+          return `${r.date}-${r.time}-${rPoolType}` === key;
+        })) {
           acc.push(record);
         }
         return acc;
@@ -509,12 +513,16 @@ export class WaterQualityService {
       // 轉換為 IMessage 格式
       const messages: IMessage[] = todayMessages.map(log => ({
         id: log.id,
-        text: (log.details as any).text || '',
-        userId: (log.details as any).userId || '',
+        messageId: (log.details as any).messageId || log.id,
+        sourceType: 'group',
         groupId: groupId,
+        userId: (log.details as any).userId || '',
         displayName: (log.details as any).displayName || '',
+        type: 'text',
+        text: (log.details as any).text || '',
         timestamp: log.timestamp,
-        messageId: (log.details as any).messageId || ''
+        rawEvent: log.details,
+        createdAt: log.timestamp
       }));
 
       console.log(`📊 分析 ${messages.length} 條對話記錄...`);

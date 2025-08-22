@@ -211,7 +211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ 
         success: false, 
-        error: error.message 
+        error: (error as Error).message 
       });
     }
   });
@@ -227,7 +227,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ 
         success: false, 
-        error: error.message 
+        error: (error as Error).message 
       });
     }
   });
@@ -311,18 +311,36 @@ async function processWebhookEvent(event: any) {
           console.log(`✅ 偵測到完成任務指令: ${taskType}${taskSerial}完成 來自群組 ${source.groupId}`);
           
           try {
-            // 先獲取任務內容以便生成感謝訊息
-            const tasks = await storage.getTasksByGroupId(source.groupId, 'pending');
-            const task = tasks.find(t => t.taskIdSerial === taskSerial);
+            // 先檢查任務是否存在（任何狀態）
+            const allTasks = await storage.getTasksByGroupId(source.groupId); // 不指定狀態，獲取所有任務
+            const existingTask = allTasks.find(t => t.taskIdSerial === taskSerial);
             
-            if (task) {
-              console.log(`📋 找到任務 ${taskSerial}: ${task.text.substring(0, 50)}...`);
+            if (existingTask && existingTask.status === 'completed') {
+              // 任務已經完成
+              const alreadyCompletedText = `✅ ${taskType}${taskSerial}已經完成了！`;
+              console.log(`📤 回覆已完成訊息: "${alreadyCompletedText}"`);
+              try {
+                await lineService.replyMessage(event.replyToken, alreadyCompletedText);
+                console.log(`✅ 已完成提醒發送成功`);
+              } catch (replyError) {
+                console.error(`❌ 回覆失敗:`, replyError);
+                try {
+                  await lineService.pushMessage(source.groupId, alreadyCompletedText);
+                  console.log(`✅ 改用推送方式發送已完成提醒`);
+                } catch (pushError) {
+                  console.error(`❌ 推送也失敗:`, pushError);
+                }
+              }
+              return;
+            } else if (existingTask && existingTask.status === 'pending') {
+              // 任務存在且待完成
+              console.log(`📋 找到任務 ${taskSerial}: ${existingTask.text.substring(0, 50)}...`);
               
               const success = await taskService.completeTaskBySerial(source.groupId, taskSerial, source.userId);
               if (success) {
                 // 生成 GPT 溫馨感謝訊息
                 console.log(`💝 開始生成感謝訊息...`);
-                const thankYouMessage = await taskService.generateCompletionMessage(task.text);
+                const thankYouMessage = await taskService.generateCompletionMessage(existingTask.text);
                 console.log(`💝 感謝訊息生成成功: "${thankYouMessage}"`);
                 
                 const replyText = `✅ ${taskType}${taskSerial}已完成！\n${thankYouMessage}`;
