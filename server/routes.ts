@@ -251,7 +251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         total: tasks.length,
         displayed: limitedTasks.length,
-        tasks: limitedTasks.map(task => ({
+        tasks: limitedTasks.map((task: any) => ({
           id: task.id,
           serial: task.taskIdSerial,
           text: task.text,

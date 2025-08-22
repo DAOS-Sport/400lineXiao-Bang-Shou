@@ -267,6 +267,17 @@ export class DatabaseStorage implements IStorage {
     return tasksResult as ITask[];
   }
 
+  async getAllTasks(): Promise<ITask[]> {
+    const tasksResult = await db.select().from(tasks)
+      .orderBy(desc(tasks.createdAt));
+    
+    return tasksResult as ITask[];
+  }
+
+  async deleteTask(id: string): Promise<void> {
+    await db.delete(tasks).where(eq(tasks.id, id));
+  }
+
   // Admins
   async insertAdmin(data: CreateAdminData): Promise<IAdmin> {
     const [admin] = await db.insert(admins).values(data).returning();
