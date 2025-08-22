@@ -317,6 +317,7 @@ export class LineService {
         hour12: false 
       });
       
+      // 檢查是否有待觸發的任務提醒
       const pendingLogs = await storage.getAuditLogsByCategory('pending_task_reminder');
       const todayPending = pendingLogs.filter(log => 
         log.details && 
@@ -326,12 +327,29 @@ export class LineService {
         log.details.date === today &&
         log.details.status === 'awaiting_trigger'
       );
+
+      // 檢查是否已經發送過
+      const sentLogs = await storage.getAuditLogsByCategory('task_reminder_sent');
+      const todaySent = sentLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details &&
+        log.details.date === today
+      );
+
+      // 如果有待觸發且尚未發送的時段
+      const availableTimeSlots = todayPending.filter(pending => {
+        const timeSlot = pending.details && typeof pending.details === 'object' && 'timeSlot' in pending.details ? pending.details.timeSlot : '';
+        return !todaySent.some(sent => 
+          sent.details && typeof sent.details === 'object' && 'timeSlot' in sent.details && sent.details.timeSlot === timeSlot
+        );
+      });
       
-      if (todayPending.length > 0) {
-        console.log(`⏰ 找到 ${todayPending.length} 個待觸發的任務提醒`);
+      if (availableTimeSlots.length > 0) {
+        console.log(`⏰ 找到 ${availableTimeSlots.length} 個待觸發的任務提醒`);
         
         // 找最近的時間點
-        const latestLog = todayPending[todayPending.length - 1];
+        const latestLog = availableTimeSlots[availableTimeSlots.length - 1];
         const timeSlot = latestLog.details && typeof latestLog.details === 'object' && 'timeSlot' in latestLog.details ? latestLog.details.timeSlot : '';
         
         // 生成任務提醒內容
@@ -384,11 +402,29 @@ export class LineService {
         log.details.date === today &&
         log.details.status === 'awaiting_trigger'
       );
+
+      // 檢查是否已經發送過
+      const sentLogs = await storage.getAuditLogsByCategory('water_quality_sent');
+      const todaySent = sentLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details &&
+        log.details.date === today &&
+        log.details.groupId === groupId
+      );
+
+      // 如果有待觸發且尚未發送的時段
+      const availableTimeSlots = todayPending.filter(pending => {
+        const timeSlot = pending.details && typeof pending.details === 'object' && 'timeSlot' in pending.details ? pending.details.timeSlot : '';
+        return !todaySent.some(sent => 
+          sent.details && typeof sent.details === 'object' && 'timeSlot' in sent.details && sent.details.timeSlot === timeSlot
+        );
+      });
       
-      if (todayPending.length > 0) {
-        console.log(`💧 找到 ${todayPending.length} 個待觸發的水質報告`);
+      if (availableTimeSlots.length > 0) {
+        console.log(`💧 找到 ${availableTimeSlots.length} 個待觸發的水質報告`);
         
-        const latestLog = todayPending[todayPending.length - 1];
+        const latestLog = availableTimeSlots[availableTimeSlots.length - 1];
         const timeSlot = latestLog.details && typeof latestLog.details === 'object' && 'timeSlot' in latestLog.details ? latestLog.details.timeSlot : '';
         
         // 使用 waterQualityService 生成報告
@@ -442,11 +478,29 @@ export class LineService {
         log.details.date === today &&
         log.details.status === 'awaiting_trigger'
       );
+
+      // 檢查是否已經發送過
+      const sentLogs = await storage.getAuditLogsByCategory('wind_forecast_sent');
+      const todaySent = sentLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details &&
+        log.details.date === today &&
+        log.details.groupId === groupId
+      );
+
+      // 如果有待觸發且尚未發送的時段
+      const availableTimeSlots = todayPending.filter(pending => {
+        const timeSlot = pending.details && typeof pending.details === 'object' && 'timeSlot' in pending.details ? pending.details.timeSlot : '';
+        return !todaySent.some(sent => 
+          sent.details && typeof sent.details === 'object' && 'timeSlot' in sent.details && sent.details.timeSlot === timeSlot
+        );
+      });
       
-      if (todayPending.length > 0) {
-        console.log(`🌬️ 找到 ${todayPending.length} 個待觸發的風力預報`);
+      if (availableTimeSlots.length > 0) {
+        console.log(`🌬️ 找到 ${availableTimeSlots.length} 個待觸發的風力預報`);
         
-        const latestLog = todayPending[todayPending.length - 1];
+        const latestLog = availableTimeSlots[availableTimeSlots.length - 1];
         const timeSlot = latestLog.details && typeof latestLog.details === 'object' && 'timeSlot' in latestLog.details ? latestLog.details.timeSlot : '';
         
         // 使用 windForecastService 生成預報
@@ -496,17 +550,39 @@ export class LineService {
   // 清除待觸發標記
   private async clearPendingTriggers(category: string, date: string): Promise<void> {
     try {
-      await storage.insertAuditLog({
-        id: crypto.randomUUID(),
-        level: 'info',
-        category: 'trigger_cleared',
-        message: `已清除 ${date} 的 ${category} 待觸發標記`,
-        details: {
-          category,
-          date,
-          clearedAt: new Date().toISOString()
-        }
-      });
+      // 獲取所有今天待觸發的記錄
+      const pendingLogs = await storage.getAuditLogsByCategory(category);
+      const todayPending = pendingLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details && 
+        'status' in log.details &&
+        log.details.date === date &&
+        log.details.status === 'awaiting_trigger'
+      );
+
+      // 為每個待觸發記錄添加"已發送"標記
+      for (const log of todayPending) {
+        const timeSlot = log.details && typeof log.details === 'object' && 'timeSlot' in log.details ? log.details.timeSlot : 'unknown';
+        
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: category.replace('pending_', '') + '_sent',
+          message: `${category.includes('task') ? '任務提醒' : category.includes('water') ? '水質報告' : '風力預報'}已發送 - 清除待觸發狀態`,
+          details: {
+            originalLogId: log.id,
+            timeSlot,
+            date,
+            status: 'sent',
+            type: log.details && typeof log.details === 'object' && 'type' in log.details ? log.details.type : category,
+            clearedAt: new Date().toISOString()
+          }
+        });
+      }
+
+      console.log(`🧹 已清除 ${todayPending.length} 個 ${category} 待觸發記錄`);
+      
     } catch (error) {
       console.error('清除待觸發標記失敗:', error);
     }
