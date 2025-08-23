@@ -2,8 +2,8 @@ import { db } from '../db';
 import { messages, messageBackups, auditLogs } from '@shared/schema';
 import { eq, gte, and, desc } from 'drizzle-orm';
 import dayjs from 'dayjs';
-import timezone from 'dayjs/plugin/timezone';
-import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone.js';
+import utc from 'dayjs/plugin/utc.js';
 import crypto from 'crypto';
 
 dayjs.extend(utc);

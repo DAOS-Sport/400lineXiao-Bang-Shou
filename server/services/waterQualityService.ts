@@ -10,8 +10,8 @@ import { llmService } from './llmService';
 import { weatherService } from './weatherService';
 import { type IMessage } from "@shared/schema";
 import dayjs from 'dayjs';
-import timezone from 'dayjs/plugin/timezone';
-import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone.js';
+import utc from 'dayjs/plugin/utc.js';
 import crypto from 'crypto';
 
 dayjs.extend(utc);
