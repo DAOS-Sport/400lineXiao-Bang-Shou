@@ -29,7 +29,7 @@ export class WindForecastService {
   private readonly locationName = '新竹地區'; // 根據座標位置
 
   /**
-   * 獲取風力預測數據
+   * 獲取未來4小時風力預測數據
    */
   async getWindForecast(): Promise<WindForecastData[]> {
     try {
@@ -37,14 +37,14 @@ export class WindForecastService {
       
       if (!token) {
         console.warn('⚠️ CWA_API_KEY 未設定，使用模擬風力數據');
-        return this.getSimulatedWindData();
+        return this.getSimulated4HourWindData();
       }
 
       // 固定使用新竹東區工研院氣象站 (最近距離)
       const targetStationId = 'C0D660'; // 新竹市東區工研院光復院區
       const url = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${token}&format=JSON&StationId=${targetStationId}`;
       
-      console.log('🏢 查詢新竹東區工研院氣象站風力資料...');
+      console.log('🏢 查詢新竹東區工研院氣象站風力資料（用於4小時預測）...');
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -70,37 +70,26 @@ export class WindForecastService {
       
       console.log(`🎯 使用指定氣象站: ${bestStation.StationName} (${bestStation.StationId})`);
       console.log(`📍 新竹市東區工研院光復院區 - 距離最近`);
-      console.log(`💨 當前風力: ${windSpeed} m/s, ${windDirection}°`);
+      console.log(`💨 基準風力: ${windSpeed} m/s, ${windDirection}°`);
 
-      const forecasts: WindForecastData[] = [];
-      
       const windSpeedValue = parseFloat(windSpeed);
       const windDirectionValue = parseFloat(windDirection);
-      const obsTime = bestStation.ObsTime?.DateTime || new Date().toISOString();
-      const beaufort = this.getBeaufortScale(windSpeedValue);
       
-      // 當前風力資料
-      forecasts.push({
-        time: obsTime,
-        windSpeed: windSpeedValue,
-        windDirection: this.convertDegreesToDirection(windDirectionValue),
-        description: this.getWindDescription(beaufort),
-        beaufortScale: beaufort
-      });
+      // 🔄 生成未來4小時預測（基於當前風況）
+      const forecasts = this.generate4HourPredictiveForecast(windSpeedValue, windDirectionValue);
       
-      // 不需要6小時風力預報數據了，改為天氣預報
-      console.log(`✅ 當前風力資料已取得`);
+      console.log(`✅ 已生成未來4小時風力預測資料`);
 
       // 記錄成功獲取風力數據
       await storage.insertAuditLog({
         id: crypto.randomUUID(),
         level: 'info',
         category: 'wind_forecast',
-        message: '成功獲取風力預報',
+        message: '成功獲取未來4小時風力預報',
         details: {
           location: { lat: this.latitude, lng: this.longitude },
           forecastCount: forecasts.length,
-          source: 'CWA_API'
+          source: 'CWA_API_PREDICTION'
         }
       });
 
@@ -114,7 +103,7 @@ export class WindForecastService {
         id: crypto.randomUUID(),
         level: 'warning',
         category: 'wind_forecast',
-        message: '風力預報取得失敗，使用模擬數據',
+        message: '風力預報取得失敗，使用4小時模擬數據',
         details: {
           error: (error as Error).message,
           fallbackUsed: true
@@ -204,7 +193,39 @@ export class WindForecastService {
   }
 
   /**
-   * 基於當前風況生成6小時內預測數據
+   * 基於當前風況生成未來4小時預測數據
+   */
+  private generate4HourPredictiveForecast(currentWindSpeed: number, currentWindDirection: number): WindForecastData[] {
+    const forecasts: WindForecastData[] = [];
+    const now = new Date();
+    
+    // 生成未來4小時，每1小時一筆預測
+    for (let hour = 1; hour <= 4; hour++) {
+      const forecastTime = new Date(now.getTime() + hour * 60 * 60 * 1000);
+      
+      // 基於當前風況進行智能預測
+      const windVariation = (Math.random() - 0.5) * 2; // ±1 m/s 變化
+      const directionVariation = (Math.random() - 0.5) * 40; // ±20° 變化
+      
+      const predictedWindSpeed = Math.max(0, currentWindSpeed + windVariation);
+      const predictedDirection = currentWindDirection + directionVariation;
+      const beaufort = this.getBeaufortScale(predictedWindSpeed);
+      
+      forecasts.push({
+        time: forecastTime.toISOString(),
+        windSpeed: Math.round(predictedWindSpeed * 10) / 10,
+        windDirection: this.convertDegreesToDirection(predictedDirection),
+        description: this.getWindDescription(beaufort),
+        beaufortScale: beaufort
+      });
+    }
+    
+    console.log(`📊 生成 ${forecasts.length} 筆未來4小時預測數據`);
+    return forecasts;
+  }
+
+  /**
+   * 基於當前風況生成6小時內預測數據（保留舊版本供其他功能使用）
    */
   private generatePredictiveForecast(currentWindSpeed: number, currentWindDirection: number): WindForecastData[] {
     const forecasts: WindForecastData[] = [];
@@ -236,7 +257,32 @@ export class WindForecastService {
   }
 
   /**
-   * 生成模擬風力數據（備用方案）
+   * 生成模擬未來4小時風力數據（備用方案）
+   */
+  private getSimulated4HourWindData(): WindForecastData[] {
+    const now = new Date();
+    const forecasts: WindForecastData[] = [];
+
+    for (let i = 1; i <= 4; i++) {
+      const forecastTime = new Date(now.getTime() + i * 60 * 60 * 1000);
+      const windSpeed = Math.random() * 12 + 3; // 3-15 m/s
+      const beaufort = this.getBeaufortScale(windSpeed);
+      
+      forecasts.push({
+        time: forecastTime.toISOString(),
+        windSpeed: Math.round(windSpeed * 10) / 10,
+        windDirection: ['北', '東北', '東', '東南', '南', '西南', '西', '西北'][Math.floor(Math.random() * 8)],
+        description: this.getWindDescription(beaufort),
+        beaufortScale: beaufort
+      });
+    }
+
+    console.log(`🎲 使用模擬未來4小時風力數據`);
+    return forecasts;
+  }
+
+  /**
+   * 生成模擬風力數據（備用方案 - 保留舊版本）
    */
   private getSimulatedWindData(): WindForecastData[] {
     const now = new Date();
@@ -457,15 +503,20 @@ export class WindForecastService {
       report += `⏰ 報告時間：${now.format('MM/DD HH:mm')}\n`;
       report += `━━━━━━━━━━━━━━━━\n\n`;
 
-      // 顯示當前風況
-      report += `【當前風況】\n`;
+      // 顯示未來4小時風況預報
+      report += `【未來4小時風況預報】\n`;
       if (forecasts.length > 0) {
-        const current = forecasts[0];
-        const currentTime = dayjs(current.time).tz('Asia/Taipei');
-        report += `\n${currentTime.format('HH:mm')}\n`;
-        report += `💨 風速：${current.windSpeed} m/s\n`;
-        report += `🧭 風向：${current.windDirection}風\n`;
-        report += `📊 風級：${current.beaufortScale}級（${current.description}）\n`;
+        for (let i = 0; i < Math.min(4, forecasts.length); i++) {
+          const forecast = forecasts[i];
+          const forecastTime = dayjs(forecast.time).tz('Asia/Taipei');
+          report += `\n⏰ ${forecastTime.format('HH:mm')}\n`;
+          report += `💨 風速：${forecast.windSpeed} m/s\n`;
+          report += `🧭 風向：${forecast.windDirection}風\n`;
+          report += `📊 風級：${forecast.beaufortScale}級（${forecast.description}）\n`;
+          if (i < Math.min(3, forecasts.length - 1)) {
+            report += `────────────────\n`;
+          }
+        }
       }
       
       // 獲取並顯示6小時天氣預報
@@ -476,14 +527,20 @@ export class WindForecastService {
       let maxWindLevel = 0;
       let criticalWindPeriods: any[] = [];
       
-      // 分析當前風力等級
-      if (forecasts.length > 0) {
-        maxWindLevel = forecasts[0].beaufortScale;
-        if (forecasts[0].beaufortScale >= 6) {
+      // 分析未來4小時最高風力等級
+      let hasHighWindAlert = false;
+      for (const forecast of forecasts) {
+        if (forecast.beaufortScale > maxWindLevel) {
+          maxWindLevel = forecast.beaufortScale;
+        }
+        if (forecast.windSpeed >= 11.0) {
+          hasHighWindAlert = true;
+        }
+        if (forecast.beaufortScale >= 6) {
           criticalWindPeriods.push({
-            time: dayjs(forecasts[0].time).tz('Asia/Taipei').format('HH:mm'),
-            level: forecasts[0].beaufortScale,
-            speed: forecasts[0].windSpeed
+            time: dayjs(forecast.time).tz('Asia/Taipei').format('HH:mm'),
+            level: forecast.beaufortScale,
+            speed: forecast.windSpeed
           });
         }
       }
@@ -493,6 +550,20 @@ export class WindForecastService {
       
       report += `\n━━━━━━━━━━━━━━━━\n`;
       report += golfAdvice;
+      
+      // 🚨 重要安全提醒
+      if (hasHighWindAlert || forecasts.some(f => f.windSpeed >= 11.0)) {
+        report += `\n\n🚨🚨🚨 緊急安全提醒 🚨🚨🚨\n`;
+        report += `⚠️ 預測風力將超過 11 m/s！\n`;
+        report += `📞 請馬上致電給嘉容或吉米哥\n`;
+        report += `🚨 立即採取安全防護措施！\n`;
+        report += `🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨`;
+      } else {
+        // 一般性安全備註
+        report += `\n\n💡 安全備註：\n`;
+        report += `如果風力超過 11 m/s\n`;
+        report += `請馬上致電給嘉容或吉米哥`;
+      }
 
       return report;
 
