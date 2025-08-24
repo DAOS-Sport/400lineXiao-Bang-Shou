@@ -107,7 +107,7 @@ Preferred communication style: Simple, everyday language.
   - Supports all notification types: task reminders, water quality reports, wind forecasts
 - **Group Isolation**: Strict per-group task processing with no cross-group data sharing
 - **Task Summarization**: AI-powered daily task summary with GPT-generated processing suggestions
-- **Time Range Logic**: Each group receives tasks created from yesterday 00:00 to current time specific to that group (昨天+今天發送前的所有事項)
+- **Time Range Logic**: Each group receives tasks created within the past month specific to that group (近一個月內發送前的所有未完成事項)
 - **Backup Automation**: Automatic daily backup of all LINE conversations with permanent retention
 - **Water Quality Monitoring**: Specialized monitoring for multiple swimming pool facilities:
   - Single pool monitoring with temperature data

@@ -55,3 +55,15 @@ export function getDateRange(days: number): { start: Date; end: Date } {
   const start = now().subtract(days, 'day').toDate();
   return { start, end };
 }
+
+export function getOneMonthAgo(): Date {
+  return now().subtract(1, 'month').toDate();
+}
+
+export function getOneMonthRange(): { start: Date; end: Date } {
+  const oneMonthAgo = now().subtract(1, 'month');
+  return {
+    start: oneMonthAgo.startOf('day').toDate(),
+    end: now().toDate()
+  };
+}

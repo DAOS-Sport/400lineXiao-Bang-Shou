@@ -3,6 +3,7 @@
 
 import { schedulerService } from '../services/schedulerService';
 import { storage } from '../storage';
+import { getOneMonthRange } from '../utils/time';
 
 async function testSingleGroupReminder() {
   console.log('🧪 測試單個群組任務提醒...');
@@ -22,19 +23,16 @@ async function testSingleGroupReminder() {
       return;
     }
     
-    // 設定時間範圍（昨天到今天）
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
+    // 設定時間範圍（一個月前到現在）
+    const { start: startDate, end: endDate } = getOneMonthRange();
     
     console.log('🚀 開始發送單群組任務提醒...');
     
     // 直接調用單群組處理方法
     await (schedulerService as any).processGroupDailySummaryWithSuggestions(
       testGroupId, 
-      yesterday, 
-      now
+      startDate, 
+      endDate
     );
     
     console.log('✅ 單群組任務提醒測試完成！');

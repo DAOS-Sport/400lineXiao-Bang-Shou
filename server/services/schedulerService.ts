@@ -6,7 +6,7 @@ import { llmService } from "./llmService";
 import { simpleBackupService } from "./simpleBackupService";
 import { waterQualityService } from "./waterQualityService";
 import { windForecastService } from "./windForecastService";
-import { getYesterday, formatDate } from "../utils/time";
+import { getYesterday, formatDate, getOneMonthRange } from "../utils/time";
 import crypto from 'crypto';
 
 export class SchedulerService {
@@ -126,13 +126,7 @@ export class SchedulerService {
       'Ce936c6bebb59b8b5683ffbcf97bf20de'  // 原授權群組
     ];
 
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    
-    const endDate = now;
-    const startDate = yesterday;
+    const { start: startDate, end: endDate } = getOneMonthRange();
 
     for (let i = 0; i < groupsToNotify.length; i++) {
       const groupId = groupsToNotify[i];
@@ -191,14 +185,8 @@ export class SchedulerService {
         details: { groupCount: groupIds.length, groupIds }
       });
 
-      // 改為從昨天00:00到現在的時間範圍
-      const now = new Date();
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      yesterday.setHours(0, 0, 0, 0); // 昨天00:00
-      
-      const endDate = now; // 現在時間
-      const startDate = yesterday; // 昨天00:00
+      // 改為從一個月前到現在的時間範圍
+      const { start: startDate, end: endDate } = getOneMonthRange();
 
       // 🔒 群組隔離處理：逐一處理每個群組，加入隨機抖動和延遲
       for (let i = 0; i < groupIds.length; i++) {
@@ -270,16 +258,16 @@ export class SchedulerService {
   }
 
   private async processGroupDailySummary(groupId: string, startDate: Date, endDate: Date): Promise<void> {
-    // 查詢前一日建立的未完成任務
-    const yesterdayTasks = await storage.getTasksCreatedBetween(groupId, startDate, endDate, 'pending');
+    // 查詢近一個月建立的未完成任務
+    const monthlyTasks = await storage.getTasksCreatedBetween(groupId, startDate, endDate, 'pending');
     
-    if (yesterdayTasks.length === 0) {
-      console.log(`群組 ${groupId} 前一日沒有未完成任務`);
+    if (monthlyTasks.length === 0) {
+      console.log(`群組 ${groupId} 近一個月沒有未完成任務`);
       return;
     }
 
-    // 準備任務資料
-    const taskData = yesterdayTasks.map(task => ({
+    // 準備任務資料  
+    const taskData = monthlyTasks.map(task => ({
       serial: task.taskIdSerial,
       description: task.text,
       creator: task.authorDisplayName || task.authorUserId
@@ -291,7 +279,7 @@ export class SchedulerService {
       
       // 組合推送訊息
       const dateStr = formatDate(startDate);
-      const message = `📌 昨日交辦整理（${dateStr}）\n${organizedTasks}\n—— 合計 ${yesterdayTasks.length} 項（皆未完成）`;
+      const message = `📌 近一個月交辦整理（${dateStr}）\n${organizedTasks}\n—— 合計 ${monthlyTasks.length} 項（皆未完成）`;
       
       // 推送到群組
       await lineService.pushMessage(groupId, message);
@@ -303,7 +291,7 @@ export class SchedulerService {
         message: '群組每日任務整理完成',
         details: {
           groupId,
-          taskCount: yesterdayTasks.length,
+          taskCount: monthlyTasks.length,
           date: dateStr
         }
       });
@@ -314,7 +302,7 @@ export class SchedulerService {
       // 降級處理：直接推送原始任務列表
       const fallbackTasks = taskData.map(task => `${task.serial}. ${task.description}`).join('\n');
       const dateStr = formatDate(startDate);
-      const fallbackMessage = `📌 昨日交辦整理（${dateStr}）\n${fallbackTasks}\n—— 合計 ${yesterdayTasks.length} 項（皆未完成）\n\n✅ 如果交辦已完成\n記得輸入 交辦XX完成\n\n💪 專注當下，每個小步驟都是進步的開始`;
+      const fallbackMessage = `📌 近一個月交辦整理（${dateStr}）\n${fallbackTasks}\n—— 合計 ${monthlyTasks.length} 項（皆未完成）\n\n✅ 如果交辦已完成\n記得輸入 交辦XX完成\n\n💪 專注當下，每個小步驟都是進步的開始`;
       
       try {
         await lineService.pushMessage(groupId, fallbackMessage);
@@ -326,7 +314,7 @@ export class SchedulerService {
           message: '群組任務整理降級處理完成',
           details: {
             groupId,
-            taskCount: yesterdayTasks.length,
+            taskCount: monthlyTasks.length,
             error: error.message
           }
         });
@@ -352,7 +340,7 @@ export class SchedulerService {
     const recentTasks = await storage.getTasksCreatedBetween(groupId, startDate, endDate, 'pending');
     
     if (recentTasks.length === 0) {
-      console.log(`📝 群組 ${groupId.substring(0, 8)}... 從昨天到現在沒有未完成任務`);
+      console.log(`📝 群組 ${groupId.substring(0, 8)}... 近一個月內沒有未完成任務`);
       return;
     }
 
@@ -384,7 +372,7 @@ export class SchedulerService {
         minute: '2-digit'
       });
       
-      let message = `🔔 系統提醒\n📌 近期交辦整理（${dateStr}）${currentTime}\n\n${organizedTasks}`;
+      let message = `🔔 系統提醒\n📌 近一個月交辦整理（${dateStr}）${currentTime}\n\n${organizedTasks}`;
       
       if (suggestions) {
         message += `\n\n💡 處理建議：${suggestions}`;
