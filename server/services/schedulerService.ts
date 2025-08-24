@@ -81,10 +81,11 @@ export class SchedulerService {
     });
     this.cronJobs.push(gptWaterQualityAnalysisJob);
 
-    // 🌬️ 風力預報排程 - 每日 06:00, 12:00, 21:30 (群組 C360be1fe6ea876a4df3ca0497bca4e3b)
+    // 🌬️ 風力預報排程 - 每日 06:00, 12:00, 17:00, 21:30 (群組 C360be1fe6ea876a4df3ca0497bca4e3b)
     const windForecastSchedules = [
       { time: '0 6 * * *', name: '06:00 風力預報' },
       { time: '0 12 * * *', name: '12:00 風力預報' },
+      { time: '0 17 * * *', name: '17:00 風力預報' },
       { time: '30 21 * * *', name: '21:30 風力預報' }
     ];
 
@@ -98,7 +99,7 @@ export class SchedulerService {
       this.cronJobs.push(job);
     });
 
-    console.log('排程服務已啟動 - 每日六次任務提醒 (06:30, 09:00, 11:00, 15:00, 17:00, 20:00) + 每日02:00備份 + 每日13:00&17:30&20:30水質報告 + 每日21:00 GPT智能水質分析 + 每日06:00&12:00&21:30風力預報 (Asia/Taipei)');
+    console.log('排程服務已啟動 - 每日六次任務提醒 (06:30, 09:00, 11:00, 15:00, 17:00, 20:00) + 每日02:00備份 + 每日13:00&17:30&20:30水質報告 + 每日21:00 GPT智能水質分析 + 每日06:00&12:00&17:00&21:30風力預報 (Asia/Taipei)');
   }
 
   stop(): void {

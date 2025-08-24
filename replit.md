@@ -4,7 +4,7 @@
 
 This is a comprehensive LINE bot system called "駿斯小助理" designed as a group task management assistant with specialized monitoring capabilities. The system integrates with LINE's official account API to provide automated task creation, AI-powered task extraction using GPT-4o-mini, **reply-triggered scheduled responses**, comprehensive message backup functionality, dedicated water quality monitoring for swimming pool facilities, and wind forecast services. The architecture follows a headless API approach with strict group isolation and **cost-free notification strategy** through reply triggers.
 
-The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides **reply-triggered task summaries** at 06:30, 09:00, 11:00, 15:00, 17:00, and 20:00 Asia/Taipei time slots. It includes admin controls, user identification features, authorized group management for GPT functionality, a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00, specialized water quality monitoring for group C50c2a9623a78cc5f5e9f39557e3abfe6 with **reply-triggered reports** at 13:00, 17:30, and 20:30, and wind forecast services for group C360be1fe6ea876a4df3ca0497bca4e3b at **reply-triggered forecasts** at 06:00, 12:00, and 21:30.
+The system automatically detects tasks when messages contain specific keywords (交辦), uses "駿斯小助理" (trigger: 小助理請紀錄) to extract actionable items from conversations with group authorization, and provides **reply-triggered task summaries** at 06:30, 09:00, 11:00, 15:00, 17:00, and 20:00 Asia/Taipei time slots. It includes admin controls, user identification features, authorized group management for GPT functionality, a robust message backup system that preserves all LINE conversations permanently with automatic daily backups at 02:00, specialized water quality monitoring for group C50c2a9623a78cc5f5e9f39557e3abfe6 with **reply-triggered reports** at 13:00, 17:30, and 20:30, and wind forecast services for group C360be1fe6ea876a4df3ca0497bca4e3b at **reply-triggered forecasts** at 06:00, 12:00, 17:00, and 21:30.
 
 ## User Preferences
 
@@ -98,7 +98,7 @@ Preferred communication style: Simple, everyday language.
   - Six daily task reminder time markers (06:30, 09:00, 11:00, 15:00, 17:00, 20:00)
   - Daily message backup at 02:00 (unchanged)
   - Daily water quality report time markers at 13:00, 17:30, and 20:30
-  - Daily wind forecast time markers at 06:00, 12:00, and 21:30
+  - Daily wind forecast time markers at 06:00, 12:00, 17:00, and 21:30
 - **Reply Trigger System**: **Cost-free notification strategy** replacing push messaging:
   - Schedulers mark time slots as "awaiting_trigger" in audit logs
   - Any group message after scheduled time triggers automatic reply
@@ -113,7 +113,7 @@ Preferred communication style: Simple, everyday language.
   - Single pool monitoring with temperature data
   - Multi-pool monitoring with additional equipment tracking (加藥量, 鍋爐狀態)
 - **Wind Forecast Service**: Dedicated wind and weather prediction for golf driving range (24.77662974487106, 121.01465928420598):
-  - Three daily reports at 06:00, 12:00, and 21:30
+  - Four daily reports at 06:00, 12:00, 17:00, and 21:30
   - Current wind conditions from C0D660 新竹東區工研院氣象站 (3.71km away)
   - 6-hour weather forecast with rain probability and sunshine conditions (40 characters max)
   - Golf course operation recommendations and safety alerts
