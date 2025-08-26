@@ -2,6 +2,7 @@ import { storage } from "../storage";
 import { type IMessage, type CreateTaskData } from "@shared/schema";
 import { messageService } from "./messageService";
 import { llmService } from "./llmService";
+import { getOneMonthRange } from '../utils/time';
 import crypto from "crypto";
 import OpenAI from "openai";
 
@@ -330,17 +331,14 @@ export class TaskService {
     try {
       console.log(`🚀 為群組 ${groupId} 生成任務摘要...`);
       
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+      // 改為近一個月範圍（與排程器保持一致）
+      const { start: startDate, end: endDate } = getOneMonthRange();
       
-      const todayEnd = new Date();
-      
-      // 獲取昨天+今天的未完成任務
+      // 獲取近一個月的未完成任務
       const tasks = await storage.getTasksByGroupId(groupId, 'pending');
       const relevantTasks = tasks.filter(task => 
-        new Date(task.createdAt) >= yesterdayStart && 
-        new Date(task.createdAt) <= todayEnd
+        new Date(task.createdAt) >= startDate && 
+        new Date(task.createdAt) <= endDate
       );
       
       let summary = '';
