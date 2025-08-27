@@ -7,6 +7,7 @@ import { taskService } from "./services/taskService";
 import { llmService } from "./services/llmService";
 import { schedulerService } from "./services/schedulerService";
 import { waterQualityService } from "./services/waterQualityService";
+import { weatherService } from "./services/weatherService";
 import { authMiddleware } from "./middleware/auth";
 import { validateLineSignature } from "./middleware/lineSignature";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
@@ -663,13 +664,87 @@ async function processWebhookEvent(event: any) {
         await lineService.checkAndSendPendingMessages(source.groupId, event.replyToken);
       }
 
-      // 5. 水質監控（多群組支援）
+      // 5. 天氣查詢功能（特定群組）
+      if (source.type === 'group' && source.groupId === 'C50c2a9623a78cc5f5e9f39557e3abfe6' && text.trim() === '天氣') {
+        console.log(`🌤️ 偵測到天氣查詢請求來自群組 ${source.groupId}`);
+        try {
+          // 獲取天氣預報數據
+          const forecasts = await weatherService.getHsinchuWeatherForecast();
+          
+          // 限制為4小時內預報（取第一個時段）
+          const fourHourForecast = forecasts.slice(0, 1);
+          
+          if (fourHourForecast.length > 0) {
+            const forecast = fourHourForecast[0];
+            const startTime = new Date(forecast.timeStart).toLocaleString('zh-TW', {
+              timeZone: 'Asia/Taipei',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            const endTime = new Date(forecast.timeEnd).toLocaleString('zh-TW', {
+              timeZone: 'Asia/Taipei',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            
+            const weatherReply = `🌤️ 游泳館天氣預報 (4小時內)\n\n📍 座標：24.778, 121.010\n📅 ${startTime} - ${endTime}\n🌡️ ${forecast.weather}\n🌡️ ${forecast.minTemp}-${forecast.maxTemp}°C\n🌧️ 降雨機率：${forecast.rainProb}%\n💨 體感：${forecast.comfort}`;
+            
+            console.log(`📤 準備回覆天氣資訊: "${weatherReply}"`);
+            
+            try {
+              await lineService.replyMessage(event.replyToken, weatherReply);
+              console.log(`✅ 天氣預報已發送`);
+              
+              // 記錄天氣查詢
+              await storage.insertAuditLog({
+                id: crypto.randomUUID(),
+                level: 'info',
+                category: 'weather',
+                message: '天氣查詢請求已回覆',
+                details: {
+                  groupId: source.groupId,
+                  userId: source.userId,
+                  coordinates: '24.778, 121.010',
+                  forecast: forecast
+                }
+              });
+              
+            } catch (replyError) {
+              console.error(`❌ 回覆天氣預報失敗:`, replyError);
+              try {
+                await lineService.pushMessage(source.groupId, weatherReply);
+                console.log(`✅ 改用推送方式發送天氣預報`);
+              } catch (pushError) {
+                console.error(`❌ 推送天氣預報也失敗:`, pushError);
+              }
+            }
+          } else {
+            const errorReply = '❌ 無法取得天氣預報資料，請稍後再試';
+            await lineService.replyMessage(event.replyToken, errorReply);
+          }
+        } catch (error) {
+          console.error(`❌ 處理天氣查詢失敗:`, error);
+          const errorReply = '❌ 天氣查詢服務暫時無法使用，請稍後再試';
+          try {
+            await lineService.replyMessage(event.replyToken, errorReply);
+          } catch (replyError) {
+            console.error(`❌ 回覆天氣錯誤訊息失敗:`, replyError);
+          }
+        }
+        return; // 處理完天氣查詢後直接返回
+      }
+
+      // 6. 水質監控（多群組支援）
       const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
       if (source.type === 'group' && waterQualityGroups.includes(source.groupId)) {
         await waterQualityService.handleWaterQualityMessage(text, event.message.id, source.userId, source.groupId);
       }
 
-      // 5. 駿斯小助理記錄功能（僅限授權群組）
+      // 7. 駿斯小助理記錄功能（僅限授權群組）
       const assistantTriggers = ['小助理請紀錄', '小助理請記錄'];
       const isAssistantCommand = assistantTriggers.includes(text);
       console.log(`🔍 檢查是否為小助理指令: "${text}" 是否符合 ${assistantTriggers.join('或')} = ${isAssistantCommand}, 群組類型: ${source.type}`);

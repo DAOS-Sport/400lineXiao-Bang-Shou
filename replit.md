@@ -10,7 +10,17 @@ The system automatically detects tasks when messages contain specific keywords (
 
 Preferred communication style: Simple, everyday language.
 
-## Recent Changes (2025-08-22)
+## Recent Changes (2025-08-27)
+
+### 🌤️ 新增游泳館天氣查詢功能
+- ✅ **群組 C50c2a9623a78cc5f5e9f39557e3abfe6 新增「天氣」關鍵字觸發**
+- ✅ **4小時內氣象預報**：提供指定座標 (24.778126805320703, 121.01043570614455) 的詳細天氣資訊
+- ✅ **中央氣象署 API 整合**：使用官方 CWA API 獲取即時天氣數據
+- ✅ **完整預報資訊**：包含天氣狀況、溫度範圍、降雨機率、體感舒適度
+- ✅ **錯誤處理機制**：API 失敗時提供友善錯誤訊息和備用方案
+- ✅ **審計日誌記錄**：完整追蹤天氣查詢請求和回覆狀況
+
+### 2025-08-22
 
 ### 🔧 修復回覆觸發重複發送問題
 - ✅ **解決重複觸發**：修復回覆觸發機制重複發送同一時段通知的問題
