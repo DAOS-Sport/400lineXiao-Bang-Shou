@@ -671,58 +671,40 @@ async function processWebhookEvent(event: any) {
           // 獲取天氣預報數據
           const forecasts = await weatherService.getHsinchuWeatherForecast();
           
-          // 限制為4小時內預報（取第一個時段）
-          const fourHourForecast = forecasts.slice(0, 1);
+          // 使用詳細的室外游泳池天氣預報（12小時）
+          const weatherReply = weatherService.formatDetailedSwimmingPoolForecast(forecasts);
           
-          if (fourHourForecast.length > 0) {
-            const forecast = fourHourForecast[0];
-            const startTime = new Date(forecast.timeStart).toLocaleString('zh-TW', {
-              timeZone: 'Asia/Taipei',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-            const endTime = new Date(forecast.timeEnd).toLocaleString('zh-TW', {
-              timeZone: 'Asia/Taipei',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
+          console.log(`📤 準備回覆詳細天氣資訊: "${weatherReply.substring(0, 100)}..."`);
+          
+          try {
+            await lineService.replyMessage(event.replyToken, weatherReply);
+            console.log(`✅ 詳細天氣預報已發送`);
             
-            const weatherReply = `🌤️ 游泳館天氣預報 (4小時內)\n\n📍 座標：24.778, 121.010\n📅 ${startTime} - ${endTime}\n🌡️ ${forecast.weather}\n🌡️ ${forecast.minTemp}-${forecast.maxTemp}°C\n🌧️ 降雨機率：${forecast.rainProb}%\n💨 體感：${forecast.comfort}`;
-            
-            console.log(`📤 準備回覆天氣資訊: "${weatherReply}"`);
-            
-            try {
-              await lineService.replyMessage(event.replyToken, weatherReply);
-              console.log(`✅ 天氣預報已發送`);
-              
-              // 記錄天氣查詢
-              await storage.insertAuditLog({
-                id: crypto.randomUUID(),
-                level: 'info',
-                category: 'weather',
-                message: '天氣查詢請求已回覆',
-                details: {
-                  groupId: source.groupId,
-                  userId: source.userId,
-                  coordinates: '24.778, 121.010',
-                  forecast: forecast
-                }
-              });
-              
-            } catch (replyError) {
-              console.error(`❌ 回覆天氣預報失敗:`, replyError);
-              try {
-                await lineService.pushMessage(source.groupId, weatherReply);
-                console.log(`✅ 改用推送方式發送天氣預報`);
-              } catch (pushError) {
-                console.error(`❌ 推送天氣預報也失敗:`, pushError);
+            // 記錄天氣查詢
+            await storage.insertAuditLog({
+              id: crypto.randomUUID(),
+              level: 'info',
+              category: 'weather',
+              message: '室外游泳池天氣查詢已回覆',
+              details: {
+                groupId: source.groupId,
+                userId: source.userId,
+                coordinates: '24.778126805320703, 121.01043570614455',
+                forecastPeriods: forecasts.length,
+                features: ['雷電風險分析', '安全時段建議', '12小時預報']
               }
+            });
+            
+          } catch (replyError) {
+            console.error(`❌ 回覆天氣預報失敗:`, replyError);
+            try {
+              await lineService.pushMessage(source.groupId, weatherReply);
+              console.log(`✅ 改用推送方式發送天氣預報`);
+            } catch (pushError) {
+              console.error(`❌ 推送天氣預報也失敗:`, pushError);
             }
-          } else {
+          }
+          if (forecasts.length === 0) {
             const errorReply = '❌ 無法取得天氣預報資料，請稍後再試';
             await lineService.replyMessage(event.replyToken, errorReply);
           }
