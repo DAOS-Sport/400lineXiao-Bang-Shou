@@ -11,15 +11,40 @@ async function emergencyEarthquakeBroadcast() {
   console.log('🚨 開始緊急地震廣播...');
   
   try {
-    // 1. 找出所有有待辦事項的群組
+    // 1. 找出所有曾經活動的群組（所有有記錄的群組）
     const allTasks = await storage.getAllTasks();
-    const pendingTasks = allTasks.filter(task => task.status === 'pending');
-    const groupsWithTasks = Array.from(new Set(pendingTasks.map(task => task.groupId)));
+    const allMessagesResult = await storage.getMessages({}); // 從所有訊息中找群組
+    const allMessages = allMessagesResult.messages;
+    const allAuditLogs = await storage.getAuditLogs();
     
-    console.log(`📊 發現 ${groupsWithTasks.length} 個有待辦事項的群組`);
-    groupsWithTasks.forEach((groupId, index) => {
-      const taskCount = pendingTasks.filter(t => t.groupId === groupId).length;
-      console.log(`${index + 1}. ${groupId.substring(0, 20)}... (${taskCount} 項待辦)`);
+    // 從任務記錄中取得群組
+    const taskGroups = Array.from(new Set(allTasks.map(task => task.groupId)));
+    
+    // 從訊息記錄中取得群組
+    const messageGroups = Array.from(new Set(
+      allMessages.map(msg => msg.groupId).filter(gId => gId && gId.startsWith('C'))
+    ));
+    
+    // 從審計記錄中取得群組
+    const auditGroups = Array.from(new Set(
+      allAuditLogs
+        .map(log => log.details?.groupId)
+        .filter(gId => gId && typeof gId === 'string' && gId.startsWith('C'))
+    ));
+    
+    // 合併所有群組
+    const allActiveGroups = Array.from(new Set([...taskGroups, ...messageGroups, ...auditGroups]));
+    
+    console.log(`📊 發現 ${allActiveGroups.length} 個活動群組`);
+    console.log(`- 來自任務記錄: ${taskGroups.length} 個群組`);
+    console.log(`- 來自訊息記錄: ${messageGroups.length} 個群組`);  
+    console.log(`- 來自審計記錄: ${auditGroups.length} 個群組`);
+    
+    allActiveGroups.forEach((groupId, index) => {
+      const taskCount = allTasks.filter(t => t.groupId === groupId).length;
+      const pendingCount = allTasks.filter(t => t.groupId === groupId && t.status === 'pending').length;
+      const msgCount = allMessages.filter(m => m.groupId === groupId).length;
+      console.log(`${index + 1}. ${groupId.substring(0, 20)}... (任務:${taskCount}, 待辦:${pendingCount}, 訊息:${msgCount})`);
     });
 
     // 2. 準備緊急訊息
@@ -46,7 +71,7 @@ async function emergencyEarthquakeBroadcast() {
       errors: [] as string[]
     };
 
-    for (const groupId of groupsWithTasks) {
+    for (const groupId of allActiveGroups) {
       try {
         console.log(`📤 發送緊急訊息到群組 ${groupId.substring(0, 12)}...`);
         
@@ -67,7 +92,7 @@ async function emergencyEarthquakeBroadcast() {
         });
         
         // 群組間延遲避免頻率限制
-        if (groupsWithTasks.indexOf(groupId) < groupsWithTasks.length - 1) {
+        if (allActiveGroups.indexOf(groupId) < allActiveGroups.length - 1) {
           console.log('⏳ 延遲 500ms 避免 API 限制...');
           await new Promise(resolve => setTimeout(resolve, 500));
         }
@@ -114,7 +139,7 @@ async function emergencyEarthquakeBroadcast() {
       category: 'emergency_broadcast',
       message: '地震緊急廣播任務完成',
       details: {
-        totalGroups: groupsWithTasks.length,
+        totalGroups: allActiveGroups.length,
         successCount: results.success,
         failedCount: results.failed,
         broadcastType: 'earthquake_safety_check',
