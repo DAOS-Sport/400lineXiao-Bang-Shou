@@ -1,0 +1,216 @@
+/**
+ * RAGIC API 服務 - 員工資料查詢
+ * 整合 RAGIC 系統取得員工編號
+ */
+
+import crypto from 'crypto';
+import { storage } from '../storage';
+
+// RAGIC 員工資料介面
+interface RagicEmployee {
+  lineId: string;
+  employeeId: string;
+  name?: string;
+  department?: string;
+}
+
+// RAGIC API 回應格式
+interface RagicApiResponse {
+  success: boolean;
+  data: any[];
+  error?: string;
+}
+
+export class RagicService {
+  private readonly baseUrl: string;
+  private readonly apiKey: string;
+  private readonly domain: string;
+  private readonly databaseId: string;
+
+  constructor() {
+    // 從環境變數取得 RAGIC 連線資訊
+    this.domain = process.env.RAGIC_DOMAIN || '';
+    this.databaseId = process.env.RAGIC_DATABASE_ID || '';
+    this.apiKey = process.env.RAGIC_API_KEY || '';
+    this.baseUrl = `https://${this.domain}.ragic.com/${this.databaseId}`;
+  }
+
+  /**
+   * 根據 LINE ID 查詢員工編號
+   */
+  async getEmployeeByLineId(lineId: string): Promise<string | null> {
+    try {
+      // 檢查 API 設定
+      if (!this.domain || !this.apiKey || !this.databaseId) {
+        console.warn('⚠️ RAGIC API 設定不完整，使用模擬資料');
+        return this.getMockEmployeeId(lineId);
+      }
+
+      // 呼叫 RAGIC API 查詢員工資料
+      const response = await this.queryEmployeeData(lineId);
+      
+      if (response.success && response.data.length > 0) {
+        // 假設 RAGIC 回傳的第一筆資料包含員工編號
+        const employee = response.data[0];
+        const employeeId = employee.employeeId || employee.employee_id || employee.id;
+        
+        if (employeeId) {
+          // 記錄成功查詢
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'info',
+            category: 'ragic',
+            message: 'RAGIC 員工查詢成功',
+            details: {
+              lineId: lineId.substring(0, 20) + '...',
+              employeeId,
+              source: 'RAGIC_API'
+            }
+          });
+          
+          return employeeId.toString();
+        }
+      }
+
+      // 查不到資料
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'warning',
+        category: 'ragic',
+        message: 'RAGIC 查無員工資料',
+        details: {
+          lineId: lineId.substring(0, 20) + '...',
+          apiResponse: response
+        }
+      });
+
+      return null;
+
+    } catch (error) {
+      console.error('❌ RAGIC API 查詢失敗:', error);
+      
+      // 記錄錯誤
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'ragic',
+        message: 'RAGIC API 查詢失敗',
+        details: {
+          lineId: lineId.substring(0, 20) + '...',
+          error: (error as Error).message
+        }
+      });
+
+      // 回傳 null 表示查詢失敗
+      return null;
+    }
+  }
+
+  /**
+   * 呼叫 RAGIC API 查詢員工資料
+   */
+  private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
+    try {
+      // 使用 HTTP Basic Auth 與 RAGIC API 通訊
+      const authString = Buffer.from(`${this.apiKey}:`).toString('base64');
+      
+      // 假設在 RAGIC 中有一個員工表，LINE ID 儲存在特定欄位
+      // 這裡需要根據實際的 RAGIC 資料表結構調整 URL 和查詢參數
+      const queryUrl = `${this.baseUrl}/1?where=line_id,eq,${encodeURIComponent(lineId)}`;
+      
+      const response = await fetch(queryUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`RAGIC API 回應錯誤: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      return {
+        success: true,
+        data: Array.isArray(data) ? data : [data]
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        data: [],
+        error: (error as Error).message
+      };
+    }
+  }
+
+  /**
+   * 模擬員工資料（開發/測試用）
+   */
+  private getMockEmployeeId(lineId: string): string {
+    // 基於 LINE ID 產生固定的模擬員工編號
+    const mockEmployees: { [key: string]: string } = {
+      'U8fd0e4be4e44a1304f9fa2e9855f4559': 'EMP001',
+      'U1234567890abcdef1234567890abcdef': 'EMP002',
+      'Uabcdef1234567890abcdef1234567890': 'EMP003'
+    };
+
+    // 如果有預設的對應，回傳對應編號
+    if (mockEmployees[lineId]) {
+      return mockEmployees[lineId];
+    }
+
+    // 否則基於 LINE ID 的 hash 產生員工編號
+    const hash = crypto.createHash('md5').update(lineId).digest('hex');
+    const employeeNum = (parseInt(hash.substring(0, 6), 16) % 9999 + 1).toString().padStart(4, '0');
+    
+    return `EMP${employeeNum}`;
+  }
+
+  /**
+   * 測試 RAGIC API 連線
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      if (!this.domain || !this.apiKey || !this.databaseId) {
+        console.log('🧪 RAGIC 設定不完整，跳過連線測試');
+        return false;
+      }
+
+      const authString = Buffer.from(`${this.apiKey}:`).toString('base64');
+      const testUrl = `${this.baseUrl}/1?limit=1`;
+      
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const success = response.ok;
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: success ? 'info' : 'error',
+        category: 'ragic',
+        message: `RAGIC API 連線測試${success ? '成功' : '失敗'}`,
+        details: {
+          statusCode: response.status,
+          domain: this.domain,
+          databaseId: this.databaseId
+        }
+      });
+
+      return success;
+
+    } catch (error) {
+      console.error('❌ RAGIC 連線測試失敗:', error);
+      return false;
+    }
+  }
+}
+
+export const ragicService = new RagicService();
