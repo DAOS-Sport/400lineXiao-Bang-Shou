@@ -53,10 +53,9 @@ export class RagicService {
       if (response.success && response.data.length > 0) {
         // RAGIC 回傳的資料格式，員工編號在欄位 ID 3000935
         const employee = response.data[0];
-        const employeeId = employee['3000935']; // 員工帳號欄位
-        const employeeName = employee['3000933']; // 員工姓名欄位
+        const employeeId = employee['3000935']; // 員工編號欄位
         
-        console.log('👤 RAGIC 員工資料:', { employeeId, employeeName, lineId: lineId.substring(0, 20) + '...' });
+        console.log('👤 RAGIC 員工資料:', { employeeId, lineId: lineId.substring(0, 20) + '...' });
         
         if (employeeId) {
           // 記錄成功查詢
@@ -68,7 +67,6 @@ export class RagicService {
             details: {
               lineId: lineId.substring(0, 20) + '...',
               employeeId,
-              employeeName: employeeName || '未知',
               source: 'RAGIC_API'
             }
           });
