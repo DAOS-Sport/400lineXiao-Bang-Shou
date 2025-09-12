@@ -16,24 +16,24 @@ RAGIC_API_KEY=c0VySnlCOEJ6dHlndkRHY0pUOTFEMnh6Zmo3VE9lYWcvak1SWHZQV24vQnRrSlYzel
 
 ## API 調用格式
 
-### 1. 基礎查詢
+### 1. 基礎查詢 (使用 Basic Authentication)
 ```
-GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3&api&limit=10
-Authorization: <API_KEY>
+GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?api&v=3&limit=10
+Authorization: Basic <API_KEY>
 Content-Type: application/json
 ```
 
 ### 2. 員工資料查詢 (by LINE ID)
 ```
-GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3&api&where=1003633,eq,<LINE_ID>
-Authorization: <API_KEY>
+GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?api&v=3&where=1003633,eq,<LINE_ID>
+Authorization: Basic <API_KEY>
 Content-Type: application/json
 ```
 
 ### 3. 連線測試
 ```
-GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3&api&limit=1
-Authorization: <API_KEY>
+GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?api&v=3&limit=1
+Authorization: Basic <API_KEY>
 Content-Type: application/json
 ```
 

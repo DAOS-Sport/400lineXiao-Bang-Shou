@@ -114,15 +114,15 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用新的 RAGIC API v3 格式：?v=3&api
-      const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
+      // 使用 RAGIC API v3 格式並採用正確的參數順序：?api&v=3 和 Basic Authentication
+      const queryUrl = `${this.baseUrl}?api&v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 RAGIC 查詢 URL:', queryUrl.replace(this.apiKey, '***'));
       
       const response = await fetch(queryUrl, {
         method: 'GET',
         headers: {
-          'Authorization': this.apiKey,
+          'Authorization': `Basic ${this.apiKey}`,
           'Content-Type': 'application/json'
         }
       });
