@@ -196,7 +196,7 @@ export class RagicService {
         return false;
       }
 
-      const testUrl = `${this.baseUrl}?api=true&limit=1`;
+      const testUrl = `${this.baseUrl}?v=3&api&limit=1`;
       
       const response = await fetch(testUrl, {
         method: 'GET',
