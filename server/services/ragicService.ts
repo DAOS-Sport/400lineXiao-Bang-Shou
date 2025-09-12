@@ -32,7 +32,8 @@ export class RagicService {
     this.domain = process.env.RAGIC_DOMAIN || '';
     this.databaseId = process.env.RAGIC_DATABASE_ID || '';
     this.apiKey = process.env.RAGIC_API_KEY || '';
-    this.baseUrl = `https://${this.domain}.ragic.com/${this.databaseId}`;
+    // RAGIC_DOMAIN 已經包含完整域名(如: ap7.ragic.com)，不需要額外加 .ragic.com
+    this.baseUrl = `https://${this.domain}/${this.databaseId}`;
   }
 
   /**
@@ -50,9 +51,12 @@ export class RagicService {
       const response = await this.queryEmployeeData(lineId);
       
       if (response.success && response.data.length > 0) {
-        // 假設 RAGIC 回傳的第一筆資料包含員工編號
+        // RAGIC 回傳的資料格式，員工編號在欄位 ID 3000935
         const employee = response.data[0];
-        const employeeId = employee.employeeId || employee.employee_id || employee.id;
+        const employeeId = employee['3000935']; // 員工帳號欄位
+        const employeeName = employee['3000933']; // 員工姓名欄位
+        
+        console.log('👤 RAGIC 員工資料:', { employeeId, employeeName, lineId: lineId.substring(0, 20) + '...' });
         
         if (employeeId) {
           // 記錄成功查詢
@@ -64,6 +68,7 @@ export class RagicService {
             details: {
               lineId: lineId.substring(0, 20) + '...',
               employeeId,
+              employeeName: employeeName || '未知',
               source: 'RAGIC_API'
             }
           });
@@ -111,26 +116,29 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用 HTTP Basic Auth 與 RAGIC API 通訊
-      const authString = Buffer.from(`${this.apiKey}:`).toString('base64');
+      // 直接將 API Key 作為 Authorization header
+      const queryUrl = `${this.baseUrl}?v=3&api&where=3000945,eq,${encodeURIComponent(lineId)}`;
       
-      // 假設在 RAGIC 中有一個員工表，LINE ID 儲存在特定欄位
-      // 這裡需要根據實際的 RAGIC 資料表結構調整 URL 和查詢參數
-      const queryUrl = `${this.baseUrl}/1?where=line_id,eq,${encodeURIComponent(lineId)}`;
+      console.log('🔍 RAGIC 查詢 URL:', queryUrl.replace(this.apiKey, '***'));
       
       const response = await fetch(queryUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Basic ${authString}`,
+          'Authorization': this.apiKey,
           'Content-Type': 'application/json'
         }
       });
 
+      console.log('📡 RAGIC API 回應狀態:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ RAGIC API 錯誤回應:', errorText);
         throw new Error(`RAGIC API 回應錯誤: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('📋 RAGIC API 回應資料:', data);
       
       return {
         success: true,
@@ -138,6 +146,7 @@ export class RagicService {
       };
 
     } catch (error) {
+      console.error('❌ RAGIC API 查詢異常:', error);
       return {
         success: false,
         data: [],
@@ -179,13 +188,12 @@ export class RagicService {
         return false;
       }
 
-      const authString = Buffer.from(`${this.apiKey}:`).toString('base64');
-      const testUrl = `${this.baseUrl}/1?limit=1`;
+      const testUrl = `${this.baseUrl}?v=3&api&limit=1`;
       
       const response = await fetch(testUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Basic ${authString}`,
+          'Authorization': this.apiKey,
           'Content-Type': 'application/json'
         }
       });
