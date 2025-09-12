@@ -754,7 +754,20 @@ async function handleIdCommand(event: any) {
   let replyText = '';
 
   if (source.type === 'user') {
-    replyText = `🆔 你的 userId：${source.userId}`;
+    // 私人對話：顯示用戶 ID 和員工編號
+    try {
+      // 先導入 RAGIC 服務（動態導入避免循環依賴）
+      const { ragicService } = await import('./services/ragicService');
+      
+      // 查詢員工編號
+      const employeeId = await ragicService.getEmployeeByLineId(source.userId);
+      
+      replyText = `系統ID：您的 LINE ID: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
+      
+    } catch (error) {
+      console.error('❌ 查詢員工編號失敗:', error);
+      replyText = `系統ID：您的 LINE ID: ${source.userId}\n員工編號: 查詢失敗`;
+    }
   } else if (source.type === 'group') {
     replyText = `🆔 groupId：${source.groupId}`;
   } else if (source.type === 'room') {
