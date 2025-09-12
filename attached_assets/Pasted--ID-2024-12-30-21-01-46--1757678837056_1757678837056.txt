@@ -1,0 +1,163 @@
+/**
+
+ * 此註解和以下的欄位 ID 都是在 2024/12/30 21:01:46 由系統自動產生。
+ * 如果您需要目前資料庫裡的表單定義，請到"開始" => "帳號設定" => "資料庫維護" => "下載資料庫欄位定義文件"
+
+ * AP_Name:standardzhtw
+ * Key Field: 3000942
+
+ * 公司名稱 subtable key: 3000985
+
+ * 學校名稱 subtable key: 3000989
+
+ * 姓名 subtable key: 3001028
+
+ * 欄位名稱            欄位編號
+ * - - - - - - - - - - - --------
+ * 資料編號     : 3000934
+ * 姓名        : 3000933
+ * 英文名稱     : 3000947
+ * 照片        : 3000953
+ * 身分證字號    : 3001021
+ * 出生日期     : 3000954
+ * 年齡        : 3000958
+ * 性別        : 3000956
+ * 婚姻狀態     : 3001020
+ * 最高教育程度  : 3001022
+ * 在職狀態     : 3000945
+ * 工號        : 3000935
+ * 員工帳號     : 3001018
+ * 部門        : 3000937
+ * 職稱        : 3000939
+ * 直屬主管     : 3000948
+ * 職等        : 3000949
+ * 聘雇類別     : 3000955
+ * 招聘來源     : 3000959
+ * 公司電話     : 3000936
+ * 分機        : 3000938
+ * 手機        : 3001424
+ * E-mail                 : 3000940
+ * 到職滿半年日  : 3005784
+ * 到職 1 週年日  : 3005785
+ * 到職多週年日  : 3005848
+ * 到職日期     : 3000943
+ * 離職日期     : 3000944
+ * 到期日期     : 3001091
+ * 工作年資計算  : 3003650
+ * 工作年資     : 3003651
+ * 享有特休(日)   : 3003652
+ * 享有特休(時數) : 3003653
+ * 工作年資(月)   : 3003654
+ * 備註        : 3000957
+ * 聯絡電話     : 3000975
+ * 手機        : 3000941
+ * Email                  : 3000976
+ * 通訊地址     : 3000977
+ * 戶籍地址     : 3001019
+ * 姓名        : 3000979
+ * 關係        : 3001027
+ * 住家電話     : 3001029
+ * 公司電話     : 3001030
+ * 手機        : 3001031
+ * 公司名稱     : 3000982
+ * 職稱        : 3000983
+ * 開始日期     : 3000984
+ * 結束日期     : 3000986
+ * 工作描述     : 3000987
+ * 年資        : 3001032
+ * 學校名稱     : 3000965
+ * 學歷        : 3000988
+ * 畢/肄業      : 3001092
+ * 主修        : 3000990
+ * 入學日期     : 3000991
+ * 結業日期     : 3000992
+
+ */
+
+
+var query = db.getAPIQuery("/ragicannual-leave/20001");
+
+//判斷為新增資料
+if(param.getOldNodeId(3000942) !== param.getNewNodeId(3000942) && query) {
+  var employeeId = param.getNewValue("3000934");
+  query.addFilter(3000934, "=", employeeId);
+  var entry = query.getAPIResult(); //取得對應假期存摺資料
+  var id = entry.getRootNodeId();
+  setVacation(id);
+}
+
+
+function setVacation(id){
+  var nowDate = new Date();
+  var nowFullDate = nowDate.getFullYear() + '/' + padZero((nowDate.getMonth() + 1)) + '/' + padZero(nowDate.getDate()); // yyyy/mm/dd
+  var vacationSubtableId = 3005798;
+
+  var mainQuery = db.getAPIQuery("/ragicannual-leave/20001"); //取得員工清單
+  var mainEntry = mainQuery.getAPIEntry(id);
+
+  var gender = mainEntry.getFieldValue(3000956); //員工性別
+
+  var vacationParamQuery = db.getAPIQuery("/ragicannual-leave/20004"); //取得給假參考
+  var vacationParamResults = vacationParamQuery.getAPIResultList();
+  var vacationParamEntry; //符合時間的參考資料
+  var vacationSubtableSize; //該年假期的種類數量
+
+  for(var i = 0; i < vacationParamResults.length; i ++){
+    var entry = vacationParamResults[i];
+    var startDate = new Date(entry.getFieldValue(3005804));
+    var endDate = new Date(entry.getFieldValue(3005805));
+
+    if(nowDate.getTime() >= startDate.getTime() && nowDate.getTime() <= endDate.getTime()) {
+      vacationParamEntry = entry;
+      vacationSubtableSize = entry.getSubtableSize(3005813);
+      break;
+    }
+  }
+
+  for(var i = 0; i < vacationSubtableSize; i ++) {
+    var allowedGenders = vacationParamEntry.getSubtableFieldValue(3005813, i, 3005807); // 假期限定性別
+    var vacationName = vacationParamEntry.getSubtableFieldValue(3005813, i, 3005806); // 假期種類名稱
+    var hasFixedLeaveHours = vacationParamEntry.getSubtableFieldValue(3005813, i, 3005808); //是否固定時數
+    var fixedLeaveHours = vacationParamEntry.getSubtableFieldValue(3005813, i, 3005809); //固定時數
+    var isGenderAllowed = checkGender(gender, allowedGenders);
+
+    // 跳過不符合條件的假別
+    if (!isGenderAllowed) {
+      continue;
+    }
+
+    if(vacationName === "特休") {
+      fixedLeaveHours = 0;
+    }
+
+    mainEntry.setSubtableFieldValue(3005790, -i-1, vacationName);
+    mainEntry.setSubtableFieldValue(3005791, -i-1, nowDate.getFullYear());
+    mainEntry.setSubtableFieldValue(3005792, -i-1, hasFixedLeaveHours);
+    mainEntry.setSubtableFieldValue(3005793, -i-1, fixedLeaveHours);
+    mainEntry.recalculateAllFormulas();
+  }
+  
+  mainEntry.setFieldValue(3005899, "Yes");
+
+  mainEntry.loadAllDefaultValues(user);
+  mainEntry.save();
+}
+
+
+
+function padZero(num) {
+  return num < 10 ? '0' + num : num.toString();
+}
+
+function checkGender(gender, allowedGenders) {
+  var isGenderAllowed = false;
+  if (allowedGenders === '通用') {
+    isGenderAllowed = true; // 不限性別，所有人都允許
+  } else if (allowedGenders === '限女性' && gender === '女') {
+    isGenderAllowed = true; // 限女性，且員工性別為女
+  } else if (allowedGenders === '限男性' && gender === '男') {
+    isGenderAllowed = true; // 限男性，且員工性別為男
+  }
+  return isGenderAllowed;
+}
+_RAGIC_AUTOGEN_ENTRY_UPDATER_94377(param.getNewNodeId(3000942));
