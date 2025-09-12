@@ -762,11 +762,11 @@ async function handleIdCommand(event: any) {
       // 查詢員工編號
       const employeeId = await ragicService.getEmployeeByLineId(source.userId);
       
-      replyText = `系統ID：您的 LINE ID: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
+      replyText = `系統識別碼: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
       
     } catch (error) {
       console.error('❌ 查詢員工編號失敗:', error);
-      replyText = `系統ID：您的 LINE ID: ${source.userId}\n員工編號: 查詢失敗`;
+      replyText = `系統識別碼: ${source.userId}\n員工編號: 查無資料`;
     }
   } else if (source.type === 'group') {
     replyText = `🆔 groupId：${source.groupId}`;

@@ -31,7 +31,7 @@ export class RagicService {
     // 從環境變數取得 RAGIC 連線資訊
     this.domain = process.env.RAGIC_DOMAIN || '';
     this.databaseId = process.env.RAGIC_DATABASE_ID || '';
-    this.apiKey = process.env.RAGIC_API_KEY || '';
+    this.apiKey = process.env.RAGIC_API_KEY || 'RHpUbW43Sjh2MU9BMUs5dklzVVZlN2tSRzRkS0ZlNk1SbUptOXh0bTBEb2I0VFViZjNmUldYVHpNeWRQNEFPZEFaTXU3cnBHblg0PQ==';
     // RAGIC_DOMAIN 已經包含完整域名(如: ap7.ragic.com)，不需要額外加 .ragic.com
     this.baseUrl = `https://${this.domain}/${this.databaseId}`;
   }
