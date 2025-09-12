@@ -138,6 +138,16 @@ export class RagicService {
       const data = await response.json();
       console.log('📋 RAGIC API 回應資料:', data);
       
+      // 檢查 RAGIC 錯誤回應
+      if (data && typeof data === 'object' && data.status === 'ERROR') {
+        console.error('❌ RAGIC API 錯誤:', data.msg);
+        return {
+          success: false,
+          data: [],
+          error: data.msg
+        };
+      }
+      
       return {
         success: true,
         data: Array.isArray(data) ? data : [data]
