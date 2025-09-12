@@ -116,8 +116,8 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 直接將 API Key 作為 Authorization header
-      const queryUrl = `${this.baseUrl}?v=3&api&where=3000945,eq,${encodeURIComponent(lineId)}`;
+      // 直接將 API Key 作為 Authorization header，使用 LINE ID 欄位 1003633
+      const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 RAGIC 查詢 URL:', queryUrl.replace(this.apiKey, '***'));
       
