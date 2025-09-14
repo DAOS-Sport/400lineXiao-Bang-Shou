@@ -54,8 +54,8 @@ export class RagicService {
     // 構建正確的 Basic Auth 格式: base64(username:api_key)
     this.basicAuth = Buffer.from(`${ragicUsername}:${this.apiKey}`).toString('base64');
     
-    // 使用用戶提供的新 API 端點格式
-    // https://ap7.ragic.com/xinsheng/ragicforms4/api/20004
+    // 使用正確的 RAGIC API 端點格式
+    // https://ap7.ragic.com/xinsheng/ragicforms4/api/20004?v=3&api=YOUR_API_KEY
     this.baseUrl = `https://${this.domain}/xinsheng/ragicforms4/api/20004`;
     
     console.log('🔧 RAGIC 服務初始化:', {
@@ -191,7 +191,7 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用新的 API 端點格式查詢
+      // 使用正確的 RAGIC API 查詢格式（使用 Basic Auth，不需要 api= 參數）
       const queryUrl = `${this.baseUrl}?v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 直接查詢員工資料，URL:', queryUrl);
