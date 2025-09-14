@@ -40,17 +40,29 @@ export class RagicService {
     
     this.apiKey = rawApiKey;
     
-    // 構建正確的 Basic Auth header
-    this.basicAuth = Buffer.from(`${this.apiKey}:`).toString('base64');
+    // 構建正確的 Basic Auth：嘗試解碼檢查格式
+    try {
+      const decoded = Buffer.from(rawApiKey, 'base64').toString('utf-8');
+      if (decoded.includes(':')) {
+        // 已經是 username:password 格式，直接使用
+        this.basicAuth = rawApiKey;
+      } else {
+        // 只是 token，需要添加冒號後重新編碼 
+        this.basicAuth = Buffer.from(`${decoded}:`).toString('base64');
+      }
+    } catch {
+      // 如果解碼失敗，嘗試添加冒號
+      this.basicAuth = Buffer.from(`${rawApiKey}:`).toString('base64');
+    }
     
-    // RAGIC_DATABASE_ID 應包含完整路徑 account/database/sheet
-    // 例如: mycompany/hr/employees/1
-    this.baseUrl = `https://${this.domain}/${this.databasePath}`;
+    // 確保 URL 以斜線結尾避免重定向
+    this.baseUrl = `https://${this.domain}/${this.databasePath}`.replace(/\/$/, '') + '/';
     
     console.log('🔧 RAGIC 服務初始化:', {
       domain: this.domain,
       databasePath: this.databasePath,
-      hasApiKey: !!this.apiKey
+      hasApiKey: !!this.apiKey,
+      baseUrl: this.baseUrl
     });
   }
 
