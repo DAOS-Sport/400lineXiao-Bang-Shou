@@ -68,7 +68,7 @@ export class RagicService {
       // 呼叫 RAGIC API 查詢員工資料
       // 正規化 LINE ID
       const normalizedLineId = lineId.trim();
-      console.log('🔍 正在查詢員工編號，LINE ID:', normalizedLineId.substring(0, 20) + '...');
+      console.log('🔍 正在查詢員工編號，LINE ID:', normalizedLineId);
       
       const response = await this.queryEmployeeData(normalizedLineId);
       
@@ -81,7 +81,7 @@ export class RagicService {
           employeeId, 
           hasEmployee: !!employee,
           fieldKeys: Object.keys(employee || {}),
-          lineId: normalizedLineId.substring(0, 20) + '...' 
+          lineId: normalizedLineId
         });
         
         if (employeeId) {
@@ -92,7 +92,7 @@ export class RagicService {
             category: 'ragic',
             message: 'RAGIC 員工查詢成功',
             details: {
-              lineId: normalizedLineId.substring(0, 20) + '...',
+              lineId: normalizedLineId,
               employeeId,
               source: 'RAGIC_API'
             }
@@ -109,7 +109,7 @@ export class RagicService {
         category: 'ragic',
         message: 'RAGIC 查無員工資料',
         details: {
-          lineId: lineId.substring(0, 20) + '...',
+          lineId: lineId,
           apiResponse: response
         }
       });
@@ -126,7 +126,7 @@ export class RagicService {
         category: 'ragic',
         message: 'RAGIC API 查詢失敗',
         details: {
-          lineId: lineId.substring(0, 20) + '...',
+          lineId: lineId,
           error: (error as Error).message
         }
       });
@@ -150,7 +150,7 @@ export class RagicService {
         domain: this.domain,
         databasePath: this.databasePath,
         searchField: '1003633',
-        searchValue: lineId.substring(0, 20) + '...'
+        searchValue: lineId
       });
       
       const response = await fetch(queryUrl, {
