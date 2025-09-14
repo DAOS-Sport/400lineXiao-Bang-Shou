@@ -33,21 +33,27 @@ export class RagicService {
     this.domain = process.env.RAGIC_DOMAIN || '';
     this.databasePath = process.env.RAGIC_DATABASE_ID || '';
     
-    // 從環境變數取得 API KEY，使用已驗證有效的 KEY 作為 fallback
-    const envApiKey = process.env.RAGIC_API_KEY || 'c0VySnlCOEJ6dHlndkRHY0pUOTFEMnh6Zmo3VE9lYWdsVXRkTkJOUEJ3ZjRLMi91QWhHbExaeWdzUWttMUdGQ200NzNmMHI4RlNjPQ==';
+    // 從環境變數取得認證資訊
+    const ragicUsername = process.env.RAGIC_USERNAME || 'xinsheng';
+    const ragicApiKey = process.env.RAGIC_API_KEY;
     
-    this.apiKey = envApiKey.trim();
+    if (!ragicApiKey) {
+      throw new Error('RAGIC_API_KEY environment variable is required');
+    }
     
-    // 直接使用已驗證有效的 API KEY
-    // 這個 KEY 已經在 curl 測試中確認可用
-    this.basicAuth = this.apiKey;
+    this.apiKey = ragicApiKey.trim();
     
-    // 確保 URL 以斜線結尾避免重定向
-    this.baseUrl = `https://${this.domain}/${this.databasePath}`.replace(/\/$/, '') + '/';
+    // 構建正確的 Basic Auth 格式: base64(username:api_key)
+    this.basicAuth = Buffer.from(`${ragicUsername}:${this.apiKey}`).toString('base64');
+    
+    // 根據用戶提供的 URL 格式更新
+    // https://ap7.ragic.com/xinsheng?PAGEID=x3D
+    this.baseUrl = `https://${this.domain}/xinsheng`;
     
     console.log('🔧 RAGIC 服務初始化:', {
       domain: this.domain,
       databasePath: this.databasePath,
+      hasUsername: !!ragicUsername,
       hasApiKey: !!this.apiKey,
       baseUrl: this.baseUrl,
       authFormatCorrect: this.basicAuth.length > 0
@@ -142,7 +148,8 @@ export class RagicService {
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
       // 使用 RAGIC API v3 格式並採用正確的參數順序：?api&v=3 和 Basic Authentication
-      const queryUrl = `${this.baseUrl}?api&v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
+      // 根據用戶提供的 URL 格式，加入 PAGEID=x3D 參數
+      const queryUrl = `${this.baseUrl}?PAGEID=x3D&api&v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 RAGIC 查詢 URL:', queryUrl);
       console.log('🔧 RAGIC 查詢設定:', {
