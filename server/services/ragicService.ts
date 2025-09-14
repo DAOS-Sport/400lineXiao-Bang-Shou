@@ -191,16 +191,15 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用正確的 RAGIC API 查詢格式（使用 Basic Auth，不需要 api= 參數）
-      const queryUrl = `${this.baseUrl}?v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
+      // 使用 API Key 方式（更簡單直接）
+      const queryUrl = `${this.baseUrl}?v=3&api=${this.apiKey}&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 直接查詢員工資料，URL:', queryUrl);
       
       const response = await fetch(queryUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Basic ${this.basicAuth}`,
-          'Content-Type': 'application/json'
+          'Accept': 'application/json'
         }
       });
       
