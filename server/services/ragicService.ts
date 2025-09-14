@@ -38,11 +38,15 @@ export class RagicService {
     this.databasePath = process.env.RAGIC_DATABASE_ID || '';
     
     // 從環境變數取得認證資訊
-    const ragicUsername = process.env.RAGIC_USERNAME || 'xinsheng';
+    const ragicUsername = process.env.RAGIC_USERNAME?.trim();
     const ragicApiKey = process.env.RAGIC_API_KEY;
     
     if (!ragicApiKey) {
       throw new Error('RAGIC_API_KEY environment variable is required');
+    }
+    
+    if (!ragicUsername) {
+      throw new Error('RAGIC_USERNAME environment variable is required - 需要實際的 RAGIC 使用者登入名稱（非帳戶名稱）');
     }
     
     this.apiKey = ragicApiKey.trim();
@@ -50,9 +54,9 @@ export class RagicService {
     // 構建正確的 Basic Auth 格式: base64(username:api_key)
     this.basicAuth = Buffer.from(`${ragicUsername}:${this.apiKey}`).toString('base64');
     
-    // 根據用戶提供的 URL 格式更新
-    // https://ap7.ragic.com/xinsheng?PAGEID=x3D
-    this.baseUrl = `https://${this.domain}/xinsheng`;
+    // 使用用戶提供的正確員工資料表 URL
+    // https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3&api
+    this.baseUrl = `https://${this.domain}/${this.databasePath}`;
     
     console.log('🔧 RAGIC 服務初始化:', {
       domain: this.domain,
@@ -187,50 +191,54 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      console.log('🔍 開始搜尋員工資料，LINE ID:', lineId);
+      // 直接使用用戶提供的正確 URL 查詢
+      const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
-      // 首先嘗試找到正確的員工資料表單
-      const employeeForm = await this.findEmployeeForm(lineId);
+      console.log('🔍 直接查詢員工資料，URL:', queryUrl);
       
-      if (employeeForm) {
-        console.log('✅ 找到員工資料表單:', employeeForm.url);
-        console.log('📊 使用欄位對應:', employeeForm.fieldMapping);
+      const response = await fetch(queryUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${this.basicAuth}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('📡 RAGIC API 回應狀態:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
         
-        // 使用找到的表單查詢特定員工資料
-        const searchUrl = `${employeeForm.url}&where=${employeeForm.fieldMapping.lineIdField},eq,${encodeURIComponent(lineId)}`;
-        
-        const response = await fetch(searchUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Basic ${this.basicAuth}`,
-            'Content-Type': 'application/json'
-          }
+        console.log('📋 RAGIC API 回應資料類型:', typeof data);
+        console.log('📋 RAGIC API 回應結構:', {
+          isArray: Array.isArray(data),
+          keys: Object.keys(data || {}),
+          dataLength: Array.isArray(data) ? data.length : 'not array'
         });
         
-        console.log('📡 員工查詢回應狀態:', response.status);
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          if (data && data.status === 'ERROR') {
-            console.error('❌ RAGIC API 錯誤:', data.msg);
-            return { success: false, data: [], error: data.msg };
-          }
-          
-          const normalizedData = Array.isArray(data) ? data : (data ? [data] : []);
-          console.log('📋 找到員工記錄數量:', normalizedData.length);
-          
-          return {
-            success: true,
-            data: normalizedData,
-            fieldMapping: employeeForm.fieldMapping
-          };
+        if (data && data.status === 'ERROR') {
+          console.error('❌ RAGIC API 錯誤:', data.msg);
+          return { success: false, data: [], error: data.msg };
         }
+        
+        // 正規化數據為陣列格式
+        const normalizedData = Array.isArray(data) ? data : (data ? [data] : []);
+        console.log('📋 正規化後的資料筆數:', normalizedData.length);
+        
+        // 檢查第一筆資料的欄位
+        if (normalizedData.length > 0) {
+          console.log('📋 第一筆資料欄位:', Object.keys(normalizedData[0] || {}));
+        }
+        
+        return {
+          success: true,
+          data: normalizedData,
+          fieldMapping: { lineIdField: '1003633', employeeIdField: '3000935' }
+        };
+      } else {
+        console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
+        return { success: false, data: [], error: `HTTP ${response.status}` };
       }
-      
-      // 如果找不到員工表單，回退到原始方法
-      console.log('⚠️ 未找到員工資料表單，使用原始查詢方法');
-      return await this.legacyQueryMethod(lineId);
       
     } catch (error) {
       console.error('❌ RAGIC API 查詢異常:', error);
@@ -373,7 +381,7 @@ export class RagicService {
    * 原始查詢方法（向後相容）
    */
   private async legacyQueryMethod(lineId: string): Promise<RagicApiResponse> {
-    const queryUrl = `${this.baseUrl}?PAGEID=x3D&api&v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
+    const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
     
     console.log('🔍 使用原始查詢方法:', queryUrl);
     
