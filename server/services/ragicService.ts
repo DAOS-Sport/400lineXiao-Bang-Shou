@@ -25,15 +25,33 @@ export class RagicService {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly domain: string;
-  private readonly databaseId: string;
+  private readonly databasePath: string;
+  private readonly basicAuth: string;
 
   constructor() {
     // 從環境變數取得 RAGIC 連線資訊
     this.domain = process.env.RAGIC_DOMAIN || '';
-    this.databaseId = process.env.RAGIC_DATABASE_ID || '';
-    this.apiKey = process.env.RAGIC_API_KEY || 'c0VySnlCOEJ6dHlndkRHY0pUOTFEMnh6Zmo3VE9lYWcvak1SWHZQV24vQnRrSlYzellISUlUSGl0Smd6UEd2ZktJVnU1T2hxamUwPQ==';
-    // RAGIC_DOMAIN 已經包含完整域名(如: ap7.ragic.com)，不需要額外加 .ragic.com
-    this.baseUrl = `https://${this.domain}/${this.databaseId}`;
+    this.databasePath = process.env.RAGIC_DATABASE_ID || '';
+    const rawApiKey = process.env.RAGIC_API_KEY;
+    
+    if (!rawApiKey) {
+      throw new Error('RAGIC_API_KEY 環境變數未設定');
+    }
+    
+    this.apiKey = rawApiKey;
+    
+    // 構建正確的 Basic Auth header
+    this.basicAuth = Buffer.from(`${this.apiKey}:`).toString('base64');
+    
+    // RAGIC_DATABASE_ID 應包含完整路徑 account/database/sheet
+    // 例如: mycompany/hr/employees/1
+    this.baseUrl = `https://${this.domain}/${this.databasePath}`;
+    
+    console.log('🔧 RAGIC 服務初始化:', {
+      domain: this.domain,
+      databasePath: this.databasePath,
+      hasApiKey: !!this.apiKey
+    });
   }
 
   /**
@@ -42,20 +60,29 @@ export class RagicService {
   async getEmployeeByLineId(lineId: string): Promise<string | null> {
     try {
       // 檢查 API 設定
-      if (!this.domain || !this.apiKey || !this.databaseId) {
+      if (!this.domain || !this.apiKey || !this.databasePath) {
         console.warn('⚠️ RAGIC API 設定不完整，使用模擬資料');
         return this.getMockEmployeeId(lineId);
       }
 
       // 呼叫 RAGIC API 查詢員工資料
-      const response = await this.queryEmployeeData(lineId);
+      // 正規化 LINE ID
+      const normalizedLineId = lineId.trim();
+      console.log('🔍 正在查詢員工編號，LINE ID:', normalizedLineId.substring(0, 20) + '...');
+      
+      const response = await this.queryEmployeeData(normalizedLineId);
       
       if (response.success && response.data.length > 0) {
         // RAGIC 回傳的資料格式，員工編號在欄位 ID 3000935
         const employee = response.data[0];
         const employeeId = employee['3000935']; // 員工編號欄位
         
-        console.log('👤 RAGIC 員工資料:', { employeeId, lineId: lineId.substring(0, 20) + '...' });
+        console.log('👤 RAGIC 員工資料查詢結果:', { 
+          employeeId, 
+          hasEmployee: !!employee,
+          fieldKeys: Object.keys(employee || {}),
+          lineId: normalizedLineId.substring(0, 20) + '...' 
+        });
         
         if (employeeId) {
           // 記錄成功查詢
@@ -65,7 +92,7 @@ export class RagicService {
             category: 'ragic',
             message: 'RAGIC 員工查詢成功',
             details: {
-              lineId: lineId.substring(0, 20) + '...',
+              lineId: normalizedLineId.substring(0, 20) + '...',
               employeeId,
               source: 'RAGIC_API'
             }
@@ -117,12 +144,19 @@ export class RagicService {
       // 使用 RAGIC API v3 格式並採用正確的參數順序：?api&v=3 和 Basic Authentication
       const queryUrl = `${this.baseUrl}?api&v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
-      console.log('🔍 RAGIC 查詢 URL:', queryUrl.replace(this.apiKey, '***'));
+      console.log('🔍 RAGIC 查詢 URL:', queryUrl);
+      console.log('🔧 RAGIC 查詢設定:', {
+        baseUrl: this.baseUrl,
+        domain: this.domain,
+        databasePath: this.databasePath,
+        searchField: '1003633',
+        searchValue: lineId.substring(0, 20) + '...'
+      });
       
       const response = await fetch(queryUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Basic ${this.apiKey}`,
+          'Authorization': `Basic ${this.basicAuth}`,
           'Content-Type': 'application/json'
         }
       });
@@ -136,7 +170,12 @@ export class RagicService {
       }
 
       const data = await response.json();
-      console.log('📋 RAGIC API 回應資料:', data);
+      console.log('📋 RAGIC API 回應資料類型:', typeof data);
+      console.log('📋 RAGIC API 回應結構:', {
+        isArray: Array.isArray(data),
+        keys: typeof data === 'object' ? Object.keys(data) : 'not object',
+        dataLength: Array.isArray(data) ? data.length : 'not array'
+      });
       
       // 檢查 RAGIC 錯誤回應
       if (data && typeof data === 'object' && data.status === 'ERROR') {
@@ -148,9 +187,25 @@ export class RagicService {
         };
       }
       
+      // 正規化響應資料
+      let normalizedData = [];
+      if (Array.isArray(data)) {
+        normalizedData = data;
+      } else if (data && typeof data === 'object') {
+        // RAGIC v3 可能返回對象映射，轉換為數組
+        normalizedData = Object.values(data);
+      } else {
+        normalizedData = data ? [data] : [];
+      }
+      
+      console.log('📋 正規化後的資料筆數:', normalizedData.length);
+      if (normalizedData.length > 0) {
+        console.log('📋 第一筆資料欄位:', Object.keys(normalizedData[0] || {}));
+      }
+      
       return {
         success: true,
-        data: Array.isArray(data) ? data : [data]
+        data: normalizedData
       };
 
     } catch (error) {
@@ -191,7 +246,7 @@ export class RagicService {
    */
   async testConnection(): Promise<boolean> {
     try {
-      if (!this.domain || !this.apiKey || !this.databaseId) {
+      if (!this.domain || !this.apiKey || !this.databasePath) {
         console.log('🧪 RAGIC 設定不完整，跳過連線測試');
         return false;
       }
@@ -201,7 +256,7 @@ export class RagicService {
       const response = await fetch(testUrl, {
         method: 'GET',
         headers: {
-          'Authorization': this.apiKey,
+          'Authorization': `Basic ${this.basicAuth}`,
           'Content-Type': 'application/json'
         }
       });
@@ -216,7 +271,7 @@ export class RagicService {
         details: {
           statusCode: response.status,
           domain: this.domain,
-          databaseId: this.databaseId
+          databasePath: this.databasePath
         }
       });
 
