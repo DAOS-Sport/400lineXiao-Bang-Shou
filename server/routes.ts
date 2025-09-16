@@ -1,5 +1,7 @@
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { lineService } from "./services/lineService";
 import { messageService } from "./services/messageService";
@@ -43,6 +45,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   });
   
+  // 靜態資產服務（支援LINE Video Message的HTTPS URL需求）- 絕對路徑修復
+  const assetsDir = path.resolve(process.cwd(), 'attached_assets');
+  console.log(`📁 靜態資產目錄解析：${assetsDir}`);
+  
+  // 確認目錄存在
+  if (fs.existsSync(assetsDir)) {
+    console.log('✅ attached_assets 目錄存在');
+  } else {
+    console.error('❌ attached_assets 目錄不存在！');
+  }
+  
+  app.use('/attached_assets', express.static(assetsDir, {
+    fallthrough: false, // 防止SPA fallback攔截
+    setHeaders: (res, filePath) => {
+      console.log(`📁 設置靜態文件headers: ${filePath}`);
+      if (filePath.endsWith('.mp4')) {
+        res.type('video/mp4');
+        console.log('🎬 設置MP4 Content-Type: video/mp4');
+      } else if (filePath.endsWith('.png')) {
+        res.type('image/png');
+      } else if (filePath.match(/\.jpe?g$/)) {
+        res.type('image/jpeg');
+      }
+    }
+  }));
+  console.log('📁 靜態資產服務已設置：/attached_assets (絕對路徑)');
+
   // 安全中間件
   app.use(helmet());
   
@@ -54,20 +83,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     keyGenerator: () => 'global', // 使用固定 key 避免代理 IP 問題
   });
   app.use(limiter);
-
-  // 靜態資產服務（支援LINE Video Message的HTTPS URL需求）
-  app.use('/attached_assets', express.static('../attached_assets', {
-    setHeaders: (res, path) => {
-      if (path.endsWith('.mp4')) {
-        res.setHeader('Content-Type', 'video/mp4');
-      } else if (path.endsWith('.png')) {
-        res.setHeader('Content-Type', 'image/png');
-      } else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
-        res.setHeader('Content-Type', 'image/jpeg');
-      }
-    }
-  }));
-  console.log('📁 靜態資產服務已設置：/attached_assets');
 
   // 針對 webhook 的更嚴格限制（配置適用於 Replit 代理環境）
   const webhookLimiter = rateLimit({
@@ -778,8 +793,8 @@ async function handleIdCommand(event: any) {
       // 暫時使用靜態圖片URL作為預覽圖片（等待MP4視頻文件）
       const previewImageUrl = `${baseUrl}/attached_assets/generated_images/Loading_animation_with_cute_animal_01ea528a.png`;
       
-      // TODO: 需要真實的MP4視頻文件URL
-      const loadingVideoUrl = `${baseUrl}/attached_assets/loading_query_animation.mp4`; // 這個文件目前不存在
+      // 使用實際的loading動畫MP4文件
+      const loadingVideoUrl = `${baseUrl}/attached_assets/Ellipsis@1x-1.0s-200px-200px_1758000838744.mp4`;
       
       console.log('🔍 開始查詢員工編號，用戶:', source.userId);
       console.log('🎬 準備發送loading動畫視頻...');
