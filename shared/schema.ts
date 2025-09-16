@@ -113,6 +113,24 @@ export const systemSettings = pgTable('system_settings', {
   isActiveIdx: index('system_settings_is_active_idx').on(table.isActive)
 }));
 
+// Employee Cache Table - 員工快取（加速 ID 查詢）
+export const employeeCache = pgTable('employee_cache', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`), // 主鍵
+  lineId: text('line_id').notNull().unique(), // LINE ID，唯一鍵
+  employeeId: text('employee_id').notNull(), // 員工編號
+  employeeName: text('employee_name'), // 員工姓名（用於除錯和管理）
+  department: text('department'), // 部門資訊
+  cachedAt: timestamp('cached_at', { withTimezone: true }).defaultNow().notNull(), // 快取建立時間
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), // 快取過期時間
+  lastAccessed: timestamp('last_accessed', { withTimezone: true }), // 最後存取時間
+  accessCount: varchar('access_count').default('0').notNull() // 存取次數
+}, (table) => ({
+  lineIdIdx: uniqueIndex('employee_cache_line_id_idx').on(table.lineId),
+  expiresAtIdx: index('employee_cache_expires_at_idx').on(table.expiresAt),
+  cachedAtIdx: index('employee_cache_cached_at_idx').on(table.cachedAt.desc()),
+  lastAccessedIdx: index('employee_cache_last_accessed_idx').on(table.lastAccessed.desc())
+}));
+
 // Relations
 export const messagesRelations = relations(messages, ({ many }) => ({
   // 可以在這裡定義關聯，例如與任務的關聯
@@ -258,4 +276,26 @@ export interface CreateAuditLogData {
   category: string;
   message: string;
   details?: any;
+}
+
+// Employee Cache interfaces
+export interface IEmployeeCache {
+  id: string;
+  lineId: string;
+  employeeId: string;
+  employeeName?: string;
+  department?: string;
+  cachedAt: Date;
+  expiresAt: Date;
+  lastAccessed?: Date;
+  accessCount: string;
+}
+
+export interface CreateEmployeeCacheData {
+  id: string;
+  lineId: string;
+  employeeId: string;
+  employeeName?: string;
+  department?: string;
+  expiresAt: Date;
 }
