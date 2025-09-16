@@ -832,7 +832,7 @@ async function handleIdCommand(event: any) {
         });
       } else {
         // 在職狀態，正常顯示資料
-        resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeDetails.employeeId}\n姓名: ${employeeDetails.employeeName || '未提供'}\n部門: ${employeeDetails.department || '未提供'}\n狀態: ${employeeDetails.employmentStatus}`;
+        resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeDetails.employeeId}\n姓名: ${employeeDetails.employeeName || '未提供'}\n狀態: ${employeeDetails.employmentStatus}`;
         
         // 記錄成功存取
         await storage.insertAuditLog({
