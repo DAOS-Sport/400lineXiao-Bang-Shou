@@ -55,6 +55,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   app.use(limiter);
 
+  // 靜態資產服務（支援LINE Video Message的HTTPS URL需求）
+  app.use('/attached_assets', express.static('../attached_assets', {
+    setHeaders: (res, path) => {
+      if (path.endsWith('.mp4')) {
+        res.setHeader('Content-Type', 'video/mp4');
+      } else if (path.endsWith('.png')) {
+        res.setHeader('Content-Type', 'image/png');
+      } else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+        res.setHeader('Content-Type', 'image/jpeg');
+      }
+    }
+  }));
+  console.log('📁 靜態資產服務已設置：/attached_assets');
+
   // 針對 webhook 的更嚴格限制（配置適用於 Replit 代理環境）
   const webhookLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 分鐘
