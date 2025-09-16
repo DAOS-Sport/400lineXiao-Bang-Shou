@@ -774,7 +774,7 @@ async function handleIdCommand(event: any) {
         // 1. 嘗試發送loading視頻動畫（如果MP4文件存在）
         await lineService.replyVideoMessage(event.replyToken, loadingVideoUrl, previewImageUrl);
         console.log('✅ 成功發送loading視頻動畫');
-      } catch (videoError) {
+      } catch (videoError: any) {
         console.log('⚠️ 視頻發送失敗，回退到文字動畫模式:', videoError.message);
         // 回退到原始的文字動畫方案
         await lineService.replyMessage(event.replyToken, '查詢中🔴🟡🟢');
