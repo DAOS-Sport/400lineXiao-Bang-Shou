@@ -51,8 +51,8 @@ export class RagicService {
     
     this.apiKey = ragicApiKey.trim();
     
-    // 構建正確的 Basic Auth 格式: base64(username:api_key)
-    this.basicAuth = Buffer.from(`${ragicUsername}:${this.apiKey}`).toString('base64');
+    // 根據 RAGIC 官方 2024 文件：直接使用 API KEY 作為 Basic Auth 使用者名稱
+    this.basicAuth = this.apiKey;
     
     // 使用正確的 RAGIC API 端點格式（移除 /api/ 使用直接路徑）
     // https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3
@@ -92,7 +92,7 @@ export class RagicService {
         // 使用動態欄位對應或預設欄位
         const fieldMapping = (response as any).fieldMapping || {
           lineIdField: '1003633',
-          employeeIdField: '3000935'
+          employeeIdField: '員工編號'
         };
         
         const employeeId = employee[fieldMapping.employeeIdField];
@@ -221,8 +221,17 @@ export class RagicService {
           return { success: false, data: [], error: data.msg };
         }
         
-        // 正規化數據為陣列格式
-        const normalizedData = Array.isArray(data) ? data : (data ? [data] : []);
+        // 正規化數據：RAGIC 回傳格式為 {"記錄ID": {實際資料}}
+        let normalizedData = [];
+        
+        if (Array.isArray(data)) {
+          normalizedData = data;
+        } else if (data && typeof data === 'object') {
+          // 提取 RAGIC 回應中的實際員工資料（跳過記錄 ID 層級）
+          const recordKeys = Object.keys(data).filter(key => !key.startsWith('_'));
+          normalizedData = recordKeys.map(recordId => data[recordId]);
+        }
+        
         console.log('📋 正規化後的資料筆數:', normalizedData.length);
         
         // 檢查第一筆資料的欄位
@@ -233,7 +242,7 @@ export class RagicService {
         return {
           success: true,
           data: normalizedData,
-          fieldMapping: { lineIdField: '1003633', employeeIdField: '3000935' }
+          fieldMapping: { lineIdField: '1003633', employeeIdField: '員工編號' }
         };
       } else {
         console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
@@ -311,9 +320,9 @@ export class RagicService {
             if (numericFields.length > 5) { // 可能是 RAGIC 表單
               // 檢查是否包含預期的欄位
               let lineIdField = '1003633';
-              let employeeIdField = '3000935';
+              let employeeIdField = '員工編號';
               
-              if (numericFields.includes('1003633') && numericFields.includes('3000935')) {
+              if (numericFields.includes('1003633') && data.hasOwnProperty('員工編號')) {
                 console.log('✅ 找到預期的欄位配置');
               } else {
                 // 嘗試尋找可能的 LINE ID 和員工編號欄位
