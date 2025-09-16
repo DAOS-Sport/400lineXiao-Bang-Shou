@@ -58,6 +58,25 @@ export class LineService {
     }
   }
 
+  async replyImageMessage(replyToken: string, imageUrl: string, previewImageUrl?: string): Promise<void> {
+    if (!client) {
+      console.warn('LINE client 未初始化，無法發送圖片回覆');
+      return;
+    }
+    
+    try {
+      await client.replyMessage(replyToken, {
+        type: 'image',
+        originalContentUrl: imageUrl,
+        previewImageUrl: previewImageUrl || imageUrl
+      });
+      console.log('✅ 圖片訊息回覆成功');
+    } catch (error) {
+      console.error('❌ LINE 圖片回覆訊息失敗:', error);
+      throw error;
+    }
+  }
+
   async pushMessage(to: string, text: string, options: { maxRetries?: number } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法推送訊息');

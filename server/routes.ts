@@ -785,26 +785,23 @@ async function handleIdCommand(event: any) {
   if (source.type === 'user') {
     // 私人對話：實現Video Loading動畫查詢反饋
     try {
-      // 檢查是否有可用的loading視頻URL
+      // 檢查是否有可用的loading GIF URL
       const baseUrl = process.env.REPLIT_DEV_DOMAIN ? 
         `https://${process.env.REPLIT_DEV_DOMAIN}` : 
         `http://localhost:5000`;
       
-      // 暫時使用靜態圖片URL作為預覽圖片（等待MP4視頻文件）
-      const previewImageUrl = `${baseUrl}/attached_assets/generated_images/Loading_animation_with_cute_animal_01ea528a.png`;
-      
-      // 使用實際的loading動畫MP4文件
-      const loadingVideoUrl = `${baseUrl}/attached_assets/Ellipsis@1x-1.0s-200px-200px_1758000838744.mp4`;
+      // 使用實際的loading動畫GIF文件
+      const loadingImageUrl = `${baseUrl}/attached_assets/Ellipsis@1x-1.0s-200px-200px_1758001558301.gif`;
       
       console.log('🔍 開始查詢員工編號，用戶:', source.userId);
-      console.log('🎬 準備發送loading動畫視頻...');
+      console.log('🎨 準備發送loading動畫GIF...');
       
       try {
-        // 1. 嘗試發送loading視頻動畫（如果MP4文件存在）
-        await lineService.replyVideoMessage(event.replyToken, loadingVideoUrl, previewImageUrl);
-        console.log('✅ 成功發送loading視頻動畫');
-      } catch (videoError: any) {
-        console.log('⚠️ 視頻發送失敗，回退到文字動畫模式:', videoError.message);
+        // 1. 嘗試發送loading GIF動畫
+        await lineService.replyImageMessage(event.replyToken, loadingImageUrl);
+        console.log('✅ 成功發送loading GIF動畫');
+      } catch (imageError: any) {
+        console.log('⚠️ GIF發送失敗，回退到文字動畫模式:', imageError.message);
         // 回退到原始的文字動畫方案
         await lineService.replyMessage(event.replyToken, '查詢中🔴🟡🟢');
       }
