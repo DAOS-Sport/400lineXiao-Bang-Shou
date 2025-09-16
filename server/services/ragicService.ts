@@ -69,7 +69,7 @@ export class RagicService {
   }
 
   /**
-   * 根據 LINE ID 查詢員工編號
+   * 根據 LINE ID 查詢員工編號（含快取機制）
    */
   async getEmployeeByLineId(lineId: string): Promise<string | null> {
     try {
@@ -79,11 +79,39 @@ export class RagicService {
         return this.getMockEmployeeId(lineId);
       }
 
-      // 呼叫 RAGIC API 查詢員工資料
       // 正規化 LINE ID
       const normalizedLineId = lineId.trim();
       console.log('🔍 正在查詢員工編號，LINE ID:', normalizedLineId);
       
+      // 1. 首先檢查快取
+      console.log('💾 檢查員工資料快取...');
+      const cachedData = await storage.getEmployeeCache(normalizedLineId);
+      
+      if (cachedData) {
+        console.log(`⚡ 快取命中！員工編號: ${cachedData.employeeId}，節省查詢時間`);
+        
+        // 更新存取記錄
+        await storage.updateEmployeeCacheAccess(normalizedLineId);
+        
+        // 記錄快取命中
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'ragic_cache',
+          message: 'RAGIC 員工快取命中',
+          details: {
+            lineId: normalizedLineId,
+            employeeId: cachedData.employeeId,
+            source: 'CACHE',
+            accessCount: cachedData.accessCount
+          }
+        });
+        
+        return cachedData.employeeId;
+      }
+      
+      // 2. 快取未命中，進行 RAGIC API 查詢
+      console.log('💾 快取未命中，查詢 RAGIC API...');
       const response = await this.queryEmployeeData(normalizedLineId);
       
       if (response.success && response.data.length > 0) {
@@ -107,6 +135,22 @@ export class RagicService {
         });
         
         if (employeeId) {
+          // 3. 儲存到快取（24小時有效期）
+          try {
+            const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24小時後過期
+            await storage.insertEmployeeCache({
+              id: crypto.randomUUID(),
+              lineId: normalizedLineId,
+              employeeId: employeeId.toString(),
+              employeeName: employee['姓名'] || employee['名稱'],
+              department: Array.isArray(employee['部門']) ? employee['部門'].join(',') : employee['部門'],
+              expiresAt
+            });
+            console.log('💾 員工資料已快取，24小時有效期');
+          } catch (cacheError) {
+            console.error('⚠️ 快取儲存失敗（但不影響查詢結果）:', cacheError);
+          }
+          
           // 記錄成功查詢
           await storage.insertAuditLog({
             id: crypto.randomUUID(),
@@ -117,7 +161,8 @@ export class RagicService {
               lineId: normalizedLineId,
               employeeId,
               source: 'RAGIC_API',
-              fieldMapping: fieldMapping
+              fieldMapping: fieldMapping,
+              cached: true
             }
           });
           

@@ -1,7 +1,7 @@
 import { 
-  messages, tasks, admins, auditLogs, authorizedGroups,
-  type IMessage, type ITask, type IAdmin, type IAuditLog, type AuthorizedGroup,
-  type CreateMessageData, type CreateTaskData, type CreateAdminData, type CreateAuditLogData, type InsertAuthorizedGroup
+  messages, tasks, admins, auditLogs, authorizedGroups, employeeCache,
+  type IMessage, type ITask, type IAdmin, type IAuditLog, type AuthorizedGroup, type IEmployeeCache,
+  type CreateMessageData, type CreateTaskData, type CreateAdminData, type CreateAuditLogData, type InsertAuthorizedGroup, type CreateEmployeeCacheData
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, sql, count } from "drizzle-orm";
@@ -46,6 +46,13 @@ export interface IStorage {
   insertAuditLog(data: CreateAuditLogData): Promise<IAuditLog>;
   getAuditLogs(limit?: number): Promise<IAuditLog[]>;
   getAuditLogsByCategory(category: string): Promise<IAuditLog[]>;
+
+  // Employee Cache
+  insertEmployeeCache(data: CreateEmployeeCacheData): Promise<IEmployeeCache>;
+  getEmployeeCache(lineId: string): Promise<IEmployeeCache | null>;
+  updateEmployeeCacheAccess(lineId: string): Promise<void>;
+  deleteExpiredEmployeeCache(): Promise<void>;
+  deleteEmployeeCache(lineId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -367,6 +374,79 @@ export class DatabaseStorage implements IStorage {
         return [];
       }
       throw error;
+    }
+  }
+
+  // Employee Cache methods
+  async insertEmployeeCache(data: CreateEmployeeCacheData): Promise<IEmployeeCache> {
+    try {
+      const cacheData = {
+        ...data,
+        accessCount: '1'
+      };
+      const [cache] = await db.insert(employeeCache).values(cacheData).returning();
+      return cache as IEmployeeCache;
+    } catch (error) {
+      console.error('新增員工快取失敗:', error);
+      throw error;
+    }
+  }
+
+  async getEmployeeCache(lineId: string): Promise<IEmployeeCache | null> {
+    try {
+      const cache = await db.select().from(employeeCache)
+        .where(eq(employeeCache.lineId, lineId))
+        .limit(1);
+      
+      if (cache.length === 0) {
+        return null;
+      }
+
+      const cacheData = cache[0] as IEmployeeCache;
+      
+      // 檢查是否過期
+      if (cacheData.expiresAt && new Date() > cacheData.expiresAt) {
+        // 刪除過期快取
+        await this.deleteEmployeeCache(lineId);
+        return null;
+      }
+
+      return cacheData;
+    } catch (error) {
+      console.error('查詢員工快取失敗:', error);
+      return null;
+    }
+  }
+
+  async updateEmployeeCacheAccess(lineId: string): Promise<void> {
+    try {
+      await db.update(employeeCache)
+        .set({ 
+          lastAccessed: new Date(),
+          accessCount: sql`(${employeeCache.accessCount}::int + 1)::text`
+        })
+        .where(eq(employeeCache.lineId, lineId));
+    } catch (error) {
+      console.error('更新員工快取存取記錄失敗:', error);
+    }
+  }
+
+  async deleteExpiredEmployeeCache(): Promise<void> {
+    try {
+      const now = new Date();
+      await db.delete(employeeCache)
+        .where(lte(employeeCache.expiresAt, now));
+    } catch (error) {
+      console.error('清理過期員工快取失敗:', error);
+    }
+  }
+
+  async deleteEmployeeCache(lineId: string): Promise<void> {
+    try {
+      await db.delete(employeeCache)
+        .where(eq(employeeCache.lineId, lineId));
+    } catch (error) {
+      console.error('刪除員工快取失敗:', error);
     }
   }
 }

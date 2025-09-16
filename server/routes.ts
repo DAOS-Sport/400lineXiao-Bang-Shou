@@ -751,30 +751,52 @@ async function processWebhookEvent(event: any) {
 // 處理 ID 查詢指令
 async function handleIdCommand(event: any) {
   const source = event.source;
-  let replyText = '';
 
   if (source.type === 'user') {
-    // 私人對話：顯示用戶 ID 和員工編號
+    // 私人對話：立即回覆查詢中狀態，然後進行實際查詢
     try {
+      // 1. 立即回覆查詢中狀態
+      await lineService.replyMessage(event.replyToken, '🔍 正在查詢員工資料，請稍候...');
+      
+      // 2. 開始實際查詢
+      console.log('🔍 開始查詢員工編號，用戶:', source.userId);
+      const startTime = performance.now();
+      
       // 先導入 RAGIC 服務（動態導入避免循環依賴）
       const { ragicService } = await import('./services/ragicService');
       
       // 查詢員工編號
       const employeeId = await ragicService.getEmployeeByLineId(source.userId);
+      const endTime = performance.now();
+      const queryTime = Math.round(endTime - startTime);
       
-      replyText = `系統識別碼: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
+      // 3. 推送最終查詢結果
+      let resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
+      
+      // 如果查詢時間較長，顯示查詢時間
+      if (queryTime > 500) {
+        resultMessage += `\n⏱️ 查詢時間: ${queryTime}ms`;
+      }
+      
+      await lineService.pushMessage(source.userId, resultMessage);
+      
+      console.log(`✅ ID 查詢完成，用時 ${queryTime}ms，結果: ${employeeId || '查無資料'}`);
       
     } catch (error) {
       console.error('❌ 查詢員工編號失敗:', error);
-      replyText = `系統識別碼: ${source.userId}\n員工編號: 查無資料`;
+      // 推送錯誤結果
+      const errorMessage = `❌ 查詢失敗\n\n系統識別碼: ${source.userId}\n員工編號: 查無資料\n\n請稍後再試或聯繫系統管理員`;
+      await lineService.pushMessage(source.userId, errorMessage);
     }
   } else if (source.type === 'group') {
-    replyText = `🆔 groupId：${source.groupId}`;
+    // 群組對話：直接回覆群組 ID
+    const replyText = `🆔 groupId：${source.groupId}`;
+    await lineService.replyMessage(event.replyToken, replyText);
   } else if (source.type === 'room') {
-    replyText = `🆔 roomId：${source.roomId}`;
+    // 房間對話：直接回覆房間 ID
+    const replyText = `🆔 roomId：${source.roomId}`;
+    await lineService.replyMessage(event.replyToken, replyText);
   }
-
-  await lineService.replyMessage(event.replyToken, replyText);
 }
 
 // 處理管理員指令
