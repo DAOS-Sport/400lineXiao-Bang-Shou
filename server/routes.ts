@@ -490,7 +490,8 @@ async function processWebhookEvent(event: any) {
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
       // 1. ID 查詢指令（任何人可用，不分大小寫）
-      if (text.toLowerCase() === 'id') {
+      const idQueryCommands = ['id', '查詢員工編號'];
+      if (idQueryCommands.includes(text.toLowerCase())) {
         await handleIdCommand(event);
         return;
       }
