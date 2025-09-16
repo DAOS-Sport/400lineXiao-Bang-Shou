@@ -808,20 +808,20 @@ async function handleIdCommand(event: any) {
         await lineService.replyMessage(event.replyToken, '查詢中🔴🟡🟢');
       }
       
-      // 2. 啟動進度更新和實際查詢
-      startEnhancedQueryProgress(source.userId);
-      
+      // 2. 直接進行查詢（移除進度更新）
       let employeeId: string | null = null;
       
       try {
         // 先導入 RAGIC 服務（動態導入避免循環依賴）
         const { ragicService } = await import('./services/ragicService');
         
+        console.log('🔍 開始背景查詢員工編號...');
         // 查詢員工編號
         employeeId = await ragicService.getEmployeeByLineId(source.userId);
-      } finally {
-        // 確保進度更新被清除（故障安全）
-        clearEnhancedQueryProgress(source.userId);
+        console.log('🔍 查詢完成，準備發送結果');
+      } catch (queryError) {
+        console.error('❌ 查詢員工編號失敗:', queryError);
+        employeeId = null;
       }
       
       // 3. 推送最終查詢結果
