@@ -791,28 +791,66 @@ async function handleIdCommand(event: any) {
       await lineService.startLoading(source.userId, 10);
       console.log('✅ LINE loading API 已啟動');
 
-      // 2. 做查詢（去 RAGIC 抓資料）
-      let employeeId: string | null = null;
+      // 2. 做查詢（去 RAGIC 抓資料，包含在職狀態驗證）
+      let employeeDetails: any = null;
       
       try {
         // 先導入 RAGIC 服務（動態導入避免循環依賴）
         const { ragicService } = await import('./services/ragicService');
         
-        console.log('🔍 開始背景查詢員工編號...');
-        // 查詢員工編號
-        employeeId = await ragicService.getEmployeeByLineId(source.userId);
-        console.log('🔍 查詢完成，準備發送結果');
+        console.log('🔍 開始背景查詢員工資料（包含在職狀態）...');
+        // 查詢員工完整資料
+        employeeDetails = await ragicService.getEmployeeDetailsByLineId(source.userId);
+        console.log('🔍 查詢完成，準備驗證在職狀態並發送結果');
       } catch (queryError) {
-        console.error('❌ 查詢員工編號失敗:', queryError);
-        employeeId = null;
+        console.error('❌ 查詢員工資料失敗:', queryError);
+        employeeDetails = null;
       }
       
-      // 3. 推送最終查詢結果
-      const resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
+      // 3. 根據在職狀態決定回覆內容
+      let resultMessage: string;
       
-      await lineService.pushMessage(source.userId, resultMessage);
+      if (!employeeDetails) {
+        // 查無資料
+        resultMessage = `❌ 查詢完成\n\n系統識別碼: ${source.userId}\n查詢結果: 查無資料`;
+      } else if (!employeeDetails.isActive) {
+        // 帳號已關閉（非在職狀態）
+        resultMessage = `🚫 帳號已關閉，暫停服務，若有問題，請洽直屬主管`;
+        
+        // 記錄非在職員工嘗試使用服務
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'warning',
+          category: 'access_denied',
+          message: '非在職員工嘗試使用服務',
+          details: {
+            lineId: source.userId,
+            employeeId: employeeDetails.employeeId,
+            employmentStatus: employeeDetails.employmentStatus,
+            employeeName: employeeDetails.employeeName
+          }
+        });
+      } else {
+        // 在職狀態，正常顯示資料
+        resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeDetails.employeeId}\n姓名: ${employeeDetails.employeeName || '未提供'}\n部門: ${employeeDetails.department || '未提供'}\n狀態: ${employeeDetails.employmentStatus}`;
+        
+        // 記錄成功存取
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'employee_query_success',
+          message: '在職員工成功查詢資料',
+          details: {
+            lineId: source.userId,
+            employeeId: employeeDetails.employeeId,
+            employeeName: employeeDetails.employeeName
+          }
+        });
+      }
       
-      console.log(`✅ ID 查詢完成，結果: ${employeeId || '查無資料'}`);
+      await lineService.replyMessage(event.replyToken, resultMessage);
+      
+      console.log(`✅ ID 查詢完成，結果: ${employeeDetails?.employeeId || '查無資料'}`);
       
     } catch (error) {
       console.error('❌ 查詢員工編號失敗:', error);

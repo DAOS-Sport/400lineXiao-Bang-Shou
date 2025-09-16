@@ -14,6 +14,15 @@ interface RagicEmployee {
   department?: string;
 }
 
+// 完整的員工資料介面（包含在職狀態）
+interface EmployeeDetails {
+  employeeId: string;
+  employeeName?: string;
+  department?: string;
+  employmentStatus?: string; // 在職狀態
+  isActive: boolean; // 是否在職
+}
+
 // RAGIC API 回應格式
 interface RagicApiResponse {
   success: boolean;
@@ -66,6 +75,118 @@ export class RagicService {
       baseUrl: this.baseUrl,
       authFormatCorrect: this.basicAuth.length > 0
     });
+  }
+
+  /**
+   * 根據 LINE ID 查詢完整員工資料（包含在職狀態驗證）
+   */
+  async getEmployeeDetailsByLineId(lineId: string): Promise<EmployeeDetails | null> {
+    try {
+      // 檢查 API 設定
+      if (!this.domain || !this.apiKey || !this.databasePath) {
+        console.warn('⚠️ RAGIC API 設定不完整，返回模擬資料');
+        return {
+          employeeId: 'DEMO_001',
+          employeeName: '模擬員工',
+          department: '資訊部',
+          employmentStatus: '在職',
+          isActive: true
+        };
+      }
+
+      // 正規化 LINE ID
+      const normalizedLineId = lineId.trim();
+      console.log('🔍 正在查詢員工完整資料，LINE ID:', normalizedLineId);
+      
+      // 查詢 RAGIC API
+      const response = await this.queryEmployeeData(normalizedLineId);
+      
+      if (response.success && response.data.length > 0) {
+        const employee = response.data[0];
+        
+        // 使用動態欄位對應或預設欄位
+        const fieldMapping = (response as any).fieldMapping || {
+          lineIdField: '1003633',
+          employeeIdField: '員工編號'
+        };
+        
+        const employeeId = employee[fieldMapping.employeeIdField];
+        const employeeName = employee['姓名'] || employee['名稱'];
+        const department = Array.isArray(employee['部門']) ? employee['部門'].join(',') : employee['部門'];
+        const employmentStatus = employee['在職狀態'] || employee['status']; // 嘗試多種可能的欄位名稱
+        
+        console.log('👤 RAGIC 員工完整資料查詢結果:', { 
+          employeeId, 
+          employeeName,
+          department,
+          employmentStatus,
+          hasEmployee: !!employee,
+          fieldKeys: Object.keys(employee || {}),
+          lineId: normalizedLineId
+        });
+        
+        if (employeeId) {
+          // 判斷是否在職 (檢查在職狀態是否為"在職")
+          const isActive = employmentStatus === '在職';
+          
+          const employeeDetails: EmployeeDetails = {
+            employeeId: employeeId.toString(),
+            employeeName,
+            department,
+            employmentStatus,
+            isActive
+          };
+          
+          // 記錄查詢結果
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'info',
+            category: 'ragic',
+            message: 'RAGIC 員工完整資料查詢成功',
+            details: {
+              lineId: normalizedLineId,
+              employeeId,
+              employmentStatus,
+              isActive,
+              source: 'RAGIC_API'
+            }
+          });
+          
+          return employeeDetails;
+        }
+      }
+
+      // 查不到資料
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'warning',
+        category: 'ragic',
+        message: 'RAGIC 查無員工完整資料',
+        details: {
+          lineId: lineId,
+          apiResponse: response
+        }
+      });
+
+      return null;
+
+    } catch (error) {
+      console.error('❌ RAGIC API 查詢員工完整資料失敗:', error);
+      
+      // 記錄錯誤
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'ragic',
+        message: 'RAGIC API 查詢員工完整資料失敗',
+        details: {
+          lineId: lineId,
+          error: (error as Error).message
+        }
+      });
+
+      return null;
+    }
   }
 
   /**
