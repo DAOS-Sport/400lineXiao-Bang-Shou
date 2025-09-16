@@ -753,37 +753,40 @@ async function handleIdCommand(event: any) {
   const source = event.source;
 
   if (source.type === 'user') {
-    // 私人對話：立即回覆查詢中狀態，然後進行實際查詢
+    // 私人對話：實現動畫化查詢反饋
     try {
-      // 1. 立即回覆查詢中狀態
-      await lineService.replyMessage(event.replyToken, '🔍 正在查詢員工資料，請稍候...');
+      // 1. 立即回覆初始查詢動畫狀態
+      await lineService.replyMessage(event.replyToken, '查詢中🔴🟡🟢');
       
-      // 2. 開始實際查詢
       console.log('🔍 開始查詢員工編號，用戶:', source.userId);
-      const startTime = performance.now();
       
-      // 先導入 RAGIC 服務（動態導入避免循環依賴）
-      const { ragicService } = await import('./services/ragicService');
+      // 2. 啟動查詢動畫和實際查詢
+      startQueryAnimation(source.userId);
       
-      // 查詢員工編號
-      const employeeId = await ragicService.getEmployeeByLineId(source.userId);
-      const endTime = performance.now();
-      const queryTime = Math.round(endTime - startTime);
+      let employeeId: string | null = null;
       
-      // 3. 推送最終查詢結果
-      let resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
-      
-      // 如果查詢時間較長，顯示查詢時間
-      if (queryTime > 500) {
-        resultMessage += `\n⏱️ 查詢時間: ${queryTime}ms`;
+      try {
+        // 先導入 RAGIC 服務（動態導入避免循環依賴）
+        const { ragicService } = await import('./services/ragicService');
+        
+        // 查詢員工編號
+        employeeId = await ragicService.getEmployeeByLineId(source.userId);
+      } finally {
+        // 確保動畫被清除（故障安全）
+        clearQueryAnimation(source.userId);
       }
+      
+      // 3. 推送最終查詢結果（移除查詢時間顯示）
+      const resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
       
       await lineService.pushMessage(source.userId, resultMessage);
       
-      console.log(`✅ ID 查詢完成，用時 ${queryTime}ms，結果: ${employeeId || '查無資料'}`);
+      console.log(`✅ ID 查詢完成，結果: ${employeeId || '查無資料'}`);
       
     } catch (error) {
       console.error('❌ 查詢員工編號失敗:', error);
+      // 停止動畫
+      clearQueryAnimation(source.userId);
       // 推送錯誤結果
       const errorMessage = `❌ 查詢失敗\n\n系統識別碼: ${source.userId}\n員工編號: 查無資料\n\n請稍後再試或聯繫系統管理員`;
       await lineService.pushMessage(source.userId, errorMessage);
@@ -796,6 +799,76 @@ async function handleIdCommand(event: any) {
     // 房間對話：直接回覆房間 ID
     const replyText = `🆔 roomId：${source.roomId}`;
     await lineService.replyMessage(event.replyToken, replyText);
+  }
+}
+
+// 查詢動畫管理 - 支援多用戶並發
+const userAnimations = new Map<string, NodeJS.Timeout>();
+const animationStartTimes = new Map<string, number>();
+
+// 啟動查詢動畫（支援多用戶，控制訊息頻率）
+async function startQueryAnimation(userId: string) {
+  // 清除該用戶的舊動畫（防重複）
+  clearQueryAnimation(userId);
+  
+  // 動畫狀態序列：紅黃綠 → 黃紅綠 → 黃綠紅
+  const animationStates = [
+    '查詢中🔴🟡🟢',  // 紅黃綠
+    '查詢中🟡🔴🟢',  // 黃紅綠  
+    '查詢中🟡🟢🔴'   // 黃綠紅
+  ];
+  
+  let currentState = 0;
+  let updateCount = 0;
+  const maxUpdates = 6; // 最多更新6次（避免訊息氾濫）
+  const maxDuration = 15000; // 最多15秒（故障安全）
+  
+  animationStartTimes.set(userId, Date.now());
+  
+  // 每1.5秒更新一次動畫狀態（降低訊息頻率）
+  const interval = setInterval(async () => {
+    currentState = (currentState + 1) % animationStates.length;
+    updateCount++;
+    
+    // 檢查是否超過最大更新次數或時間限制
+    const elapsed = Date.now() - (animationStartTimes.get(userId) || 0);
+    if (updateCount >= maxUpdates || elapsed >= maxDuration) {
+      console.log(`⏰ 動畫自動停止 - 用戶: ${userId}, 更新次數: ${updateCount}, 經過時間: ${elapsed}ms`);
+      clearQueryAnimation(userId);
+      return;
+    }
+    
+    try {
+      await lineService.pushMessage(userId, animationStates[currentState]);
+    } catch (error) {
+      console.error('❌ 動畫更新失敗:', error);
+      clearQueryAnimation(userId);
+    }
+  }, 1500); // 改為1.5秒間隔，減少訊息量
+  
+  userAnimations.set(userId, interval);
+  console.log(`🎬 啟動查詢動畫 - 用戶: ${userId}`);
+}
+
+// 清除查詢動畫（支援指定用戶）
+function clearQueryAnimation(userId?: string) {
+  if (userId) {
+    // 清除特定用戶的動畫
+    const interval = userAnimations.get(userId);
+    if (interval) {
+      clearInterval(interval);
+      userAnimations.delete(userId);
+      animationStartTimes.delete(userId);
+      console.log(`🛑 清除查詢動畫 - 用戶: ${userId}`);
+    }
+  } else {
+    // 清除所有動畫（舊版本兼容）
+    userAnimations.forEach((interval, uid) => {
+      clearInterval(interval);
+      console.log(`🛑 清除查詢動畫 - 用戶: ${uid}`);
+    });
+    userAnimations.clear();
+    animationStartTimes.clear();
   }
 }
 
