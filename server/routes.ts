@@ -754,15 +754,34 @@ async function handleIdCommand(event: any) {
   const source = event.source;
 
   if (source.type === 'user') {
-    // 私人對話：實現動畫化查詢反饋
+    // 私人對話：實現Video Loading動畫查詢反饋
     try {
-      // 1. 立即回覆初始查詢動畫狀態
-      await lineService.replyMessage(event.replyToken, '查詢中🔴🟡🟢');
+      // 檢查是否有可用的loading視頻URL
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN ? 
+        `https://${process.env.REPLIT_DEV_DOMAIN}` : 
+        `http://localhost:5000`;
+      
+      // 暫時使用靜態圖片URL作為預覽圖片（等待MP4視頻文件）
+      const previewImageUrl = `${baseUrl}/attached_assets/generated_images/Loading_animation_with_cute_animal_01ea528a.png`;
+      
+      // TODO: 需要真實的MP4視頻文件URL
+      const loadingVideoUrl = `${baseUrl}/attached_assets/loading_query_animation.mp4`; // 這個文件目前不存在
       
       console.log('🔍 開始查詢員工編號，用戶:', source.userId);
+      console.log('🎬 準備發送loading動畫視頻...');
       
-      // 2. 啟動查詢動畫和實際查詢
-      startQueryAnimation(source.userId);
+      try {
+        // 1. 嘗試發送loading視頻動畫（如果MP4文件存在）
+        await lineService.replyVideoMessage(event.replyToken, loadingVideoUrl, previewImageUrl);
+        console.log('✅ 成功發送loading視頻動畫');
+      } catch (videoError) {
+        console.log('⚠️ 視頻發送失敗，回退到文字動畫模式:', videoError.message);
+        // 回退到原始的文字動畫方案
+        await lineService.replyMessage(event.replyToken, '查詢中🔴🟡🟢');
+      }
+      
+      // 2. 啟動進度更新和實際查詢
+      startEnhancedQueryProgress(source.userId);
       
       let employeeId: string | null = null;
       
@@ -773,11 +792,11 @@ async function handleIdCommand(event: any) {
         // 查詢員工編號
         employeeId = await ragicService.getEmployeeByLineId(source.userId);
       } finally {
-        // 確保動畫被清除（故障安全）
-        clearQueryAnimation(source.userId);
+        // 確保進度更新被清除（故障安全）
+        clearEnhancedQueryProgress(source.userId);
       }
       
-      // 3. 推送最終查詢結果（移除查詢時間顯示）
+      // 3. 推送最終查詢結果
       const resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeId || '查無資料'}`;
       
       await lineService.pushMessage(source.userId, resultMessage);
@@ -786,8 +805,8 @@ async function handleIdCommand(event: any) {
       
     } catch (error) {
       console.error('❌ 查詢員工編號失敗:', error);
-      // 停止動畫
-      clearQueryAnimation(source.userId);
+      // 停止進度更新
+      clearEnhancedQueryProgress(source.userId);
       // 推送錯誤結果
       const errorMessage = `❌ 查詢失敗\n\n系統識別碼: ${source.userId}\n員工編號: 查無資料\n\n請稍後再試或聯繫系統管理員`;
       await lineService.pushMessage(source.userId, errorMessage);
@@ -803,9 +822,86 @@ async function handleIdCommand(event: any) {
   }
 }
 
-// 查詢動畫管理 - 支援多用戶並發
+// 增強查詢進度管理 - 支援多用戶並發
+const userProgressUpdates = new Map<string, NodeJS.Timeout>();
+const progressStartTimes = new Map<string, number>();
+
+// 舊版動畫功能保留（向後兼容）
 const userAnimations = new Map<string, NodeJS.Timeout>();
 const animationStartTimes = new Map<string, number>();
+
+// 新增強查詢進度更新（配合video message使用）
+async function startEnhancedQueryProgress(userId: string) {
+  // 清除該用戶的舊進度更新（防重複）
+  clearEnhancedQueryProgress(userId);
+  
+  // 進度提示序列
+  const progressMessages = [
+    '查詢中.',
+    '查詢中..',
+    '查詢中...',
+    '正在查詢員工資料.',
+    '正在查詢員工資料..',
+    '正在查詢員工資料...',
+    '即將完成查詢...'
+  ];
+  
+  let currentIndex = 0;
+  let updateCount = 0;
+  const maxUpdates = 8; // 最多更新8次
+  const maxDuration = 20000; // 最多20秒
+  
+  progressStartTimes.set(userId, Date.now());
+  
+  // 每3秒更新一次進度狀態
+  const interval = setInterval(async () => {
+    currentIndex = currentIndex % progressMessages.length;
+    updateCount++;
+    
+    // 檢查是否超過最大更新次數或時間限制
+    const elapsed = Date.now() - (progressStartTimes.get(userId) || 0);
+    if (updateCount >= maxUpdates || elapsed >= maxDuration) {
+      console.log(`⏰ 進度更新自動停止 - 用戶: ${userId}, 更新次數: ${updateCount}, 經過時間: ${elapsed}ms`);
+      clearEnhancedQueryProgress(userId);
+      return;
+    }
+    
+    try {
+      await lineService.pushMessage(userId, progressMessages[currentIndex]);
+      console.log(`📊 進度更新 ${updateCount}: ${progressMessages[currentIndex]}`);
+    } catch (error) {
+      console.error('❌ 進度更新失敗:', error);
+      clearEnhancedQueryProgress(userId);
+    }
+    
+    currentIndex++;
+  }, 3000); // 3秒間隔，比原來的動畫慢一些
+  
+  userProgressUpdates.set(userId, interval);
+  console.log(`🎬 啟動增強查詢進度更新 - 用戶: ${userId}`);
+}
+
+// 清除增強查詢進度更新
+function clearEnhancedQueryProgress(userId?: string) {
+  if (userId) {
+    // 清除特定用戶的進度更新
+    const interval = userProgressUpdates.get(userId);
+    if (interval) {
+      clearInterval(interval);
+      userProgressUpdates.delete(userId);
+      progressStartTimes.delete(userId);
+      console.log(`🛑 清除增強查詢進度更新 - 用戶: ${userId}`);
+    }
+  } else {
+    // 清除所有進度更新
+    userProgressUpdates.forEach((interval, uid) => {
+      clearInterval(interval);
+      console.log(`🛑 清除增強查詢進度更新 - 用戶: ${uid}`);
+    });
+    userProgressUpdates.clear();
+    progressStartTimes.clear();
+  }
+}
 
 // 啟動查詢動畫（支援多用戶，控制訊息頻率）
 async function startQueryAnimation(userId: string) {
