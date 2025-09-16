@@ -39,6 +39,25 @@ export class LineService {
     }
   }
 
+  async replyVideoMessage(replyToken: string, videoUrl: string, previewImageUrl: string): Promise<void> {
+    if (!client) {
+      console.warn('LINE client 未初始化，無法發送影片回覆');
+      return;
+    }
+    
+    try {
+      await client.replyMessage(replyToken, {
+        type: 'video',
+        originalContentUrl: videoUrl,
+        previewImageUrl: previewImageUrl
+      });
+      console.log('✅ 影片訊息回覆成功');
+    } catch (error) {
+      console.error('❌ LINE 影片回覆訊息失敗:', error);
+      throw error;
+    }
+  }
+
   async pushMessage(to: string, text: string, options: { maxRetries?: number } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法推送訊息');
@@ -161,6 +180,45 @@ export class LineService {
         // 設置 retryAttempt 屬性供上層記錄
         error.retryAttempt = attempt;
         throw error;
+      }
+    }
+  }
+
+  async pushVideoMessage(to: string, videoUrl: string, previewImageUrl: string, options: { maxRetries?: number } = {}): Promise<void> {
+    if (!client) {
+      console.warn('LINE client 未初始化，無法推送影片');
+      return;
+    }
+    
+    const { maxRetries = 3 } = options;
+    let attempt = 0;
+    
+    while (attempt < maxRetries) {
+      try {
+        // LINE API 支援推送影片到群組 ID (C開頭) 和用戶 ID (U開頭)
+        await client.pushMessage(to, {
+          type: 'video',
+          originalContentUrl: videoUrl,
+          previewImageUrl: previewImageUrl
+        });
+        
+        if (to.startsWith('C')) {
+          console.log(`✅ 成功推送影片到群組 ${to.substring(0, 8)}...`);
+        } else {
+          console.log(`✅ 成功推送影片到用戶 ${to.substring(0, 8)}...`);
+        }
+        return;
+        
+      } catch (error: any) {
+        attempt++;
+        console.error(`❌ 推送影片失敗 (嘗試 ${attempt}/${maxRetries}):`, error);
+        
+        if (attempt >= maxRetries) {
+          throw error;
+        }
+        
+        // 簡單重試策略，1秒後重試
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
   }
