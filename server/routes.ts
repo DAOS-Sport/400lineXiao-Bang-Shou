@@ -783,32 +783,15 @@ async function handleIdCommand(event: any) {
   const source = event.source;
 
   if (source.type === 'user') {
-    // 私人對話：實現Video Loading動畫查詢反饋
+    // 私人對話：使用LINE官方loading API
     try {
-      // 檢查是否有可用的loading動畫URL
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN ? 
-        `https://${process.env.REPLIT_DEV_DOMAIN}` : 
-        `http://localhost:5000`;
-      
-      // 使用MP4視頻動畫（LINE支援視頻格式）
-      const loadingVideoUrl = `${baseUrl}/attached_assets/Ellipsis@1x-1.0s-200px-200px_1758000838744.mp4`;
-      // 使用GIF作為預覽圖片（靜態預覽）
-      const previewImageUrl = `${baseUrl}/attached_assets/Ellipsis@1x-1.0s-200px-200px_1758001558301.gif`;
-      
       console.log('🔍 開始查詢員工編號，用戶:', source.userId);
-      console.log('🎬 準備發送loading動畫視頻 (修復GIF不支援問題)...');
       
-      try {
-        // 1. 發送loading視頻動畫（LINE支援MP4格式）
-        await lineService.replyVideoMessage(event.replyToken, loadingVideoUrl, previewImageUrl);
-        console.log('✅ 成功發送loading視頻動畫（MP4格式）');
-      } catch (videoError: any) {
-        console.log('⚠️ 視頻發送失敗，回退到文字動畫模式:', videoError.message);
-        // 回退到原始的文字動畫方案
-        await lineService.replyMessage(event.replyToken, '查詢中🔴🟡🟢');
-      }
-      
-      // 2. 直接進行查詢（移除進度更新）
+      // 1. 先顯示 LINE 官方 loading 動畫
+      await lineService.startLoading(source.userId, 10);
+      console.log('✅ LINE loading API 已啟動');
+
+      // 2. 做查詢（去 RAGIC 抓資料）
       let employeeId: string | null = null;
       
       try {

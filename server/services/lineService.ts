@@ -77,6 +77,40 @@ export class LineService {
     }
   }
 
+  // 呼叫 LINE loading API
+  async startLoading(userId: string, seconds: number = 8): Promise<void> {
+    const channelAccessToken = process.env.CHANNEL_ACCESS_TOKEN;
+    if (!channelAccessToken) {
+      console.warn('CHANNEL_ACCESS_TOKEN 未設定，無法啟動 loading');
+      return;
+    }
+
+    try {
+      const loadingSeconds = Math.max(5, Math.min(seconds, 60)); // 介於 5~60 秒
+      
+      const response = await fetch("https://api.line.me/v2/bot/chat/loading/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${channelAccessToken}`,
+        },
+        body: JSON.stringify({
+          chatId: userId,
+          loadingSeconds: loadingSeconds,
+        }),
+      });
+
+      if (response.ok) {
+        console.log(`✅ LINE loading API 啟動成功 (${loadingSeconds}秒)`);
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ LINE loading API 失敗 (${response.status}):`, errorText);
+      }
+    } catch (error) {
+      console.error('❌ LINE loading API 呼叫失敗:', error);
+    }
+  }
+
   async pushMessage(to: string, text: string, options: { maxRetries?: number } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法推送訊息');
