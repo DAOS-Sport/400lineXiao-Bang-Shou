@@ -336,18 +336,31 @@ export class WaterQualityService {
       const records = await this.getTodayWaterQualityRecords(groupId);
       const today = dayjs().tz('Asia/Taipei').format('YYYY-MM-DD (dddd)');
       
-      // 獲取天氣預報
-      const weatherForecasts = await weatherService.getHsinchuWeatherForecast();
-      const weatherAdvice = weatherService.generateWaterQualityAdvice(weatherForecasts);
+      // 是否為竹科戶外游泳池群組（只有此群組需要天氣預報）
+      const isHsinchuOutdoorPool = groupId === 'C50c2a9623a78cc5f5e9f39557e3abfe6';
+      
+      let weatherForecasts: any = null;
+      let weatherAdvice: any = null;
+      
+      // 只為竹科戶外游泳池群組獲取天氣預報
+      if (isHsinchuOutdoorPool) {
+        weatherForecasts = await weatherService.getHsinchuWeatherForecast();
+        weatherAdvice = weatherService.generateWaterQualityAdvice(weatherForecasts);
+      }
       
       if (records.length === 0) {
-        // 即使沒有水質記錄，也提供天氣和建議
-        let report = `📊 ${today} 水質報告\n\n❌ 今日尚無水質紀錄\n\n`;
-        report += `🌤️ 新竹科學園區天氣預報\n`;
-        report += weatherService.formatWeatherForecast(weatherForecasts);
-        report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
-        if (weatherAdvice.recommendations.length > 0) {
-          report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
+        let report = `📊 ${today} 水質報告\n\n❌ 今日尚無水質紀錄`;
+        
+        // 只為竹科戶外游泳池群組添加天氣預報
+        if (isHsinchuOutdoorPool && weatherForecasts && weatherAdvice) {
+          report += `\n\n🌤️ 新竹科學園區天氣預報\n`;
+          report += `🏊‍♂️ 室外游泳池天氣預報 (12小時)\n`;
+          report += `📍 新竹科學園區 (24.778, 121.010)\n\n`;
+          report += weatherService.formatWeatherForecast(weatherForecasts);
+          report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
+          if (weatherAdvice.recommendations.length > 0) {
+            report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
+          }
         }
         return report;
       }
@@ -436,6 +449,18 @@ export class WaterQualityService {
         report += `🔥 高溫警示: 氣溫達 ${maxAirTemp}°C\n`;
         report += `   請特別注意水質變化，考慮增加\n`;
         report += `   檢測頻率及循環時間\n`;
+      }
+      
+      // 只為竹科戶外游泳池群組添加天氣預報
+      if (isHsinchuOutdoorPool && weatherForecasts && weatherAdvice) {
+        report += `\n\n🌤️ 新竹科學園區天氣預報\n`;
+        report += `🏊‍♂️ 室外游泳池天氣預報 (12小時)\n`;
+        report += `📍 新竹科學園區 (24.778, 121.010)\n\n`;
+        report += weatherService.formatWeatherForecast(weatherForecasts);
+        report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
+        if (weatherAdvice.recommendations.length > 0) {
+          report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
+        }
       }
       
       return report;
