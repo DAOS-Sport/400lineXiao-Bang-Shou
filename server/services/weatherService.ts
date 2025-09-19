@@ -199,14 +199,19 @@ export class WeatherService {
   /**
    * 格式化詳細天氣預報為室外游泳池報告
    */
-  formatDetailedSwimmingPoolForecast(forecasts: WeatherForecast[]): string {
+  formatDetailedSwimmingPoolForecast(forecasts: WeatherForecast[], includeLocationHeaders = true): string {
     if (forecasts.length === 0) {
       return '📡 天氣預報資料不足';
     }
 
-    const lines = ['🏊‍♂️ 室外游泳池天氣預報 (12小時)'];
-    lines.push(`📍 新竹科學園區 (24.778, 121.010)`);
-    lines.push('');
+    const lines: string[] = [];
+    
+    // 只有竹科群組顯示位置標題
+    if (includeLocationHeaders) {
+      lines.push('🏊‍♂️ 室外游泳池天氣預報 (12小時)');
+      lines.push(`📍 新竹科學園區 (24.778, 121.010)`);
+      lines.push('');
+    }
 
     // 分析雷電風險
     const thunderRisk = this.analyzeThunderRisk(forecasts);
@@ -346,8 +351,8 @@ export class WeatherService {
   /**
    * 格式化天氣預報為報告文字（保留原有功能）
    */
-  formatWeatherForecast(forecasts: WeatherForecast[]): string {
-    return this.formatDetailedSwimmingPoolForecast(forecasts);
+  formatWeatherForecast(forecasts: WeatherForecast[], includeLocationHeaders = true): string {
+    return this.formatDetailedSwimmingPoolForecast(forecasts, includeLocationHeaders);
   }
 }
 
