@@ -60,8 +60,9 @@ export class RagicService {
     
     this.apiKey = ragicApiKey.trim();
     
-    // 根據 RAGIC 官方 2024 文件：直接使用 API KEY 作為 Basic Auth 使用者名稱
-    this.basicAuth = this.apiKey;
+    // 根據 RAGIC 官方文件：使用 username:apikey 的 Base64 編碼
+    const credentials = `${ragicUsername}:${this.apiKey}`;
+    this.basicAuth = Buffer.from(credentials).toString('base64');
     
     // 使用正確的 RAGIC API 端點格式（移除 /api/ 使用直接路徑）
     // https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3
