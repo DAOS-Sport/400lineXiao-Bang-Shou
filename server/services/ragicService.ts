@@ -14,15 +14,6 @@ interface RagicEmployee {
   department?: string;
 }
 
-// 完整的員工資料介面（包含在職狀態）
-interface EmployeeDetails {
-  employeeId: string;
-  employeeName?: string;
-  department?: string;
-  employmentStatus?: string; // 在職狀態
-  isActive: boolean; // 是否在職
-}
-
 // RAGIC API 回應格式
 interface RagicApiResponse {
   success: boolean;
@@ -60,9 +51,8 @@ export class RagicService {
     
     this.apiKey = ragicApiKey.trim();
     
-    // 根據 RAGIC 官方文件：使用 username:apikey 的 Base64 編碼
-    const credentials = `${ragicUsername}:${this.apiKey}`;
-    this.basicAuth = Buffer.from(credentials).toString('base64');
+    // 構建正確的 Basic Auth 格式: base64(username:api_key)
+    this.basicAuth = Buffer.from(`${ragicUsername}:${this.apiKey}`).toString('base64');
     
     // 使用正確的 RAGIC API 端點格式（移除 /api/ 使用直接路徑）
     // https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3
@@ -79,119 +69,7 @@ export class RagicService {
   }
 
   /**
-   * 根據 LINE ID 查詢完整員工資料（包含在職狀態驗證）
-   */
-  async getEmployeeDetailsByLineId(lineId: string): Promise<EmployeeDetails | null> {
-    try {
-      // 檢查 API 設定
-      if (!this.domain || !this.apiKey || !this.databasePath) {
-        console.warn('⚠️ RAGIC API 設定不完整，返回模擬資料');
-        return {
-          employeeId: 'DEMO_001',
-          employeeName: '模擬員工',
-          department: '資訊部',
-          employmentStatus: '在職',
-          isActive: true
-        };
-      }
-
-      // 正規化 LINE ID
-      const normalizedLineId = lineId.trim();
-      console.log('🔍 正在查詢員工完整資料，LINE ID:', normalizedLineId);
-      
-      // 查詢 RAGIC API
-      const response = await this.queryEmployeeData(normalizedLineId);
-      
-      if (response.success && response.data.length > 0) {
-        const employee = response.data[0];
-        
-        // 使用動態欄位對應或預設欄位
-        const fieldMapping = (response as any).fieldMapping || {
-          lineIdField: '1003633',
-          employeeIdField: '員工編號'
-        };
-        
-        const employeeId = employee[fieldMapping.employeeIdField];
-        const employeeName = employee['姓名'] || employee['名稱'];
-        const department = Array.isArray(employee['部門']) ? employee['部門'].join(',') : employee['部門'];
-        const employmentStatus = employee['在職狀態'] || employee['status']; // 嘗試多種可能的欄位名稱
-        
-        console.log('👤 RAGIC 員工完整資料查詢結果:', { 
-          employeeId, 
-          employeeName,
-          department,
-          employmentStatus,
-          hasEmployee: !!employee,
-          fieldKeys: Object.keys(employee || {}),
-          lineId: normalizedLineId
-        });
-        
-        if (employeeId) {
-          // 判斷是否在職 (檢查在職狀態是否為"在職")
-          const isActive = employmentStatus === '在職';
-          
-          const employeeDetails: EmployeeDetails = {
-            employeeId: employeeId.toString(),
-            employeeName,
-            department,
-            employmentStatus,
-            isActive
-          };
-          
-          // 記錄查詢結果
-          await storage.insertAuditLog({
-            id: crypto.randomUUID(),
-            level: 'info',
-            category: 'ragic',
-            message: 'RAGIC 員工完整資料查詢成功',
-            details: {
-              lineId: normalizedLineId,
-              employeeId,
-              employmentStatus,
-              isActive,
-              source: 'RAGIC_API'
-            }
-          });
-          
-          return employeeDetails;
-        }
-      }
-
-      // 查不到資料
-      await storage.insertAuditLog({
-        id: crypto.randomUUID(),
-        level: 'warning',
-        category: 'ragic',
-        message: 'RAGIC 查無員工完整資料',
-        details: {
-          lineId: lineId,
-          apiResponse: response
-        }
-      });
-
-      return null;
-
-    } catch (error) {
-      console.error('❌ RAGIC API 查詢員工完整資料失敗:', error);
-      
-      // 記錄錯誤
-      await storage.insertAuditLog({
-        id: crypto.randomUUID(),
-        level: 'error',
-        category: 'ragic',
-        message: 'RAGIC API 查詢員工完整資料失敗',
-        details: {
-          lineId: lineId,
-          error: (error as Error).message
-        }
-      });
-
-      return null;
-    }
-  }
-
-  /**
-   * 根據 LINE ID 查詢員工編號（含快取機制）
+   * 根據 LINE ID 查詢員工編號
    */
   async getEmployeeByLineId(lineId: string): Promise<string | null> {
     try {
@@ -201,39 +79,11 @@ export class RagicService {
         return this.getMockEmployeeId(lineId);
       }
 
+      // 呼叫 RAGIC API 查詢員工資料
       // 正規化 LINE ID
       const normalizedLineId = lineId.trim();
       console.log('🔍 正在查詢員工編號，LINE ID:', normalizedLineId);
       
-      // 1. 首先檢查快取
-      console.log('💾 檢查員工資料快取...');
-      const cachedData = await storage.getEmployeeCache(normalizedLineId);
-      
-      if (cachedData) {
-        console.log(`⚡ 快取命中！員工編號: ${cachedData.employeeId}，節省查詢時間`);
-        
-        // 更新存取記錄
-        await storage.updateEmployeeCacheAccess(normalizedLineId);
-        
-        // 記錄快取命中
-        await storage.insertAuditLog({
-          id: crypto.randomUUID(),
-          level: 'info',
-          category: 'ragic_cache',
-          message: 'RAGIC 員工快取命中',
-          details: {
-            lineId: normalizedLineId,
-            employeeId: cachedData.employeeId,
-            source: 'CACHE',
-            accessCount: cachedData.accessCount
-          }
-        });
-        
-        return cachedData.employeeId;
-      }
-      
-      // 2. 快取未命中，進行 RAGIC API 查詢
-      console.log('💾 快取未命中，查詢 RAGIC API...');
       const response = await this.queryEmployeeData(normalizedLineId);
       
       if (response.success && response.data.length > 0) {
@@ -242,7 +92,7 @@ export class RagicService {
         // 使用動態欄位對應或預設欄位
         const fieldMapping = (response as any).fieldMapping || {
           lineIdField: '1003633',
-          employeeIdField: '員工編號'
+          employeeIdField: '3000935'
         };
         
         const employeeId = employee[fieldMapping.employeeIdField];
@@ -257,22 +107,6 @@ export class RagicService {
         });
         
         if (employeeId) {
-          // 3. 儲存到快取（24小時有效期）
-          try {
-            const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24小時後過期
-            await storage.insertEmployeeCache({
-              id: crypto.randomUUID(),
-              lineId: normalizedLineId,
-              employeeId: employeeId.toString(),
-              employeeName: employee['姓名'] || employee['名稱'],
-              department: Array.isArray(employee['部門']) ? employee['部門'].join(',') : employee['部門'],
-              expiresAt
-            });
-            console.log('💾 員工資料已快取，24小時有效期');
-          } catch (cacheError) {
-            console.error('⚠️ 快取儲存失敗（但不影響查詢結果）:', cacheError);
-          }
-          
           // 記錄成功查詢
           await storage.insertAuditLog({
             id: crypto.randomUUID(),
@@ -283,8 +117,7 @@ export class RagicService {
               lineId: normalizedLineId,
               employeeId,
               source: 'RAGIC_API',
-              fieldMapping: fieldMapping,
-              cached: true
+              fieldMapping: fieldMapping
             }
           });
           
@@ -388,17 +221,8 @@ export class RagicService {
           return { success: false, data: [], error: data.msg };
         }
         
-        // 正規化數據：RAGIC 回傳格式為 {"記錄ID": {實際資料}}
-        let normalizedData = [];
-        
-        if (Array.isArray(data)) {
-          normalizedData = data;
-        } else if (data && typeof data === 'object') {
-          // 提取 RAGIC 回應中的實際員工資料（跳過記錄 ID 層級）
-          const recordKeys = Object.keys(data).filter(key => !key.startsWith('_'));
-          normalizedData = recordKeys.map(recordId => data[recordId]);
-        }
-        
+        // 正規化數據為陣列格式
+        const normalizedData = Array.isArray(data) ? data : (data ? [data] : []);
         console.log('📋 正規化後的資料筆數:', normalizedData.length);
         
         // 檢查第一筆資料的欄位
@@ -409,7 +233,7 @@ export class RagicService {
         return {
           success: true,
           data: normalizedData,
-          fieldMapping: { lineIdField: '1003633', employeeIdField: '員工編號' }
+          fieldMapping: { lineIdField: '1003633', employeeIdField: '3000935' }
         };
       } else {
         console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
@@ -487,9 +311,9 @@ export class RagicService {
             if (numericFields.length > 5) { // 可能是 RAGIC 表單
               // 檢查是否包含預期的欄位
               let lineIdField = '1003633';
-              let employeeIdField = '員工編號';
+              let employeeIdField = '3000935';
               
-              if (numericFields.includes('1003633') && data.hasOwnProperty('員工編號')) {
+              if (numericFields.includes('1003633') && numericFields.includes('3000935')) {
                 console.log('✅ 找到預期的欄位配置');
               } else {
                 // 嘗試尋找可能的 LINE ID 和員工編號欄位
