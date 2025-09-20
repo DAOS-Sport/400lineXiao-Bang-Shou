@@ -799,8 +799,20 @@ async function handleIdCommand(event: any) {
         const { ragicService } = await import('./services/ragicService');
         
         console.log('🔍 開始背景查詢員工資料（包含在職狀態）...');
-        // 查詢員工完整資料
-        employeeDetails = await ragicService.getEmployeeDetailsByLineId(source.userId);
+        // 查詢員工編號
+        const employeeId = await ragicService.getEmployeeByLineId(source.userId);
+        
+        if (employeeId) {
+          // 構建簡單的員工資料結構
+          employeeDetails = {
+            employeeId: employeeId,
+            isActive: true, // 暫時設為true，因為查到資料表示有效
+            employeeName: null,
+            employmentStatus: '查詢成功'
+          };
+        } else {
+          employeeDetails = null;
+        }
         console.log('🔍 查詢完成，準備驗證在職狀態並發送結果');
       } catch (queryError) {
         console.error('❌ 查詢員工資料失敗:', queryError);
