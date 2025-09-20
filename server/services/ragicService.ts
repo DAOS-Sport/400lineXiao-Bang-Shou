@@ -37,9 +37,9 @@ export class RagicService {
     this.domain = process.env.RAGIC_DOMAIN || '';
     const rawDatabasePath = process.env.RAGIC_DATABASE_ID || '';
     
-    // 處理 RAGIC_DATABASE_ID，使用新版端點 rN4
-    // 根據用戶要求使用新版本 API 端點
-    this.databasePath = 'rN4';
+    // 處理 RAGIC_DATABASE_ID，使用正確的表單路徑
+    // 使用用戶提供的正確路徑：ragicforms4/20004/1053
+    this.databasePath = 'ragicforms4/20004/1053';
     
     // 從環境變數取得認證資訊
     const ragicUsername = process.env.RAGIC_USERNAME?.trim();
@@ -195,8 +195,8 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用正確的 Basic Auth + ?api 標記方式
-      const queryUrl = `${this.baseUrl}?api&where=1003633,eq,${encodeURIComponent(lineId)}`;
+      // 使用正確的 Basic Auth + ?v=3&api 標記方式
+      const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 直接查詢員工資料，URL:', queryUrl);
       
@@ -451,7 +451,7 @@ export class RagicService {
         return false;
       }
 
-      const testUrl = `${this.baseUrl}?api&limit=1`;
+      const testUrl = `${this.baseUrl}?v=3&api&limit=1`;
       
       const response = await fetch(testUrl, {
         method: 'GET',
