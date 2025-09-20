@@ -35,7 +35,11 @@ export class RagicService {
   constructor() {
     // 從環境變數取得 RAGIC 連線資訊
     this.domain = process.env.RAGIC_DOMAIN || '';
-    this.databasePath = process.env.RAGIC_DATABASE_ID || '';
+    const rawDatabasePath = process.env.RAGIC_DATABASE_ID || '';
+    
+    // 處理 RAGIC_DATABASE_ID，使用新版端點 rN4
+    // 根據用戶要求使用新版本 API 端點
+    this.databasePath = 'rN4';
     
     // 從環境變數取得認證資訊
     const ragicUsername = process.env.RAGIC_USERNAME?.trim();
@@ -54,9 +58,9 @@ export class RagicService {
     // 構建正確的 Basic Auth 格式: base64(username:api_key)
     this.basicAuth = Buffer.from(`${ragicUsername}:${this.apiKey}`).toString('base64');
     
-    // 使用正確的 RAGIC API 端點格式（移除 /api/ 使用直接路徑）
-    // https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3
-    this.baseUrl = `https://${this.domain}/xinsheng/ragicforms4/20004`;
+    // 使用新版 RAGIC API 端點格式
+    // https://ap7.ragic.com/xinsheng/rN4?api
+    this.baseUrl = `https://${this.domain}/xinsheng/${this.databasePath}`;
     
     console.log('🔧 RAGIC 服務初始化:', {
       domain: this.domain,
@@ -192,7 +196,7 @@ export class RagicService {
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
       // 使用正確的 Basic Auth + ?api 標記方式
-      const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
+      const queryUrl = `${this.baseUrl}?api&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 直接查詢員工資料，URL:', queryUrl);
       
@@ -447,7 +451,7 @@ export class RagicService {
         return false;
       }
 
-      const testUrl = `${this.baseUrl}?v=3&api&limit=1`;
+      const testUrl = `${this.baseUrl}?api&limit=1`;
       
       const response = await fetch(testUrl, {
         method: 'GET',
