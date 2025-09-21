@@ -31,8 +31,9 @@ export class RagicService {
   constructor() {
     // 從環境變數取得 RAGIC 連線資訊
     this.domain = process.env.RAGIC_DOMAIN || '';
-    this.databasePath = process.env.RAGIC_DATABASE_ID || '';
+    const rawDatabaseId = process.env.RAGIC_DATABASE_ID || '';
     const rawApiKey = process.env.RAGIC_API_KEY;
+    const username = process.env.RAGIC_USERNAME;
     
     if (!rawApiKey) {
       throw new Error('RAGIC_API_KEY 環境變數未設定');
@@ -40,27 +41,45 @@ export class RagicService {
     
     this.apiKey = rawApiKey;
     
-    // 構建正確的 Basic Auth：嘗試解碼檢查格式
-    try {
-      const decoded = Buffer.from(rawApiKey, 'base64').toString('utf-8');
-      if (decoded.includes(':')) {
-        // 已經是 username:password 格式，直接使用
-        this.basicAuth = rawApiKey;
-      } else {
-        // 只是 token，需要添加冒號後重新編碼 
-        this.basicAuth = Buffer.from(`${decoded}:`).toString('base64');
-      }
-    } catch {
-      // 如果解碼失敗，嘗試添加冒號
-      this.basicAuth = Buffer.from(`${rawApiKey}:`).toString('base64');
+    // 🔧 修正 URL 構建邏輯：處理 RAGIC_DATABASE_ID 包含完整 URL 的情況
+    if (rawDatabaseId.startsWith('https://')) {
+      // 如果是完整 URL，直接使用
+      this.baseUrl = rawDatabaseId.split('?')[0]; // 移除查詢參數
+      // 從完整 URL 中提取路徑部分
+      const urlParts = rawDatabaseId.replace('https://', '').split('/');
+      this.databasePath = urlParts.slice(1).join('/').split('?')[0]; // 移除域名和查詢參數
+    } else {
+      // 如果只是路徑，按原邏輯構建
+      this.databasePath = rawDatabaseId;
+      this.baseUrl = `https://${this.domain}/${this.databasePath}`.replace(/\/$/, '');
     }
     
-    // 確保 URL 以斜線結尾避免重定向
-    this.baseUrl = `https://${this.domain}/${this.databasePath}`.replace(/\/$/, '') + '/';
+    // 🔧 修正 Basic Auth 構建：處理 RAGIC API key 格式
+    if (username) {
+      // 先嘗試解碼 API key（如果它是 base64 編碼的）
+      let decodedApiKey = rawApiKey;
+      try {
+        const decoded = Buffer.from(rawApiKey, 'base64').toString('utf-8');
+        if (decoded.length > 0 && !decoded.includes('\x00')) {
+          // 看起來是有效的解碼結果
+          decodedApiKey = decoded;
+        }
+      } catch {
+        // 解碼失敗，使用原始值
+      }
+      
+      // 使用 username:apikey 格式
+      const credentials = `${username}:${decodedApiKey}`;
+      this.basicAuth = Buffer.from(credentials).toString('base64');
+    } else {
+      // 否則直接使用 API key（假設已經是正確格式）
+      this.basicAuth = rawApiKey;
+    }
     
     console.log('🔧 RAGIC 服務初始化:', {
       domain: this.domain,
       databasePath: this.databasePath,
+      rawDatabaseId: rawDatabaseId.substring(0, 50) + '...',
       hasApiKey: !!this.apiKey,
       baseUrl: this.baseUrl
     });
