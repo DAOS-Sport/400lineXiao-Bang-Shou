@@ -334,79 +334,48 @@ export class WaterQualityService {
   async generateDailyWaterQualityReport(groupId?: string): Promise<string> {
     try {
       const records = await this.getTodayWaterQualityRecords(groupId);
+      const today = dayjs().tz('Asia/Taipei').format('YYYY-MM-DD (dddd)');
       
-      const now = dayjs().tz('Asia/Taipei');
-      const dayOfWeek = now.format('dddd');
-      const dayOfWeekChinese = {
-        'Monday': '星期一', 'Tuesday': '星期二', 'Wednesday': '星期三', 
-        'Thursday': '星期四', 'Friday': '星期五', 'Saturday': '星期六', 'Sunday': '星期日'
-      }[dayOfWeek] || dayOfWeek;
-      const today = now.format(`YYYY-MM-DD (${dayOfWeekChinese})`);
-      
-      // 是否為竹科戶外游泳池群組
+      // 是否為竹科戶外游泳池群組（只有此群組顯示特定標題）
       const isHsinchuOutdoorPool = groupId === 'C50c2a9623a78cc5f5e9f39557e3abfe6';
-      // 是否為松山群組
-      const isSongshanPool = groupId === 'C9b3c5dfe2e005adafd2ed914714a1930';
       
       // 所有群組都獲取天氣預報數據
       const weatherForecasts = await weatherService.getHsinchuWeatherForecast();
       const weatherAdvice = weatherService.generateWaterQualityAdvice(weatherForecasts);
       
       if (records.length === 0) {
-        let report = '';
+        let report = `📊 ${today} 水質報告\n\n❌ 今日尚無水質紀錄`;
         
-        // 松山群組使用新格式
-        if (isSongshanPool) {
-          const currentTime = now.format('HH:mm');
-          report = `💧 ${currentTime} 水質檢測報告\n`;
-          report += `📊 ${today} 水質報告\n\n`;
-          report += `❌ 今日尚無水質紀錄\n\n`;
-        } else {
-          report = `📊 ${today} 水質報告\n\n❌ 今日尚無水質紀錄`;
-        }
-        
-        // 添加天氣預報（所有群組都有，但格式不同）
+        // 添加天氣預報（所有群組都有，但標題不同）
         if (weatherForecasts && weatherAdvice) {
-          if (isSongshanPool) {
-            // 松山群組使用詳細的游泳安全格式
-            report += weatherService.formatDetailedSwimmingPoolForecast(weatherForecasts, false);
-            report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
-            if (weatherAdvice.recommendations.length > 0) {
-              report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
-            }
-          } else {
-            // 竹科群組使用原有格式
-            if (isHsinchuOutdoorPool) {
-              report += `\n\n🌤️ 新竹科學園區天氣預報\n`;
-              report += `🏊‍♂️ 室外游泳池天氣預報 (12小時)\n`;
-              report += `📍 新竹科學園區 (24.778, 121.010)\n\n`;
-            } else {
-              report += `\n\n`;
-            }
-            
-            report += weatherService.formatWeatherForecast(weatherForecasts, false);
-            report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
-            if (weatherAdvice.recommendations.length > 0) {
-              report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
-            }
+          report += `\n\n`;
+          
+          // 只有竹科群組顯示這三個標題
+          if (isHsinchuOutdoorPool) {
+            report += `🌤️ 新竹科學園區天氣預報\n`;
+            report += `🏊‍♂️ 室外游泳池天氣預報 (12小時)\n`;
+            report += `📍 新竹科學園區 (24.778, 121.010)\n\n`;
+          }
+          
+          report += weatherService.formatWeatherForecast(weatherForecasts, false);
+          report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
+          if (weatherAdvice.recommendations.length > 0) {
+            report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
           }
         }
         return report;
       }
       
-      // 📊 詳細版水質報告格式 (有水質紀錄的情況)
-      let report = '';
+      // 📊 詳細版水質報告格式 (結合兩張圖優點)
+      const now = dayjs().tz('Asia/Taipei');
+      const dayOfWeek = now.format('dddd');
+      const dayOfWeekChinese = {
+        'Monday': '週一', 'Tuesday': '週二', 'Wednesday': '週三', 
+        'Thursday': '週四', 'Friday': '週五', 'Saturday': '週六', 'Sunday': '週日'
+      }[dayOfWeek] || dayOfWeek;
       
-      if (isSongshanPool) {
-        // 松山群組：新格式，包含時間標題
-        const currentTime = now.format('HH:mm');
-        report = `💧 ${currentTime} 水質檢測報告\n`;
-        report += `📊 ${today} 水質報告\n\n`;
-      } else {
-        // 竹科和其他群組：原有格式
-        report = `📊 ${today} 水質報告\n`;
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      }
+      let report = `📊 ${now.format('YYYY-MM-DD')} (${dayOfWeekChinese}) 水質報告\n`;
+      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
       
       // 【檢測數據】- 使用第二張圖的簡潔表格格式
       report += `【檢測數據】\n\n`;
@@ -483,30 +452,21 @@ export class WaterQualityService {
         report += `   檢測頻率及循環時間\n`;
       }
       
-      // 所有群組都添加天氣預報，但格式不同
+      // 所有群組都添加天氣預報，但標題不同
       if (weatherForecasts && weatherAdvice) {
         report += `\n\n`;
         
-        if (isSongshanPool) {
-          // 松山群組：使用詳細的游泳安全格式
-          report += weatherService.formatDetailedSwimmingPoolForecast(weatherForecasts, false);
-          report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
-          if (weatherAdvice.recommendations.length > 0) {
-            report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
-          }
-        } else {
-          // 竹科和其他群組：使用原有格式
-          if (isHsinchuOutdoorPool) {
-            report += `🌤️ 新竹科學園區天氣預報\n`;
-            report += `🏊‍♂️ 室外游泳池天氣預報 (12小時)\n`;
-            report += `📍 新竹科學園區 (24.778, 121.010)\n\n`;
-          }
-          
-          report += weatherService.formatWeatherForecast(weatherForecasts, false);
-          report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
-          if (weatherAdvice.recommendations.length > 0) {
-            report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
-          }
+        // 只有竹科群組顯示這三個標題
+        if (isHsinchuOutdoorPool) {
+          report += `🌤️ 新竹科學園區天氣預報\n`;
+          report += `🏊‍♂️ 室外游泳池天氣預報 (12小時)\n`;
+          report += `📍 新竹科學園區 (24.778, 121.010)\n\n`;
+        }
+        
+        report += weatherService.formatWeatherForecast(weatherForecasts, false);
+        report += `\n\n🔧 ${weatherAdvice.waterQualityAdvice}`;
+        if (weatherAdvice.recommendations.length > 0) {
+          report += `\n💡 建議：${weatherAdvice.recommendations.join('、')}`;
         }
       }
       
