@@ -525,10 +525,10 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用通用搜索語法，可以搜索所有欄位中包含指定 LINE ID 的記錄
-      const queryUrl = `${this.baseUrl}?v=3&api&where=*,ct,${encodeURIComponent(lineId)}`;
+      // 使用精確搜索語法，只搜索「個人LINE ID」欄位並要求完全匹配
+      const queryUrl = `${this.baseUrl}?v=3&api&where=${encodeURIComponent('個人LINE ID')},eq,${encodeURIComponent(lineId)}`;
       
-      console.log('🔍 直接查詢員工資料，URL:', queryUrl);
+      console.log('🔍 精確查詢個人LINE ID欄位，URL:', queryUrl);
       
       const response = await fetch(queryUrl, {
         method: 'GET',
