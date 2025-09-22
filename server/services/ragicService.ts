@@ -228,7 +228,7 @@ export class RagicService {
         return {
           success: true,
           data: normalizedData,
-          fieldMapping: { lineIdField: '1003633', employeeIdField: '3000935' }
+          fieldMapping: { lineIdField: '個人LINE ID', employeeIdField: '員工編號' }
         };
       } else {
         console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
@@ -272,10 +272,10 @@ export class RagicService {
       if (response.success && response.data.length > 0) {
         const employee = response.data[0];
         
-        // 使用正確的欄位ID對應
-        const fieldMapping = (response as any).fieldMapping || {
-          lineIdField: '1003633',
-          employeeIdField: '3000935'
+        // 使用正確的欄位名稱對應
+        const fieldMapping = {
+          lineIdField: '個人LINE ID',
+          employeeIdField: '員工編號'
         };
         
         const employeeId = employee[fieldMapping.employeeIdField];
@@ -406,10 +406,10 @@ export class RagicService {
       if (response.success && response.data.length > 0) {
         const employee = response.data[0];
         
-        // 使用正確的欄位ID對應
-        const fieldMapping = (response as any).fieldMapping || {
-          lineIdField: '1003633',
-          employeeIdField: '3000935'
+        // 使用正確的欄位名稱對應
+        const fieldMapping = {
+          lineIdField: '個人LINE ID',
+          employeeIdField: '員工編號'
         };
         
         const employeeId = employee[fieldMapping.employeeIdField];
@@ -525,8 +525,8 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用正確的 Basic Auth + ?api 標記方式，使用正確的LINE ID欄位
-      const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
+      // 使用通用搜索語法，可以搜索所有欄位中包含指定 LINE ID 的記錄
+      const queryUrl = `${this.baseUrl}?v=3&api&where=*,ct,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 直接查詢員工資料，URL:', queryUrl);
       
@@ -576,7 +576,7 @@ export class RagicService {
         return {
           success: true,
           data: normalizedData,
-          fieldMapping: { lineIdField: '1003633', employeeIdField: '3000935' }
+          fieldMapping: { lineIdField: '個人LINE ID', employeeIdField: '員工編號' }
         };
       } else {
         console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
