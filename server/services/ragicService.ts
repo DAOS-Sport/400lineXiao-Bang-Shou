@@ -24,43 +24,17 @@ interface RagicApiResponse {
 export class RagicService {
   private readonly baseUrl: string;
   private readonly apiKey: string;
-  private readonly domain: string;
-  private readonly databasePath: string;
   private readonly basicAuth: string;
 
   constructor() {
-    // 從環境變數取得 RAGIC 連線資訊
-    this.domain = process.env.RAGIC_DOMAIN || '';
-    this.databasePath = process.env.RAGIC_DATABASE_ID || '';
-    const rawApiKey = process.env.RAGIC_API_KEY;
+    // 使用不會失效的API設定
+    this.baseUrl = "https://ap7.ragic.com/xinsheng/api/20004";
+    this.apiKey = "c0VySnlCOEJ6dHlndkRHY0pUOTFEMnh6Zmo3VE9lYWdtTUxmak50UUloZjRVRXpDTnpXZzNBcm9DeHM5QlFVK2dncnpJa2k3eFZNPQ==";
     
-    if (!rawApiKey) {
-      throw new Error('RAGIC_API_KEY 環境變數未設定');
-    }
-    
-    this.apiKey = rawApiKey;
-    
-    // 構建正確的 Basic Auth：嘗試解碼檢查格式
-    try {
-      const decoded = Buffer.from(rawApiKey, 'base64').toString('utf-8');
-      if (decoded.includes(':')) {
-        // 已經是 username:password 格式，直接使用
-        this.basicAuth = rawApiKey;
-      } else {
-        // 只是 token，需要添加冒號後重新編碼 
-        this.basicAuth = Buffer.from(`${decoded}:`).toString('base64');
-      }
-    } catch {
-      // 如果解碼失敗，嘗試添加冒號
-      this.basicAuth = Buffer.from(`${rawApiKey}:`).toString('base64');
-    }
-    
-    // 確保 URL 以斜線結尾避免重定向
-    this.baseUrl = `https://${this.domain}/${this.databasePath}`.replace(/\/$/, '') + '/';
+    // 構建 Basic Auth
+    this.basicAuth = Buffer.from(`${this.apiKey}:`).toString('base64');
     
     console.log('🔧 RAGIC 服務初始化:', {
-      domain: this.domain,
-      databasePath: this.databasePath,
       hasApiKey: !!this.apiKey,
       baseUrl: this.baseUrl
     });
@@ -71,13 +45,6 @@ export class RagicService {
    */
   async getEmployeeByLineId(lineId: string): Promise<string | null> {
     try {
-      // 檢查 API 設定
-      if (!this.domain || !this.apiKey || !this.databasePath) {
-        console.warn('⚠️ RAGIC API 設定不完整，使用模擬資料');
-        return this.getMockEmployeeId(lineId);
-      }
-
-      // 呼叫 RAGIC API 查詢員工資料
       // 正規化 LINE ID
       const normalizedLineId = lineId.trim();
       console.log('🔍 正在查詢員工編號，LINE ID:', normalizedLineId.substring(0, 20) + '...');
@@ -153,14 +120,12 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用 RAGIC API v3 格式並採用正確的參數順序：?api&v=3 和 Basic Authentication
+      // 使用不會失效的API查詢
       const queryUrl = `${this.baseUrl}?api&v=3&where=1003633,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 RAGIC 查詢 URL:', queryUrl);
       console.log('🔧 RAGIC 查詢設定:', {
         baseUrl: this.baseUrl,
-        domain: this.domain,
-        databasePath: this.databasePath,
         searchField: '1003633',
         searchValue: lineId.substring(0, 20) + '...'
       });
@@ -258,11 +223,6 @@ export class RagicService {
    */
   async testConnection(): Promise<boolean> {
     try {
-      if (!this.domain || !this.apiKey || !this.databasePath) {
-        console.log('🧪 RAGIC 設定不完整，跳過連線測試');
-        return false;
-      }
-
       const testUrl = `${this.baseUrl}?v=3&api&limit=1`;
       
       const response = await fetch(testUrl, {
@@ -282,8 +242,7 @@ export class RagicService {
         message: `RAGIC API 連線測試${success ? '成功' : '失敗'}`,
         details: {
           statusCode: response.status,
-          domain: this.domain,
-          databasePath: this.databasePath
+          baseUrl: this.baseUrl
         }
       });
 

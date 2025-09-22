@@ -1,0 +1,75 @@
+// server.js
+require('dotenv').config();
+const express = require('express');
+const axios = require('axios');
+
+const app = express();
+app.use(express.json());
+
+// === 設定區 ===
+const RAGIC_API_BASE_URL = "https://ap7.ragic.com/xinsheng/api/4"; 
+const RAGIC_API_KEY = "c0VySnlCOEJ6dHlndkRHY0pUOTFEMnh6Zmo3VE9lYWdtTUxmak50UUloZjRVRXpDTnpXZzNBcm9DeHM5QlFVK2dncnpJa2k3eFZNPQ==";
+
+// Authorization header（用 API Key，不用帳號密碼）
+const authHeader = {
+  'Authorization': `Basic ${Buffer.from(`${RAGIC_API_KEY}:`).toString('base64')}`,
+  'Content-Type': 'application/json'
+};
+
+// === CRUD API ===
+
+// Create
+app.post('/api/records', async (req, res) => {
+  try {
+    const response = await axios.post(RAGIC_API_BASE_URL, req.body, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Read all
+app.get('/api/records', async (req, res) => {
+  try {
+    const response = await axios.get(RAGIC_API_BASE_URL, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Read one
+app.get('/api/records/:id', async (req, res) => {
+  try {
+    const response = await axios.get(`${RAGIC_API_BASE_URL}/${req.params.id}`, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Update
+app.put('/api/records/:id', async (req, res) => {
+  try {
+    const response = await axios.put(`${RAGIC_API_BASE_URL}/${req.params.id}`, req.body, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Delete
+app.delete('/api/records/:id', async (req, res) => {
+  try {
+    const response = await axios.delete(`${RAGIC_API_BASE_URL}/${req.params.id}`, { headers: authHeader });
+    res.json({ success: true, deleted: response.data });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// === 啟動 server ===
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`API server running on port ${PORT}`);
+});
