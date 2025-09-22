@@ -64,8 +64,8 @@ export class RagicService {
     
     this.apiKey = ragicApiKey.trim();
     
-    // 根據用戶提供的文檔：API Key已經是正確的Base64格式
-    // 直接使用API Key，不需要額外編碼
+    // 根據 RAGIC 官方文檔：API Key 直接作為 Basic Auth 的值
+    // 格式：Authorization: Basic YOUR_API_KEY_GOES_HERE
     this.basicAuth = this.apiKey;
     
     // 使用正確的 RAGIC API 端點格式

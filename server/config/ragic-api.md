@@ -11,7 +11,7 @@ https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3&api
 ```bash
 RAGIC_DOMAIN=ap7.ragic.com
 RAGIC_DATABASE_ID=xinsheng/ragicforms4/20004
-RAGIC_API_KEY=c0VySnlCOEJ6dHlndkRHY0pUOTFEMnh6Zmo3VE9lYWcvak1SWHZQV24vQnRrSlYzellISUlUSGl0Smd6UEd2ZktJVnU1T2hxamUwPQ==
+RAGIC_API_KEY=<您的新API_KEY將在這裡設置>
 ```
 
 ## API 調用格式
