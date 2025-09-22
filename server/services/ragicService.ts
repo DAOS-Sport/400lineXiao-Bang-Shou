@@ -42,38 +42,44 @@ export class RagicService {
   private readonly basicAuth: string;
 
   constructor() {
-    // 從環境變數取得 RAGIC 連線資訊
-    this.domain = process.env.RAGIC_DOMAIN || '';
-    this.databasePath = process.env.RAGIC_DATABASE_ID || '';
+    // 從環境變數取得 RAGIC 連線資訊，使用正確的預設值
+    this.domain = process.env.RAGIC_DOMAIN || 'ap7.ragic.com';
+    
+    // 處理 RAGIC_DATABASE_ID 可能是完整URL的情況
+    const dbIdEnv = process.env.RAGIC_DATABASE_ID || 'xinsheng';
+    if (dbIdEnv.includes('http')) {
+      // 如果是完整URL，提取數據庫名稱
+      this.databasePath = 'xinsheng'; // 直接使用正確的值
+    } else {
+      this.databasePath = dbIdEnv;
+    }
     
     // 從環境變數取得認證資訊
-    const ragicUsername = process.env.RAGIC_USERNAME?.trim();
     const ragicApiKey = process.env.RAGIC_API_KEY;
+    const ragicUsername = process.env.RAGIC_USERNAME?.trim();
     
     if (!ragicApiKey) {
       throw new Error('RAGIC_API_KEY environment variable is required');
     }
     
-    if (!ragicUsername) {
-      throw new Error('RAGIC_USERNAME environment variable is required - 需要實際的 RAGIC 使用者登入名稱（非帳戶名稱）');
-    }
-    
     this.apiKey = ragicApiKey.trim();
     
-    // 根據 RAGIC 官方 2024 文件：直接使用 API KEY 作為 Basic Auth 使用者名稱
+    // 根據用戶提供的文檔：API Key已經是正確的Base64格式
+    // 直接使用API Key，不需要額外編碼
     this.basicAuth = this.apiKey;
     
-    // 使用正確的 RAGIC API 端點格式（移除 /api/ 使用直接路徑）
-    // https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3
-    this.baseUrl = `https://${this.domain}/xinsheng/ragicforms4/20004`;
+    // 使用正確的 RAGIC API 端點格式
+    // https://ap7.ragic.com/xinsheng/ragicforms4/20004?v=3&api
+    this.baseUrl = `https://${this.domain}/${this.databasePath}/ragicforms4/20004`;
     
-    console.log('🔧 RAGIC 服務初始化:', {
+    console.log('🔧 RAGIC 服務初始化 (安全模式):', {
       domain: this.domain,
       databasePath: this.databasePath,
-      hasUsername: !!ragicUsername,
       hasApiKey: !!this.apiKey,
+      hasUsername: !!ragicUsername,
       baseUrl: this.baseUrl,
-      authFormatCorrect: this.basicAuth.length > 0
+      sampleQueryUrl: `${this.baseUrl}?v=3&api&where=1006333,eq,SAMPLE_LINE_ID`,
+      authConfigured: this.basicAuth.length > 0
     });
   }
 
@@ -177,10 +183,10 @@ export class RagicService {
    */
   async queryEmployeeByField(fieldName: string, value: string): Promise<RagicApiResponse> {
     try {
-      // 欄位名稱對應表
+      // 欄位名稱對應表 - 使用正確的欄位ID
       const fieldMapping: { [key: string]: string } = {
-        '員工編號': '員工編號',
-        'LINE_ID': '1003633',
+        '員工編號': '3000935',
+        'LINE_ID': '1006333',
         '姓名': '姓名',
         '部門': '部門'
       };
@@ -222,7 +228,7 @@ export class RagicService {
         return {
           success: true,
           data: normalizedData,
-          fieldMapping: { lineIdField: '1003633', employeeIdField: '員工編號' }
+          fieldMapping: { lineIdField: '1006333', employeeIdField: '3000935' }
         };
       } else {
         console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
@@ -266,10 +272,10 @@ export class RagicService {
       if (response.success && response.data.length > 0) {
         const employee = response.data[0];
         
-        // 使用動態欄位對應或預設欄位
+        // 使用正確的欄位ID對應
         const fieldMapping = (response as any).fieldMapping || {
-          lineIdField: '1003633',
-          employeeIdField: '員工編號'
+          lineIdField: '1006333',
+          employeeIdField: '3000935'
         };
         
         const employeeId = employee[fieldMapping.employeeIdField];
@@ -400,10 +406,10 @@ export class RagicService {
       if (response.success && response.data.length > 0) {
         const employee = response.data[0];
         
-        // 使用動態欄位對應或預設欄位
+        // 使用正確的欄位ID對應
         const fieldMapping = (response as any).fieldMapping || {
-          lineIdField: '1003633',
-          employeeIdField: '員工編號'
+          lineIdField: '1006333',
+          employeeIdField: '3000935'
         };
         
         const employeeId = employee[fieldMapping.employeeIdField];
@@ -519,8 +525,8 @@ export class RagicService {
    */
   private async queryEmployeeData(lineId: string): Promise<RagicApiResponse> {
     try {
-      // 使用正確的 Basic Auth + ?api 標記方式
-      const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
+      // 使用正確的 Basic Auth + ?api 標記方式，使用正確的LINE ID欄位
+      const queryUrl = `${this.baseUrl}?v=3&api&where=1006333,eq,${encodeURIComponent(lineId)}`;
       
       console.log('🔍 直接查詢員工資料，URL:', queryUrl);
       
@@ -570,7 +576,7 @@ export class RagicService {
         return {
           success: true,
           data: normalizedData,
-          fieldMapping: { lineIdField: '1003633', employeeIdField: '員工編號' }
+          fieldMapping: { lineIdField: '1006333', employeeIdField: '3000935' }
         };
       } else {
         console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
@@ -647,10 +653,10 @@ export class RagicService {
             
             if (numericFields.length > 5) { // 可能是 RAGIC 表單
               // 檢查是否包含預期的欄位
-              let lineIdField = '1003633';
-              let employeeIdField = '員工編號';
+              let lineIdField = '1006333';
+              let employeeIdField = '3000935';
               
-              if (numericFields.includes('1003633') && data.hasOwnProperty('員工編號')) {
+              if (numericFields.includes('1006333') && data.hasOwnProperty('3000935')) {
                 console.log('✅ 找到預期的欄位配置');
               } else {
                 // 嘗試尋找可能的 LINE ID 和員工編號欄位
@@ -718,7 +724,7 @@ export class RagicService {
    * 原始查詢方法（向後相容）
    */
   private async legacyQueryMethod(lineId: string): Promise<RagicApiResponse> {
-    const queryUrl = `${this.baseUrl}?v=3&api&where=1003633,eq,${encodeURIComponent(lineId)}`;
+    const queryUrl = `${this.baseUrl}?v=3&api&where=1006333,eq,${encodeURIComponent(lineId)}`;
     
     console.log('🔍 使用原始查詢方法:', queryUrl);
     

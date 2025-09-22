@@ -265,8 +265,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // === RAGIC 員工查詢 API ===
   
-  // 通過LINE ID查詢員工信息
-  app.get('/api/ragic/employee/line-id/:lineId', webhookLimiter, async (req, res) => {
+  // 通過LINE ID查詢員工信息 (需要認證)
+  app.get('/api/ragic/employee/line-id/:lineId', authMiddleware, webhookLimiter, async (req, res) => {
     try {
       const { lineId } = req.params;
       
@@ -299,15 +299,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error('❌ LINE ID查詢員工失敗:', error);
-      res.status(500).json({
-        success: false,
-        error: '查詢過程發生錯誤'
-      });
+      
+      // 區分RAGIC API認證失敗和其他錯誤
+      const errorMessage = (error as Error).message;
+      if (errorMessage.includes('guest account') || errorMessage.includes('access right protected')) {
+        res.status(502).json({
+          success: false,
+          error: 'RAGIC API認證失敗，請聯絡系統管理員',
+          code: 'RAGIC_AUTH_FAILED'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: '查詢過程發生錯誤',
+          code: 'INTERNAL_ERROR'
+        });
+      }
     }
   });
 
-  // 通過員工編號查詢員工信息
-  app.get('/api/ragic/employee/employee-id/:employeeId', webhookLimiter, async (req, res) => {
+  // 通過員工編號查詢員工信息 (需要認證)
+  app.get('/api/ragic/employee/employee-id/:employeeId', authMiddleware, webhookLimiter, async (req, res) => {
     try {
       const { employeeId } = req.params;
       
@@ -340,10 +352,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error('❌ 員工編號查詢員工失敗:', error);
-      res.status(500).json({
-        success: false,
-        error: '查詢過程發生錯誤'
-      });
+      
+      // 區分RAGIC API認證失敗和其他錯誤
+      const errorMessage = (error as Error).message;
+      if (errorMessage.includes('guest account') || errorMessage.includes('access right protected')) {
+        res.status(502).json({
+          success: false,
+          error: 'RAGIC API認證失敗，請聯絡系統管理員',
+          code: 'RAGIC_AUTH_FAILED'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: '查詢過程發生錯誤',
+          code: 'INTERNAL_ERROR'
+        });
+      }
     }
   });
 
