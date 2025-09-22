@@ -116,7 +116,7 @@ export const systemSettings = pgTable('system_settings', {
 // Employee Cache Table - 員工快取（加速 ID 查詢）
 export const employeeCache = pgTable('employee_cache', {
   id: varchar('id').primaryKey().default(sql`gen_random_uuid()`), // 主鍵
-  lineId: text('line_id').notNull().unique(), // LINE ID，唯一鍵
+  lineId: text('line_id').notNull().unique(), // 個人LINE ID，唯一鍵
   employeeId: text('employee_id').notNull(), // 員工編號
   employeeName: text('employee_name'), // 員工姓名（用於除錯和管理）
   department: text('department'), // 部門資訊

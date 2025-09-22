@@ -265,7 +265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // === RAGIC 員工查詢 API ===
   
-  // 通過LINE ID查詢員工信息 (需要認證)
+  // 通過個人LINE ID查詢員工信息 (需要認證)
   app.get('/api/ragic/employee/line-id/:lineId', authMiddleware, webhookLimiter, async (req, res) => {
     try {
       const { lineId } = req.params;
@@ -273,11 +273,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!lineId || lineId.trim() === '') {
         return res.status(400).json({
           success: false,
-          error: 'LINE ID 不能為空'
+          error: '個人LINE ID 不能為空'
         });
       }
 
-      console.log(`🔍 API查詢員工資料，LINE ID: ${lineId}`);
+      console.log(`🔍 API查詢員工資料，個人LINE ID: ${lineId}`);
       
       const employeeDetails = await ragicService.getEmployeeDetailsByLineId(lineId);
       
@@ -298,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
     } catch (error) {
-      console.error('❌ LINE ID查詢員工失敗:', error);
+      console.error('❌ 個人LINE ID查詢員工失敗:', error);
       
       // 區分RAGIC API認證失敗和其他錯誤
       const errorMessage = (error as Error).message;

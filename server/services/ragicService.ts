@@ -246,7 +246,7 @@ export class RagicService {
   }
 
   /**
-   * 根據 LINE ID 查詢完整員工資料（包含在職狀態驗證）
+   * 根據個人LINE ID查詢完整員工資料（包含在職狀態驗證）
    */
   async getEmployeeDetailsByLineId(lineId: string): Promise<EmployeeDetails | null> {
     try {
@@ -262,9 +262,9 @@ export class RagicService {
         };
       }
 
-      // 正規化 LINE ID
+      // 正規化個人LINE ID
       const normalizedLineId = lineId.trim();
-      console.log('🔍 正在查詢員工完整資料，LINE ID:', normalizedLineId);
+      console.log('🔍 正在查詢員工完整資料，個人LINE ID:', normalizedLineId);
       
       // 查詢 RAGIC API
       const response = await this.queryEmployeeData(normalizedLineId);
@@ -358,7 +358,7 @@ export class RagicService {
   }
 
   /**
-   * 根據 LINE ID 查詢員工編號（含快取機制）
+   * 根據個人LINE ID查詢員工編號（含快取機制）
    */
   async getEmployeeByLineId(lineId: string): Promise<string | null> {
     try {
@@ -368,9 +368,9 @@ export class RagicService {
         return this.getMockEmployeeId(lineId);
       }
 
-      // 正規化 LINE ID
+      // 正規化個人LINE ID
       const normalizedLineId = lineId.trim();
-      console.log('🔍 正在查詢員工編號，LINE ID:', normalizedLineId);
+      console.log('🔍 正在查詢員工編號，個人LINE ID:', normalizedLineId);
       
       // 1. 首先檢查快取
       console.log('💾 檢查員工資料快取...');
