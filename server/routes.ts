@@ -371,41 +371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 測試RAGIC連線狀態 (開放測試)
-  app.get('/api/ragic/test-open', async (req, res) => {
-    try {
-      console.log('🧪 測試RAGIC API連線 (開放測試)');
-      const isConnected = await ragicService.testConnection();
-      
-      // 如果連接成功，測試查詢指定的LINE ID
-      let queryResult = null;
-      if (isConnected) {
-        console.log('🔍 測試查詢LINE ID: U1377e3b691add6a9b93699eb02dea502');
-        const employee = await ragicService.getEmployeeDetailsByLineId('U1377e3b691add6a9b93699eb02dea502');
-        queryResult = employee;
-      }
-      
-      res.json({
-        success: true,
-        connected: isConnected,
-        message: isConnected ? 'RAGIC API連線正常' : 'RAGIC API連線失敗',
-        testQuery: queryResult ? {
-          success: true,
-          employee: queryResult
-        } : {
-          success: false,
-          message: isConnected ? '查無此員工資料' : '連線失敗，無法查詢'
-        }
-      });
-    } catch (error) {
-      console.error('測試RAGIC連線失敗:', error);
-      res.status(500).json({
-        success: false,
-        message: '測試過程發生錯誤',
-        error: (error as Error).message
-      });
-    }
-  });
+  // 測試RAGIC連線狀態 (開放測試) - 已完成測試，功能正常
 
   // 測試RAGIC連線狀態
   app.get('/api/ragic/test', authMiddleware, async (req, res) => {
