@@ -371,8 +371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 測試RAGIC連線狀態 (臨時開放測試) - 已完成測試，移除端點
-  /*
+  // 測試RAGIC連線狀態 (開放測試)
   app.get('/api/ragic/test-open', async (req, res) => {
     try {
       console.log('🧪 測試RAGIC API連線 (開放測試)');
@@ -407,7 +406,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
-  */
 
   // 測試RAGIC連線狀態
   app.get('/api/ragic/test', authMiddleware, async (req, res) => {
