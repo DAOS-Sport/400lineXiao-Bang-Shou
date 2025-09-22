@@ -945,8 +945,12 @@ async function handleIdCommand(event: any) {
         // 查無資料
         resultMessage = `❌ 查詢完成\n\n系統識別碼: ${source.userId}\n查詢結果: 查無資料`;
       } else if (!employeeDetails.isActive) {
-        // 帳號已關閉（非在職狀態）
-        resultMessage = `🚫 帳號已關閉，暫停服務，若有問題，請洽直屬主管`;
+        // 帳號已關閉（非在職狀態）- 附上完整員工資訊
+        resultMessage = `🚫 帳號已關閉，暫停服務，若有問題，請洽直屬主管\n\n` +
+                       `員工編號: ${employeeDetails.employeeId}\n` +
+                       `姓名: ${employeeDetails.employeeName || '未提供'}\n` +
+                       `部門: ${employeeDetails.department || '未提供'}\n` +
+                       `狀態: ${employeeDetails.employmentStatus}`;
         
         // 記錄非在職員工嘗試使用服務
         await storage.insertAuditLog({
@@ -958,7 +962,8 @@ async function handleIdCommand(event: any) {
             lineId: source.userId,
             employeeId: employeeDetails.employeeId,
             employmentStatus: employeeDetails.employmentStatus,
-            employeeName: employeeDetails.employeeName
+            employeeName: employeeDetails.employeeName,
+            department: employeeDetails.department
           }
         });
       } else {
