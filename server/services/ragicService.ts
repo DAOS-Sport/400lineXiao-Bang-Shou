@@ -78,6 +78,168 @@ export class RagicService {
   }
 
   /**
+   * 根據員工編號查詢完整員工資料
+   */
+  async getEmployeeDetailsByEmployeeId(employeeId: string): Promise<EmployeeDetails | null> {
+    try {
+      // 檢查 API 設定
+      if (!this.domain || !this.apiKey || !this.databasePath) {
+        console.warn('⚠️ RAGIC API 設定不完整，返回模擬資料');
+        return {
+          employeeId: employeeId,
+          employeeName: '模擬員工',
+          department: '資訊部',
+          employmentStatus: '在職',
+          isActive: true
+        };
+      }
+
+      console.log('🔍 正在查詢員工資料，員工編號:', employeeId);
+      
+      // 查詢 RAGIC API
+      const response = await this.queryEmployeeByField('員工編號', employeeId);
+      
+      if (response.success && response.data.length > 0) {
+        const employee = response.data[0];
+        
+        const employeeName = employee['姓名'] || employee['名稱'];
+        const department = Array.isArray(employee['部門']) ? employee['部門'].join(',') : employee['部門'];
+        const employmentStatus = employee['在職狀態'] || employee['status'];
+        
+        console.log('👤 RAGIC 員工資料查詢結果（通過員工編號）:', { 
+          employeeId, 
+          employeeName,
+          department,
+          employmentStatus
+        });
+        
+        const isActive = employmentStatus === '在職';
+        
+        const employeeDetails: EmployeeDetails = {
+          employeeId: employeeId,
+          employeeName,
+          department,
+          employmentStatus,
+          isActive
+        };
+        
+        // 記錄查詢結果
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'ragic',
+          message: 'RAGIC 員工資料查詢成功（通過員工編號）',
+          details: {
+            employeeId,
+            employmentStatus,
+            isActive,
+            source: 'RAGIC_API_BY_EMPLOYEE_ID'
+          }
+        });
+        
+        return employeeDetails;
+      }
+
+      // 查不到資料
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'warning',
+        category: 'ragic',
+        message: 'RAGIC 查無員工資料（通過員工編號）',
+        details: {
+          employeeId: employeeId,
+          apiResponse: response
+        }
+      });
+
+      return null;
+
+    } catch (error) {
+      console.error('❌ RAGIC API 查詢員工資料失敗（通過員工編號）:', error);
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'ragic',
+        message: 'RAGIC API 查詢員工資料失敗（通過員工編號）',
+        details: {
+          employeeId: employeeId,
+          error: (error as Error).message
+        }
+      });
+
+      return null;
+    }
+  }
+
+  /**
+   * 通用欄位查詢方法
+   */
+  async queryEmployeeByField(fieldName: string, value: string): Promise<RagicApiResponse> {
+    try {
+      // 欄位名稱對應表
+      const fieldMapping: { [key: string]: string } = {
+        '員工編號': '員工編號',
+        'LINE_ID': '1003633',
+        '姓名': '姓名',
+        '部門': '部門'
+      };
+      
+      const actualField = fieldMapping[fieldName] || fieldName;
+      const queryUrl = `${this.baseUrl}?v=3&api&where=${encodeURIComponent(actualField)},eq,${encodeURIComponent(value)}`;
+      
+      console.log('🔍 通用欄位查詢，欄位:', actualField, '值:', value);
+      console.log('🔗 查詢URL:', queryUrl);
+      
+      const response = await fetch(queryUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${this.basicAuth}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data && data.status === 'ERROR') {
+          console.error('❌ RAGIC API 錯誤:', data.msg);
+          return { success: false, data: [], error: data.msg };
+        }
+        
+        // 正規化數據
+        let normalizedData = [];
+        
+        if (Array.isArray(data)) {
+          normalizedData = data;
+        } else if (data && typeof data === 'object') {
+          const recordKeys = Object.keys(data).filter(key => !key.startsWith('_'));
+          normalizedData = recordKeys.map(recordId => data[recordId]);
+        }
+        
+        console.log('📋 通用欄位查詢結果筆數:', normalizedData.length);
+        
+        return {
+          success: true,
+          data: normalizedData,
+          fieldMapping: { lineIdField: '1003633', employeeIdField: '員工編號' }
+        };
+      } else {
+        console.error('❌ RAGIC API 請求失敗，狀態碼:', response.status);
+        return { success: false, data: [], error: `HTTP ${response.status}` };
+      }
+      
+    } catch (error) {
+      console.error('❌ RAGIC API 通用查詢異常:', error);
+      return {
+        success: false,
+        data: [],
+        error: (error as Error).message
+      };
+    }
+  }
+
+  /**
    * 根據 LINE ID 查詢完整員工資料（包含在職狀態驗證）
    */
   async getEmployeeDetailsByLineId(lineId: string): Promise<EmployeeDetails | null> {

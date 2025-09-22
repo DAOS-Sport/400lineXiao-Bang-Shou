@@ -1,0 +1,132 @@
+表單 URL:
+
+https://ap7.ragic.com/xinsheng/ragicforms4/20004
+
+
+→ 對應的 API base URL 是
+
+https://ap7.ragic.com/xinsheng/api/20004
+
+
+欄位 ID：
+
+第一張截圖 → 1003633（個人 LINE ID）
+
+第二張截圖 → 3000935（員工編號）
+其他還可以依照表單結構再加上去。
+
+認證方式：還是用你之前的 API Key，走 Authorization: Basic {base64(APIKEY:)}，這樣就沒有時效問題，不會掉成 guest。
+
+Node.js + Express 範例（針對新表單 20004）
+// server.js
+require('dotenv').config();
+const express = require('express');
+const axios = require('axios');
+
+const app = express();
+app.use(express.json());
+
+// === 設定區 ===
+const RAGIC_API_BASE_URL = "https://ap7.ragic.com/xinsheng/api/20004"; 
+const RAGIC_API_KEY = "c0VySnlCOEJ6dHlndkRHY0pUOTFEMnh6Zmo3VE9lYWdtTUxmak50UUloZjRVRXpDTnpXZzNBcm9DeHM5QlFVK2dncnpJa2k3eFZNPQ==";
+
+// Authorization header (只用 API Key，不會過期)
+const authHeader = {
+  'Authorization': `Basic ${Buffer.from(`${RAGIC_API_KEY}:`).toString('base64')}`,
+  'Content-Type': 'application/json'
+};
+
+// === CRUD API ===
+
+// Create
+app.post('/api/records', async (req, res) => {
+  try {
+    const response = await axios.post(RAGIC_API_BASE_URL, req.body, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Read all
+app.get('/api/records', async (req, res) => {
+  try {
+    const response = await axios.get(RAGIC_API_BASE_URL, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Read one
+app.get('/api/records/:id', async (req, res) => {
+  try {
+    const response = await axios.get(`${RAGIC_API_BASE_URL}/${req.params.id}`, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Update
+app.put('/api/records/:id', async (req, res) => {
+  try {
+    const response = await axios.put(`${RAGIC_API_BASE_URL}/${req.params.id}`, req.body, { headers: authHeader });
+    res.json(response.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// Delete
+app.delete('/api/records/:id', async (req, res) => {
+  try {
+    const response = await axios.delete(`${RAGIC_API_BASE_URL}/${req.params.id}`, { headers: authHeader });
+    res.json({ success: true, deleted: response.data });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+// === 啟動 server ===
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`API server running on port ${PORT}`);
+});
+
+呼叫範例
+
+新增資料
+
+POST http://localhost:3000/api/records
+Content-Type: application/json
+
+{
+  "1003633": "U1df232f0ad65bdcd3936",   // 個人 LINE ID
+  "3000935": "A12345"                    // 員工編號
+}
+
+
+查詢全部
+
+GET http://localhost:3000/api/records
+
+
+查單筆
+
+GET http://localhost:3000/api/records/101
+
+
+更新資料
+
+PUT http://localhost:3000/api/records/101
+Content-Type: application/json
+
+{
+  "1003633": "Uxxxx新的LINEID"
+}
+
+
+刪除資料
+
+DELETE http://localhost:3000/api/records/101
