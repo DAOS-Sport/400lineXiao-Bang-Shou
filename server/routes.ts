@@ -12,6 +12,7 @@ import { waterQualityService } from "./services/waterQualityService";
 import { weatherService } from "./services/weatherService";
 import { authMiddleware } from "./middleware/auth";
 import { validateLineSignature } from "./middleware/lineSignature";
+import { ragicService } from "./services/ragicService";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -258,6 +259,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         success: false, 
         error: (error as Error).message 
+      });
+    }
+  });
+
+  // === RAGIC 員工查詢 API ===
+  
+  // 通過LINE ID查詢員工信息
+  app.get('/api/ragic/employee/line-id/:lineId', webhookLimiter, async (req, res) => {
+    try {
+      const { lineId } = req.params;
+      
+      if (!lineId || lineId.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          error: 'LINE ID 不能為空'
+        });
+      }
+
+      console.log(`🔍 API查詢員工資料，LINE ID: ${lineId}`);
+      
+      const employeeDetails = await ragicService.getEmployeeDetailsByLineId(lineId);
+      
+      if (employeeDetails) {
+        res.json({
+          success: true,
+          employee: {
+            systemId: employeeDetails.employeeId, // 系統編號
+            employeeId: employeeDetails.employeeId, // 員工編號
+            name: employeeDetails.employeeName,
+            status: employeeDetails.employmentStatus
+          }
+        });
+      } else {
+        res.status(404).json({
+          success: false,
+          error: '查無此員工資料'
+        });
+      }
+    } catch (error) {
+      console.error('❌ LINE ID查詢員工失敗:', error);
+      res.status(500).json({
+        success: false,
+        error: '查詢過程發生錯誤'
+      });
+    }
+  });
+
+  // 通過員工編號查詢員工信息
+  app.get('/api/ragic/employee/employee-id/:employeeId', webhookLimiter, async (req, res) => {
+    try {
+      const { employeeId } = req.params;
+      
+      if (!employeeId || employeeId.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          error: '員工編號不能為空'
+        });
+      }
+
+      console.log(`🔍 API查詢員工資料，員工編號: ${employeeId}`);
+      
+      const employeeDetails = await ragicService.getEmployeeDetailsByEmployeeId(employeeId);
+      
+      if (employeeDetails) {
+        res.json({
+          success: true,
+          employee: {
+            systemId: employeeDetails.employeeId, // 系統編號
+            employeeId: employeeDetails.employeeId, // 員工編號
+            name: employeeDetails.employeeName,
+            status: employeeDetails.employmentStatus
+          }
+        });
+      } else {
+        res.status(404).json({
+          success: false,
+          error: '查無此員工資料'
+        });
+      }
+    } catch (error) {
+      console.error('❌ 員工編號查詢員工失敗:', error);
+      res.status(500).json({
+        success: false,
+        error: '查詢過程發生錯誤'
+      });
+    }
+  });
+
+  // 測試RAGIC連線狀態
+  app.get('/api/ragic/test', authMiddleware, async (req, res) => {
+    try {
+      console.log('🧪 測試RAGIC API連線');
+      const isConnected = await ragicService.testConnection();
+      
+      res.json({
+        success: true,
+        connected: isConnected,
+        message: isConnected ? 'RAGIC API連線正常' : 'RAGIC API連線失敗'
+      });
+    } catch (error) {
+      console.error('❌ RAGIC連線測試失敗:', error);
+      res.status(500).json({
+        success: false,
+        error: '連線測試失敗'
       });
     }
   });
