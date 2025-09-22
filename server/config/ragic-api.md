@@ -25,7 +25,7 @@ Content-Type: application/json
 
 ### 2. 員工資料查詢 (by LINE ID)
 ```
-GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?api&v=3&where=1006333,eq,<LINE_ID>
+GET https://ap7.ragic.com/xinsheng/ragicforms4/20004?api&v=3&where=1003633,eq,<LINE_ID>
 Authorization: Basic <API_KEY>
 Content-Type: application/json
 ```
@@ -41,7 +41,7 @@ Content-Type: application/json
 
 | 欄位名稱 | 欄位 ID | 說明 | 確認狀態 |
 |---------|--------|------|----------|
-| LINE ID | 1006333 | 用人 LINE ID (員工的 LINE 用戶 ID) | ✅ 已確認 |
+| LINE ID | 1003633 | 用人 LINE ID (員工的 LINE 用戶 ID) | ✅ 已確認 |
 | 員工編號 | 3000935 | 工號 (公司內部員工編號) | ✅ 已確認 |
 
 ## 權限設定
@@ -62,7 +62,7 @@ https://ap7.ragic.com/xinsheng/home/1?PAGEID=5sq
 ```json
 [
   {
-    "1006333": "U1377e3b691add6a9b93699eb02dea502",
+    "1003633": "U1377e3b691add6a9b93699eb02dea502",
     "3000935": "EMP001",
     "姓名": "員工姓名",
     "部門": "部門名稱"
