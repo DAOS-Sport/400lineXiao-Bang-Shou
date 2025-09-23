@@ -1,0 +1,181 @@
+// ragic-sdk.ts —— 對應到 https://ap7.ragic.com/xinsheng/ragicforms4/20004?PAGEID=1hU
+
+// ===== 基本設定（從環境變數讀取）=====
+export const RAGIC_CONFIG = {
+  baseUrl: 'https://ap7.ragic.com',
+  accountId: 'xinsheng',
+  formId: 'ragicforms4',     // 由網址可知
+  sheetId: '20004',          // 由網址可知
+  apiVersion: 'v=3',
+  // 從環境變數讀取 API Key
+  get apiKeyB64() {
+    const apiKey = process.env.RAGIC_API_KEY;
+    if (!apiKey) {
+      throw new Error('RAGIC_API_KEY environment variable is required');
+    }
+    return apiKey.trim();
+  },
+  // 重試/退避
+  maxRetries: 3,
+  initialBackoffMs: 800
+} as const;
+
+// ===== 欄位映射（你提供的三個欄位）=====
+export const FIELD_MAPPING: Record<string,string> = {
+  employmentStatus: '3000945', // 在職狀態
+  lineId: '1003633',           // 個人LINE ID
+  employeeNo: '3000935'        // 員工編號
+};
+const REVERSE_FIELD_MAPPING = Object.fromEntries(
+  Object.entries(FIELD_MAPPING).map(([k,v]) => [v, k])
+);
+
+// ===== 型別 =====
+export interface RagicRecord { [key: string]: any; _ragicId?: number; _dataTimestamp?: number; _index_title_?: string; _index_?: string; _seq?: number; }
+export interface StandardRecord { id?: string; [fieldName: string]: any; }
+export interface RagicResponse { [recordId: string]: RagicRecord; }
+
+// ===== 工具：端點、等待、認證 =====
+function baseEndpoint() {
+  return `${RAGIC_CONFIG.baseUrl}/${RAGIC_CONFIG.accountId}/${RAGIC_CONFIG.formId}/${RAGIC_CONFIG.sheetId}?${RAGIC_CONFIG.apiVersion}&api`;
+}
+function idEndpoint(recordId: string) {
+  return baseEndpoint().replace('?', `/${encodeURIComponent(recordId)}?`);
+}
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+function authHeader() {
+  // 直接使用環境變數中的 API Key
+  return `Basic ${RAGIC_CONFIG.apiKeyB64}`;
+}
+
+// ===== 欄位轉換 =====
+export function toRagicFields(data: Record<string, any>): Record<string, any> {
+  const out: Record<string,any> = {};
+  for (const [stdKey, v] of Object.entries(data)) {
+    const fieldId = FIELD_MAPPING[stdKey];
+    if (fieldId != null && v !== undefined && v !== null) out[fieldId] = v;
+  }
+  return out;
+}
+export function parseRagicData(data: RagicResponse): StandardRecord[] {
+  const records: StandardRecord[] = [];
+  for (const [rid, rec] of Object.entries(data)) {
+    if (rid === 'data' || rid === 'count' || rid === 'success') continue;
+    const std: StandardRecord = { id: rid };
+    for (const [k, v] of Object.entries(rec)) {
+      if (k.startsWith('_')) continue;
+      const stdKey = REVERSE_FIELD_MAPPING[k] ?? k;
+      std[stdKey] = v;
+    }
+    records.push(std);
+  }
+  return records;
+}
+
+// ===== where 子句（server-side 搜尋）=====
+export function buildWhere(fieldId: string, op: 'eq'|'ct'|'bw'|'ew'|'ne'|'lt'|'gt'|'le'|'ge', value: string) {
+  const enc = (s: string) => encodeURIComponent(s);
+  return `&where=${enc(fieldId)},${enc(op)},${enc(value)}`;
+}
+
+// ===== 錯誤與重試 =====
+async function raiseIfNotOk(resp: Response) {
+  if (resp.ok) return;
+  let detail = '';
+  try { detail = await resp.text(); } catch {}
+  const map: Record<number,string> = {
+    400: '請求格式錯誤',
+    401: '認證失敗（可能被降為 Guest 或金鑰錯誤）',
+    403: '權限不足',
+    404: '記錄/路徑不存在',
+    413: '請求過大',
+    429: '請求過多（限流）',
+    500: '伺服器錯誤'
+  };
+  const msg = map[resp.status] ?? `未知錯誤: ${resp.status}`;
+  throw new Error(`${msg}｜Ragic回應：${detail.slice(0,500)}`);
+}
+async function withRetry<T>(fn: () => Promise<T>) {
+  let backoff = RAGIC_CONFIG.initialBackoffMs;
+  for (let i=0; i<=RAGIC_CONFIG.maxRetries; i++) {
+    try { return await fn(); }
+    catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const retriable = /429|500|502|503|504/.test(msg);
+      if (!retriable || i === RAGIC_CONFIG.maxRetries) throw err;
+      const jitter = Math.floor(Math.random()*300);
+      await sleep(backoff + jitter);
+      backoff *= 2;
+    }
+  }
+  throw new Error('未預期的重試中斷');
+}
+
+// ===== 主服務 =====
+export class RagicService {
+  private headers: HeadersInit;
+  constructor() {
+    this.headers = { 'Authorization': authHeader(), 'Content-Type': 'application/json' };
+  }
+
+  async getAll(opts?: { start?: number; limit?: number; select?: string[]; orderBy?: string; desc?: boolean; }): Promise<StandardRecord[]> {
+    const qs: string[] = [];
+    if (opts?.start != null) qs.push(`start=${opts.start}`);
+    if (opts?.limit != null) qs.push(`limit=${opts.limit}`);
+    if (opts?.select?.length) qs.push(`select=${encodeURIComponent(opts.select.join(','))}`);
+    if (opts?.orderBy) qs.push(`orderby=${encodeURIComponent(opts.orderBy)}`);
+    if (opts?.desc) qs.push(`desc=1`);
+    const url = baseEndpoint() + (qs.length ? `&${qs.join('&')}` : '');
+
+    const resp = await withRetry(() => fetch(url, { method: 'GET', headers: this.headers }));
+    await raiseIfNotOk(resp);
+    return parseRagicData(await resp.json());
+  }
+
+  async getById(recordId: string): Promise<StandardRecord | null> {
+    const resp = await withRetry(() => fetch(idEndpoint(recordId), { method: 'GET', headers: this.headers }));
+    if (resp.status === 404) return null;
+    await raiseIfNotOk(resp);
+    const raw = await resp.json() as RagicRecord;
+    return parseRagicData({ [recordId]: raw })[0] ?? null;
+  }
+
+  async create(std: Record<string, any>): Promise<string> {
+    const body = JSON.stringify(toRagicFields(std));
+    const resp = await withRetry(() => fetch(baseEndpoint(), { method: 'POST', headers: this.headers, body }));
+    await raiseIfNotOk(resp);
+    const data = await resp.json() as RagicResponse;
+    const firstId = Object.keys(data).find(k => !['data','count','success'].includes(k));
+    if (!firstId) throw new Error('新增成功但未取得 recordId');
+    return firstId;
+  }
+
+  async update(recordId: string, std: Record<string, any>): Promise<void> {
+    const body = JSON.stringify(toRagicFields(std));
+    const resp = await withRetry(() => fetch(idEndpoint(recordId), { method: 'POST', headers: this.headers, body }));
+    await raiseIfNotOk(resp);
+  }
+
+  async remove(recordId: string): Promise<void> {
+    const resp = await withRetry(() => fetch(idEndpoint(recordId), { method: 'DELETE', headers: this.headers }));
+    await raiseIfNotOk(resp);
+  }
+
+  // 伺服端搜尋（使用欄位ID，避免前端濾錯）
+  async searchBy(fieldId: string, op: 'eq'|'ct'|'bw'|'ew'|'ne'|'lt'|'gt'|'le'|'ge', value: string, opts?: { and?: Array<{fieldId:string, op:any, value:string}>; limit?: number; start?: number; }): Promise<StandardRecord[]> {
+    const parts = [buildWhere(fieldId, op, value)];
+    if (opts?.and?.length) for (const c of opts.and) parts.push(buildWhere(c.fieldId, c.op, c.value));
+    const qs = parts.join('') + (opts?.limit != null ? `&limit=${opts.limit}` : '') + (opts?.start != null ? `&start=${opts.start}` : '');
+    const url = baseEndpoint() + qs;
+    const resp = await withRetry(() => fetch(url, { method: 'GET', headers: this.headers }));
+    await raiseIfNotOk(resp);
+    return parseRagicData(await resp.json());
+  }
+
+  // 以標準欄位名搜尋（自動轉欄位ID）
+  async searchStd(stdField: keyof typeof FIELD_MAPPING, op: 'eq'|'ct'|'bw'|'ew', value: string, opts?: { limit?: number; start?: number; }): Promise<StandardRecord[]> {
+    const fieldId = FIELD_MAPPING[String(stdField)];
+    if (!fieldId) throw new Error(`找不到欄位對應：${String(stdField)}`);
+    return this.searchBy(fieldId, op, value, opts);
+  }
+}
