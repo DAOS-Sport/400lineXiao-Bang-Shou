@@ -13,6 +13,8 @@ import { weatherService } from "./services/weatherService";
 import { authMiddleware } from "./middleware/auth";
 import { validateLineSignature } from "./middleware/lineSignature";
 import { ragicService } from "./services/ragicService";
+import { getOneMonthRange } from "./utils/time";
+import dayjs from "dayjs";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -693,6 +695,76 @@ async function processWebhookEvent(event: any) {
           } catch (taskError) {
             console.error(`❌ 任務創建過程異常:`, taskError);
           }
+        }
+      }
+
+      // 2.2 處理事項查詢（所有群組皆可使用）
+      if (source.type === 'group' && text === '處理事項') {
+        console.log(`📋 偵測到處理事項查詢 來自群組 ${source.groupId}`);
+        try {
+          // 查詢該群組近一個月內的未完成任務
+          const { start: startDate, end: endDate } = getOneMonthRange();
+          const pendingTasks = await storage.getTasksCreatedBetween(
+            source.groupId,
+            startDate,
+            endDate,
+            'pending'
+          );
+          
+          console.log(`📋 找到 ${pendingTasks.length} 筆未完成任務`);
+          
+          // 格式化回覆訊息
+          let replyText = '';
+          if (pendingTasks.length === 0) {
+            replyText = '✨ 太棒了！目前沒有未完成的處理事項';
+          } else {
+            replyText = `📋 未完成處理事項 (共${pendingTasks.length}筆)\n\n`;
+            
+            // 按建立時間排序（最舊的在前）
+            const sortedTasks = pendingTasks.sort((a, b) => 
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+            
+            // 顯示所有未完成任務
+            sortedTasks.forEach((task) => {
+              const createdTime = dayjs(task.createdAt).format('YYYY-MM-DD HH:mm');
+              replyText += `${task.taskIdSerial}. ${task.text}\n`;
+              replyText += `   建立時間：${createdTime}\n\n`;
+            });
+            
+            replyText += '💡 完成任務請輸入：交辦XX完成';
+          }
+          
+          console.log(`📤 準備回覆處理事項列表`);
+          
+          try {
+            await lineService.replyMessage(event.replyToken, replyText);
+            console.log(`✅ 處理事項列表已發送`);
+          } catch (replyError) {
+            console.error(`❌ 回覆處理事項列表失敗:`, replyError);
+            try {
+              await lineService.pushMessage(source.groupId, replyText);
+              console.log(`✅ 改用推送方式發送處理事項列表到群組 ${source.groupId}`);
+            } catch (pushError) {
+              console.error(`❌ 推送處理事項列表也失敗:`, pushError);
+            }
+          }
+          
+          // 記錄查詢事件
+          await storage.insertAuditLog({
+            id: crypto.randomUUID(),
+            level: 'info',
+            category: 'task',
+            message: '處理事項查詢',
+            details: {
+              groupId: source.groupId,
+              taskCount: pendingTasks.length,
+              userId: source.userId
+            }
+          });
+          
+        } catch (error) {
+          console.error(`❌ 處理事項查詢失敗:`, error);
         }
       }
 
