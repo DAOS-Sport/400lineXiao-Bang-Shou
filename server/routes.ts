@@ -880,15 +880,39 @@ async function processWebhookEvent(event: any) {
         }
       }
 
-      // 3. 管理員指令
+      // 3. 查詢代辦事項（所有人可用）
+      if (source.type === 'group' && text === '查詢代辦事項') {
+        console.log(`🔍 查詢代辦事項 - 群組ID: ${source.groupId}`);
+        const openTasks = await storage.getTasksByGroupId(source.groupId, 'pending');
+        console.log(`🔍 找到待辦任務數量: ${openTasks.length}`, openTasks.map(t => `${t.taskIdSerial}: ${t.text.substring(0, 30)}`));
+        
+        if (openTasks.length === 0) {
+          await lineService.replyMessage(event.replyToken, "📌 本群未完成代辦\n目前沒有未完成的任務。");
+        } else {
+          const taskList = openTasks.map(task => `${task.taskIdSerial}. ${task.text}`).join('\n');
+          await lineService.replyMessage(event.replyToken, `📌 本群未完成代辦\n${taskList}`);
+        }
+      }
+      
+      // 3.1 查詢近期代辦事項（所有人可用）
+      else if (source.type === 'group' && text === '查詢近期代辦事項') {
+        const daysAgo = parseInt(process.env.RECENT_DAYS || '7');
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - daysAgo);
+        
+        const recentTasks = await storage.getTasksCreatedBetween(source.groupId, startDate, new Date(), 'pending');
+        if (recentTasks.length === 0) {
+          await lineService.replyMessage(event.replyToken, `📌 近 ${daysAgo} 日代辦事項\n目前沒有未完成的任務。`);
+        } else {
+          const taskList = recentTasks.map(task => `${task.taskIdSerial}. ${task.text}`).join('\n');
+          await lineService.replyMessage(event.replyToken, `📌 近 ${daysAgo} 日代辦事項\n${taskList}`);
+        }
+      }
+
+      // 3.2 管理員專屬指令
       const isAdmin = await storage.isAdmin(source.userId);
       if (isAdmin) {
         await handleAdminCommands(event, text);
-      } else {
-        // 檢查是否為管理員專用指令
-        if (text.match(/^(查詢代辦事項|查詢近期代辦事項|編號\d+已完成)$/)) {
-          await lineService.replyMessage(event.replyToken, "此指令需要管理員權限。");
-        }
       }
 
       // 4. 檢查待發送的群組訊息
@@ -1230,44 +1254,7 @@ function clearQueryAnimation(userId?: string) {
 async function handleAdminCommands(event: any, text: string) {
   const source = event.source;
   
-  if (text === '查詢代辦事項') {
-    if (source.type !== 'group') {
-      await lineService.replyMessage(event.replyToken, "此指令僅可在群組中使用。");
-      return;
-    }
-    
-    console.log(`🔍 管理員查詢代辦事項 - 群組ID: ${source.groupId}`);
-    const openTasks = await storage.getTasksByGroupId(source.groupId, 'pending');
-    console.log(`🔍 找到待辦任務數量: ${openTasks.length}`, openTasks.map(t => `${t.taskIdSerial}: ${t.text.substring(0, 30)}`));
-    
-    if (openTasks.length === 0) {
-      await lineService.replyMessage(event.replyToken, "📌 本群未完成代辦\n目前沒有未完成的任務。");
-    } else {
-      const taskList = openTasks.map(task => `${task.taskIdSerial}. ${task.text}`).join('\n');
-      await lineService.replyMessage(event.replyToken, `📌 本群未完成代辦\n${taskList}`);
-    }
-  }
-  
-  else if (text === '查詢近期代辦事項') {
-    if (source.type !== 'group') {
-      await lineService.replyMessage(event.replyToken, "此指令僅可在群組中使用。");
-      return;
-    }
-    
-    const daysAgo = parseInt(process.env.RECENT_DAYS || '7');
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysAgo);
-    
-    const recentTasks = await storage.getTasksCreatedBetween(source.groupId, startDate, new Date(), 'pending');
-    if (recentTasks.length === 0) {
-      await lineService.replyMessage(event.replyToken, `📌 近 ${daysAgo} 日代辦事項\n目前沒有未完成的任務。`);
-    } else {
-      const taskList = recentTasks.map(task => `${task.taskIdSerial}. ${task.text}`).join('\n');
-      await lineService.replyMessage(event.replyToken, `📌 近 ${daysAgo} 日代辦事項\n${taskList}`);
-    }
-  }
-  
-  else if (text === '手動備份') {
+  if (text === '手動備份') {
     await handleManualBackup(event);
   }
   
