@@ -382,6 +382,10 @@ export class LineService {
       const pendingWindForecast = await this.checkAndTriggerWindForecast(groupId, replyToken, today);
       if (pendingWindForecast) return;
       
+      // 檢查是否有待觸發的竹科天氣預報
+      const pendingSwimmingPoolWeather = await this.checkAndTriggerSwimmingPoolWeather(groupId, replyToken, today);
+      if (pendingSwimmingPoolWeather) return;
+      
       console.log(`📭 群組 ${groupId.substring(0, 8)}... 目前沒有待觸發的內容`);
       
     } catch (error) {
@@ -571,6 +575,83 @@ export class LineService {
     return false;
   }
 
+  // 檢查並觸發竹科游泳池天氣預報
+  private async checkAndTriggerSwimmingPoolWeather(groupId: string, replyToken: string, today: string): Promise<boolean> {
+    try {
+      // 只有竹科游泳池群組才觸發
+      const swimmingPoolGroup = 'C50c2a9623a78cc5f5e9f39557e3abfe6';
+      if (groupId !== swimmingPoolGroup) {
+        return false;
+      }
+      
+      const pendingLogs = await storage.getAuditLogsByCategory('pending_swimming_pool_weather');
+      const todayPending = pendingLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details && 
+        'status' in log.details &&
+        log.details.date === today &&
+        log.details.status === 'awaiting_trigger'
+      );
+
+      // 檢查是否已經發送過
+      const sentLogs = await storage.getAuditLogsByCategory('swimming_pool_weather_sent');
+      const todaySent = sentLogs.filter(log => 
+        log.details && 
+        typeof log.details === 'object' &&
+        'date' in log.details &&
+        log.details.date === today &&
+        log.details.groupId === groupId
+      );
+
+      // 如果有待觸發且尚未發送的時段
+      const availableTimeSlots = todayPending.filter(pending => {
+        const timeSlot = pending.details && typeof pending.details === 'object' && 'timeSlot' in pending.details ? pending.details.timeSlot : '';
+        return !todaySent.some(sent => 
+          sent.details && typeof sent.details === 'object' && 'timeSlot' in sent.details && sent.details.timeSlot === timeSlot
+        );
+      });
+      
+      if (availableTimeSlots.length > 0) {
+        console.log(`🌤️ 找到 ${availableTimeSlots.length} 個待觸發的竹科天氣預報`);
+        
+        const latestLog = availableTimeSlots[availableTimeSlots.length - 1];
+        const timeSlot = latestLog.details && typeof latestLog.details === 'object' && 'timeSlot' in latestLog.details ? latestLog.details.timeSlot : '';
+        
+        // 使用 weatherService 生成預報
+        const { weatherService } = await import('./weatherService');
+        const forecasts = await weatherService.getHsinchuWeatherForecast();
+        const forecastText = await weatherService.formatDetailedSwimmingPoolForecast(forecasts);
+        
+        await this.replyMessage(replyToken, forecastText);
+        
+        // 標記為已發送
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'swimming_pool_weather_sent',
+          message: `竹科天氣預報已回覆發送 (${timeSlot})`,
+          details: {
+            groupId,
+            timeSlot,
+            date: today,
+            method: 'reply_trigger'
+          }
+        });
+        
+        // 清除待觸發標記
+        await this.clearPendingTriggers('pending_swimming_pool_weather', today);
+        
+        console.log(`✅ 竹科天氣預報已通過回覆觸發發送 (${timeSlot})`);
+        return true;
+      }
+      
+    } catch (error) {
+      console.error('檢查竹科天氣預報觸發失敗:', error);
+    }
+    return false;
+  }
+
   // 檢查並觸發風力預報
   private async checkAndTriggerWindForecast(groupId: string, replyToken: string, today: string): Promise<boolean> {
     try {
@@ -680,7 +761,7 @@ export class LineService {
           id: crypto.randomUUID(),
           level: 'info',
           category: category.replace('pending_', '') + '_sent',
-          message: `${category.includes('task') ? '任務提醒' : category.includes('water') ? '水質報告' : '風力預報'}已發送 - 清除待觸發狀態`,
+          message: `${category.includes('task') ? '任務提醒' : category.includes('water_quality') ? '水質報告' : category.includes('swimming_pool') ? '竹科天氣預報' : '風力預報'}已發送 - 清除待觸發狀態`,
           details: {
             originalLogId: log.id,
             timeSlot,

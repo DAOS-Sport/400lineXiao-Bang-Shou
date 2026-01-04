@@ -928,8 +928,8 @@ async function processWebhookEvent(event: any) {
           // 獲取天氣預報數據
           const forecasts = await weatherService.getHsinchuWeatherForecast();
           
-          // 使用詳細的室外游泳池天氣預報（12小時）
-          const weatherReply = weatherService.formatDetailedSwimmingPoolForecast(forecasts);
+          // 使用詳細的室外游泳池天氣預報（含風力和水質建議）
+          const weatherReply = await weatherService.formatDetailedSwimmingPoolForecast(forecasts);
           
           console.log(`📤 準備回覆詳細天氣資訊: "${weatherReply.substring(0, 100)}..."`);
           
@@ -946,9 +946,9 @@ async function processWebhookEvent(event: any) {
               details: {
                 groupId: source.groupId,
                 userId: source.userId,
-                coordinates: '24.778126805320703, 121.01043570614455',
+                coordinates: '24.7781, 121.0104',
                 forecastPeriods: forecasts.length,
-                features: ['雷電風險分析', '安全時段建議', '12小時預報']
+                features: ['風力預報', '雷電風險分析', '水質管控建議', '6小時預報']
               }
             });
             
