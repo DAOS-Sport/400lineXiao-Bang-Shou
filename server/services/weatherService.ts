@@ -448,6 +448,12 @@ export class WeatherService {
     lines.push('💡 水質備註：');
     lines.push('若降雨機率超過 60%');
     lines.push('建議增加氯氣投放並加強水質檢測');
+    lines.push('');
+
+    // 安全備註
+    lines.push('💡 安全備註：');
+    lines.push('如果風力超過 11 m/s');
+    lines.push('請馬上致電給嘉容或吉米哥');
 
     return lines.join('\n');
   }
