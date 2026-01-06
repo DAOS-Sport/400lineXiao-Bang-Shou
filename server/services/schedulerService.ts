@@ -100,12 +100,11 @@ export class SchedulerService {
       this.cronJobs.push(job);
     });
 
-    // 🌤️ 竹科游泳池天氣預報排程 - 每日 06:00, 12:00, 17:00, 21:30 (群組 C50c2a9623a78cc5f5e9f39557e3abfe6)
+    // 🌤️ 竹科游泳池天氣預報排程 - 每日 06:30, 12:00, 17:00 (群組 C50c2a9623a78cc5f5e9f39557e3abfe6)
     const swimmingPoolWeatherSchedules = [
-      { time: '0 6 * * *', name: '06:00 天氣預報' },
+      { time: '30 6 * * *', name: '06:30 天氣預報' },
       { time: '0 12 * * *', name: '12:00 天氣預報' },
-      { time: '0 17 * * *', name: '17:00 天氣預報' },
-      { time: '30 21 * * *', name: '21:30 天氣預報' }
+      { time: '0 17 * * *', name: '17:00 天氣預報' }
     ];
 
     swimmingPoolWeatherSchedules.forEach(({ time, name }) => {
