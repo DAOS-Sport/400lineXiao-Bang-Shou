@@ -13,6 +13,7 @@ import { weatherService } from "./services/weatherService";
 import { authMiddleware } from "./middleware/auth";
 import { validateLineSignature } from "./middleware/lineSignature";
 import { ragicService } from "./services/ragicService";
+import { interviewCheckService } from "./services/interviewCheckService";
 import { getOneMonthRange } from "./utils/time";
 import dayjs from "dayjs";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
@@ -651,6 +652,15 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
+      // 0. 面試檢核模組（授權人員限定）
+      const interviewMatch = text.match(/^面試\s+([A-Z][0-9]{9})$/i);
+      if (interviewMatch) {
+        const idCard = interviewMatch[1].toUpperCase();
+        console.log(`🔍 偵測到面試檢核請求，身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
+        await handleInterviewCheck(event, idCard);
+        return;
+      }
+
       // 1. ID 查詢指令（任何人可用，不分大小寫）
       const idQueryCommands = ['id', '查詢員工編號'];
       if (idQueryCommands.includes(text.toLowerCase())) {
@@ -1410,5 +1420,43 @@ async function handleBackupHistory(event: any) {
   } catch (error) {
     console.error("查詢備份歷史失敗:", error);
     await lineService.replyMessage(event.replyToken, "❌ 查詢備份歷史失敗");
+  }
+}
+
+// 處理面試檢核指令
+async function handleInterviewCheck(event: any, idCard: string) {
+  try {
+    const source = event.source;
+    const userId = source.userId;
+    
+    console.log(`🔍 開始面試檢核，用戶ID: ${userId}, 身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
+    
+    // 執行面試檢核
+    const result = await interviewCheckService.performInterviewCheck(userId, idCard);
+    
+    if (result.combinedResult) {
+      try {
+        await lineService.replyMessage(event.replyToken, result.combinedResult);
+        console.log(`✅ 面試檢核結果已發送`);
+      } catch (replyError) {
+        console.error(`❌ 回覆面試檢核失敗:`, replyError);
+        // 嘗試使用推送
+        const targetId = source.type === 'group' ? source.groupId : userId;
+        try {
+          await lineService.pushMessage(targetId, result.combinedResult);
+          console.log(`✅ 改用推送方式發送面試檢核結果`);
+        } catch (pushError) {
+          console.error(`❌ 推送面試檢核結果也失敗:`, pushError);
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error("面試檢核失敗:", error);
+    try {
+      await lineService.replyMessage(event.replyToken, "❌ 面試檢核功能暫時無法使用，請稍後再試");
+    } catch (e) {
+      console.error("回覆錯誤訊息也失敗:", e);
+    }
   }
 }
