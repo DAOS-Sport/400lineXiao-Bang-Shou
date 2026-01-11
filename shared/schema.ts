@@ -113,6 +113,20 @@ export const systemSettings = pgTable('system_settings', {
   isActiveIdx: index('system_settings_is_active_idx').on(table.isActive)
 }));
 
+// Interview Authorized Users Table - 面試模組授權人員
+export const interviewAuthorizedUsers = pgTable('interview_authorized_users', {
+  userId: text('user_id').primaryKey(), // LINE User ID
+  userName: text('user_name').notNull(), // 使用者姓名
+  canInterviewCheck: text('can_interview_check').default('true').notNull(), // 可使用面試檢核模組
+  canInternalQuery: text('can_internal_query').default('true').notNull(), // 可使用內部查詢模組
+  isActive: text('is_active').default('true').notNull(), // 是否啟用
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+}, (table) => ({
+  isActiveIdx: index('interview_authorized_users_is_active_idx').on(table.isActive),
+  createdAtIdx: index('interview_authorized_users_created_at_idx').on(table.createdAt.desc())
+}));
+
 // Employee Cache Table - 員工快取（加速 ID 查詢）
 export const employeeCache = pgTable('employee_cache', {
   id: varchar('id').primaryKey().default(sql`gen_random_uuid()`), // 主鍵
