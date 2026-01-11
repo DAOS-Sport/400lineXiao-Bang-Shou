@@ -1427,9 +1427,11 @@ async function handleBackupHistory(event: any) {
 async function handleInterviewCheck(event: any, idCard: string) {
   try {
     const source = event.source;
-    const userId = source.userId;
+    const userId = source.userId?.trim(); // 移除可能的空格
     
-    console.log(`🔍 開始面試檢核，用戶ID: ${userId}, 身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
+    console.log(`🔍 開始面試檢核`);
+    console.log(`   用戶ID: [${userId}] (長度: ${userId?.length})`);
+    console.log(`   身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
     
     // 執行面試檢核
     const result = await interviewCheckService.performInterviewCheck(userId, idCard);
