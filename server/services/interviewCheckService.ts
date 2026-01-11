@@ -18,21 +18,37 @@ export class InterviewCheckService {
     try {
       console.log(`🔐 檢查面試授權，userId: ${userId}`);
       
+      // 只按 userId 查詢，避免類型比較問題
       const [user] = await db.select()
         .from(interviewAuthorizedUsers)
-        .where(
-          and(
-            eq(interviewAuthorizedUsers.userId, userId),
-            eq(interviewAuthorizedUsers.isActive, 'true'),
-            eq(interviewAuthorizedUsers.canInterviewCheck, 'true')
-          )
-        );
+        .where(eq(interviewAuthorizedUsers.userId, userId));
 
-      console.log(`🔐 授權查詢結果:`, user ? `找到 ${user.userName}` : '未找到');
+      console.log(`🔐 查詢結果:`, user ? JSON.stringify({
+        userName: user.userName,
+        isActive: user.isActive,
+        isActiveType: typeof user.isActive,
+        canInterviewCheck: user.canInterviewCheck,
+        canInterviewCheckType: typeof user.canInterviewCheck
+      }) : '未找到用戶');
 
-      if (user) {
+      if (!user) {
+        console.log(`❌ 用戶 ${userId} 不在授權名單中`);
+        return { authorized: false };
+      }
+
+      // 在 TypeScript 中檢查權限（支援布林值和字符串，生產環境可能返回布林值）
+      const isActiveVal = user.isActive as unknown;
+      const canCheckVal = user.canInterviewCheck as unknown;
+      const isActive = isActiveVal === true || isActiveVal === 'true' || isActiveVal === 't';
+      const canCheck = canCheckVal === true || canCheckVal === 'true' || canCheckVal === 't';
+
+      console.log(`🔐 權限檢查: isActive=${isActive}, canInterviewCheck=${canCheck}`);
+
+      if (isActive && canCheck) {
         return { authorized: true, userName: user.userName };
       }
+      
+      console.log(`❌ 用戶 ${user.userName} 權限不足 (isActive=${user.isActive}, canInterviewCheck=${user.canInterviewCheck})`);
       return { authorized: false };
     } catch (error) {
       console.error('檢查面試模組授權失敗:', error);
@@ -42,17 +58,22 @@ export class InterviewCheckService {
 
   async isAuthorizedForInternalQuery(userId: string): Promise<{ authorized: boolean; userName?: string }> {
     try {
+      // 只按 userId 查詢，避免類型比較問題
       const [user] = await db.select()
         .from(interviewAuthorizedUsers)
-        .where(
-          and(
-            eq(interviewAuthorizedUsers.userId, userId),
-            eq(interviewAuthorizedUsers.isActive, 'true'),
-            eq(interviewAuthorizedUsers.canInternalQuery, 'true')
-          )
-        );
+        .where(eq(interviewAuthorizedUsers.userId, userId));
 
-      if (user) {
+      if (!user) {
+        return { authorized: false };
+      }
+
+      // 在 TypeScript 中檢查權限（支援布林值和字符串，生產環境可能返回布林值）
+      const isActiveVal = user.isActive as unknown;
+      const canQueryVal = user.canInternalQuery as unknown;
+      const isActive = isActiveVal === true || isActiveVal === 'true' || isActiveVal === 't';
+      const canQuery = canQueryVal === true || canQueryVal === 'true' || canQueryVal === 't';
+
+      if (isActive && canQuery) {
         return { authorized: true, userName: user.userName };
       }
       return { authorized: false };
