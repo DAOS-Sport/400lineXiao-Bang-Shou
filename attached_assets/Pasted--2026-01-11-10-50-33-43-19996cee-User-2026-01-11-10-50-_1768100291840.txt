@@ -1,0 +1,262 @@
+
+2026-01-11 10:50:33.43
+19996cee
+User
+🔐 授權查詢結果: 未找到
+2026-01-11 10:50:33.68
+19996cee
+User
+✅ 面試檢核結果已發送
+Wrap
+Colors
+Integrations
+Replit managed
+These are built-in integrations that work automatically. Create an app and your agent can start using these right away.
+Name
+Type
+Replit Database
+PostgreSQL	
+Replit App Storage
+Object Storage	
+Replit Auth
+Authentication	
+Replit Domains
+Domains	
+Connectors
+These are first-party integrations Replit supports. Sign in once and build with them across your apps.
+Name
+Description
+Connection Status
+No connections added to this app
+MCP Servers for Replit Agent
+Beta
+Provide external context and tools to Replit Agent by connecting to MCP servers.
+Name
+Description
+Connection Status
+
+Figma MCP
+Figma MCP
+Allow Replit Agent to view and rapidly build your designs from Figma	
+Help us expand MCP support
+Tell us which MCP servers would be most useful for your workflows. Your feedback will help shape what we build next.
+Git Providers
+Connect your git provider to push, pull, and sync code via the Git pane. Not accessible to Replit Agent.
+Name
+Description
+Connection Status
+
+Bitbucket
+Bitbucket
+Sync code to Bitbucket repositories from your Replit apps	
+
+GitHub
+GitHub
+Sync code to GitHub repositories from your Replit apps	
+
+GitLab
+GitLab
+Sync code to GitLab projects from your Replit apps	
+import { db } from '../db';
+import { interviewAuthorizedUsers } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
+import { lifeguardLicenseService } from './lifeguardLicenseService';
+import { storage } from '../storage';
+
+interface InterviewCheckResult {
+  authorized: boolean;
+  userName?: string;
+  licenseResult?: string;
+  cautionResult?: string;
+  combinedResult?: string;
+}
+
+export class InterviewCheckService {
+
+  async isAuthorizedForInterview(userId: string): Promise<{ authorized: boolean; userName?: string }> {
+    try {
+      console.log(`🔐 檢查面試授權，userId: ${userId}`);
+      
+      const [user] = await db.select()
+        .from(interviewAuthorizedUsers)
+        .where(
+          and(
+            eq(interviewAuthorizedUsers.userId, userId),
+            eq(interviewAuthorizedUsers.isActive, 'true'),
+            eq(interviewAuthorizedUsers.canInterviewCheck, 'true')
+          )
+        );
+
+      console.log(`🔐 授權查詢結果:`, user ? `找到 ${user.userName}` : '未找到');
+
+      if (user) {
+        return { authorized: true, userName: user.userName };
+      }
+      return { authorized: false };
+    } catch (error) {
+      console.error('檢查面試模組授權失敗:', error);
+      return { authorized: false };
+    }
+  }
+
+  async isAuthorizedForInternalQuery(userId: string): Promise<{ authorized: boolean; userName?: string }> {
+    try {
+      const [user] = await db.select()
+        .from(interviewAuthorizedUsers)
+        .where(
+          and(
+            eq(interviewAuthorizedUsers.userId, userId),
+            eq(interviewAuthorizedUsers.isActive, 'true'),
+            eq(interviewAuthorizedUsers.canInternalQuery, 'true')
+          )
+        );
+
+      if (user) {
+        return { authorized: true, userName: user.userName };
+      }
+      return { authorized: false };
+    } catch (error) {
+      console.error('檢查內部查詢模組授權失敗:', error);
+      return { authorized: false };
+    }
+  }
+
+  async performInterviewCheck(userId: string, idCard: string): Promise<InterviewCheckResult> {
+    const authResult = await this.isAuthorizedForInterview(userId);
+    
+    if (!authResult.authorized) {
+      return {
+        authorized: false,
+        combinedResult: '❌ 您無權使用面試檢核功能\n請聯繫管理員取得授權'
+      };
+    }
+
+    console.log(`🔍 ${authResult.userName} 正在執行面試檢核，身分證: ${this.maskIdCard(idCard)}`);
+
+    const licenseResult = await lifeguardLicenseService.queryLicense(idCard);
+    const licenseText = lifeguardLicenseService.formatLicenseResult(licenseResult, idCard);
+/
+Open a new tab to test authentication and file uploads.
+
+Improve user identity verification and error handling for group chats
+Release to live system testing
+2 / 3
+已完成！
+
+✅ 格式已更新
+舊格式	新格式
+面試 A123456789	面試A123456789 ✅
+現在支援無空格格式（有空格也可以）
+
+📋 授權人員名單（已設定）
+姓名	LINE User ID	狀態
+蔣碩仁	U2e4e3766364714c9f6b223b530cd051e	✅ 已授權
+夏凱莉	U6f29669dd3afff70c18c37f4cd3ea801	✅ 已授權
+莊嘉郡	Uf8dc91d771a183d76a920ed4dbe84031	✅ 已授權
+陳柏榮	U8fd0e4be4e44a1304f9fa2e9855f4559	✅ 已授權
+夏鈺婷	U43a939938384fe34da7a136ab51fdf6a	✅ 已授權
+莊嘉容	Ue96d3a9e804ebbb9660589d81aa52e57	✅ 已授權
+莊柏彥	U1377e3b691add6a9b93699eb02dea502	✅ 已授權
+請測試： 輸入 面試A131967933
+
+Checkpoint made
+Update interview check module to accept IDs without spaces
+Worked for 35 seconds
+記得 這串打下去 要先驗證身分在去做查詢
+
+Checkpoint made
+•
+Free
+•
+Publish
+Published your App
+現在狀態 我記得我加入了
+
+Checkpoint made
+Clarify authorized user status for interview check
+Worked for 1 minute
+✅ 查詢完成
+
+系統識別碼: U1377e3b691add6a9b93699eb02dea502
+員工編號: 1305374
+姓名: 莊柏彥
+狀態: 在職
+我用這支帳號
+
+一樣
+
+Checkpoint made
+Add debugging logs to interview authorization checks
+Worked for 44 seconds
+你再看看
+
+Checkpoint made
+•
+Free
+•
+Publish
+Published your App
+把這邊的錯誤邏輯掉出來
+
+不是 驗證ID時前面不要加空格userId:U1377e3b691add6a9b93699eb02dea502
+
+Checkpoint made
+Improve user ID validation for interview checks
+Worked for 1 minute
+Want users to get these changes? Republish this App.
+Checkpoint made
+•
+Free
+•
+Publish
+Published your App
+姓名 LINE User ID 狀態
+蔣碩仁 U2e4e3766364714c9f6b223b530cd051e ✅ 已授權
+夏凱莉 U6f29669dd3afff70c18c37f4cd3ea801 ✅ 已授權
+莊嘉郡 Uf8dc91d771a183d76a920ed4dbe84031 ✅ 已授權
+陳柏榮 U8fd0e4be4e44a1304f9fa2e9855f4559 ✅ 已授權
+夏鈺婷 U43a939938384fe34da7a136ab51fdf6a ✅ 已授權
+莊嘉容 Ue96d3a9e804ebbb9660589d81aa52e57 ✅ 已授權
+莊柏彥 U1377e3b691add6a9b93699eb02dea502 ✅ 已授權
+檢查面試授權，userId: U1377e3b691add6a9b93699eb02dea502
+阿已授權 我的前端在輸入對應指令時瘋狂跳出無權使用是?
+
+蔣碩仁 U2e4e3766364714c9f6b223b530cd051e ✅ 已授權
+夏凱莉 U6f29669dd3afff70c18c37f4cd3ea801 ✅ 已授權
+莊嘉郡 Uf8dc91d771a183d76a920ed4dbe84031 ✅ 已授權
+陳柏榮 U8fd0e4be4e44a1304f9fa2e9855f4559 ✅ 已授權
+夏鈺婷 U43a939938384fe34da7a136ab51fdf6a ✅ 已授權
+莊嘉容 Ue96d3a9e804ebbb9660589d81aa52e57 ✅ 已授權
+莊柏彥 U1377e3b691add6a9b93699eb02dea502 ✅ 已授權
+這幾個權限改成跟陳柏榮一樣的話還會出現權限問題嗎?
+
+我用過了仍然權限不足 我用U1377e3b691add6a9b93699eb02dea502這隻帳號做測試
+我希望這邊的驗證機制跟代碼你在確認下 因為慎用名單跟救生查詢基本上人員一樣這邊權限不能有問題
+
+Start building
+Checkpoint made
+•
+Free
+Transitioned from Plan to Build mode
+Checkpoint made
+Improve user identity verification and error handling for group chats
+Worked for 2 minutes
+Want users to get these changes? Republish this App.
+她媽不是群組不要亂搞
+
+我理解了。讓我查看日誌確認實際情況：
+
+抱歉！讓我確認：您是在私訊 Bot 測試嗎？
+
+如果是私訊，source.type 應該是 user，不是 group，userId 應該正常取得。
+
+請告訴我：您收到的錯誤訊息是什麼？
+
+「無法識別您的身份」？
+還是「您無權使用面試檢核功能」？
+這樣我才能確定問題在哪裡修正。
+
+Worked for 17 seconds
+
+Scroll to latest
+userId能取得 這格式LOG日誌的
