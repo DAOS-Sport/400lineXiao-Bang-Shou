@@ -26,14 +26,14 @@ export class CautionListService {
   private readonly baseUrl: string;
 
   constructor() {
-    this.apiKey = process.env.RAGIC_CAUTION_API_KEY || '';
+    this.apiKey = process.env.RAGIC_API_KEY || '';
     this.baseUrl = 'https://ap7.ragic.com/xinsheng/ragicforms4/21/3';
   }
 
   async queryByIdCard(idCard: string): Promise<CautionListResult> {
     if (!this.apiKey) {
-      console.error('RAGIC_CAUTION_API_KEY 缺失');
-      return { found: false, records: [], error: 'RAGIC 慎用名單 API Key 未設定' };
+      console.error('RAGIC_API_KEY 缺失');
+      return { found: false, records: [], error: 'RAGIC API Key 未設定' };
     }
 
     try {
