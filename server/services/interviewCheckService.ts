@@ -16,6 +16,8 @@ export class InterviewCheckService {
 
   async isAuthorizedForInterview(userId: string): Promise<{ authorized: boolean; userName?: string }> {
     try {
+      console.log(`🔐 檢查面試授權，userId: ${userId}`);
+      
       const [user] = await db.select()
         .from(interviewAuthorizedUsers)
         .where(
@@ -25,6 +27,8 @@ export class InterviewCheckService {
             eq(interviewAuthorizedUsers.canInterviewCheck, 'true')
           )
         );
+
+      console.log(`🔐 授權查詢結果:`, user ? `找到 ${user.userName}` : '未找到');
 
       if (user) {
         return { authorized: true, userName: user.userName };
