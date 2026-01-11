@@ -51,9 +51,9 @@ def check_lifeguard(id_card):
                 return
 
         if "查無資料" in res_post.text:
-            print(json.dumps({"success": False, "error": "查無資料"}, ensure_ascii=False))
+            print(json.dumps({"success": False, "error": "此人未考取救生員證照"}, ensure_ascii=False))
         else:
-            print(json.dumps({"success": False, "error": "查詢異常"}, ensure_ascii=False))
+            print(json.dumps({"success": False, "error": "此人未考取救生員證照"}, ensure_ascii=False))
 
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False))

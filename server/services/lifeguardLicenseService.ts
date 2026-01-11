@@ -122,11 +122,14 @@ export class LifeguardLicenseService {
 
   formatLicenseResult(result: LicenseQueryResult, idCard: string): string {
     if (!result.success) {
+      if (result.error === '此人未考取救生員證照' || result.error === '查無資料') {
+        return `ℹ️ 救生員證照查詢結果\n身分證：${this.maskIdCard(idCard)}\n此人未考取救生員證照`;
+      }
       return `❌ 救生員證照查詢失敗\n身分證：${this.maskIdCard(idCard)}\n原因：${result.error || '未知錯誤'}`;
     }
 
     if (!result.data || result.data.length === 0) {
-      return `❌ 查無救生員證照\n身分證：${this.maskIdCard(idCard)}\n此人目前無有效救生員證照`;
+      return `ℹ️ 救生員證照查詢結果\n身分證：${this.maskIdCard(idCard)}\n此人未考取救生員證照`;
     }
 
     let response = `✅ 救生員證照查詢結果\n身分證：${this.maskIdCard(idCard)}\n`;
