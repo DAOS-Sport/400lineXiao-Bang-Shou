@@ -19,19 +19,12 @@ export class CautionListService {
   private readonly apiKey: string;
   private readonly domain: string;
   private readonly baseUrl: string;
-  private readonly sheetIndex = '5';
+  private readonly sheetIndex = '3';
 
   constructor() {
     this.apiKey = process.env.RAGIC_API_KEY || '';
-    this.domain = process.env.RAGIC_DOMAIN || '';
-    const databaseId = process.env.RAGIC_DATABASE_ID || '';
-    
-    if (databaseId.startsWith('http')) {
-      const urlObj = new URL(databaseId);
-      this.baseUrl = `https://${urlObj.hostname}${urlObj.pathname.replace(/\/$/, '')}`;
-    } else {
-      this.baseUrl = `https://${this.domain}/${databaseId}`;
-    }
+    this.domain = process.env.RAGIC_DOMAIN || 'ap7.ragic.com';
+    this.baseUrl = `https://${this.domain}/xinsheng/ragicforms4/21`;
   }
 
   async queryByIdCard(idCard: string): Promise<CautionListResult> {
