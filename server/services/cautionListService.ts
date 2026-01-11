@@ -1,12 +1,18 @@
 interface CautionRecord {
   id: string;
   name: string;
+  employeeId: string;
   idCard: string;
-  reason: string;
-  reportedBy: string;
-  reportDate: string;
-  position: string;
+  phone: string;
   location: string;
+  gender: string;
+  birthDate: string;
+  position: string;
+  address: string;
+  reporterEmployeeId: string;
+  incidentDate: string;
+  reason: string;
+  internalHandling: string;
 }
 
 interface CautionListResult {
@@ -66,12 +72,18 @@ export class CautionListService {
         records.push({
           id: recordId,
           name: r['1003928'] || '',
+          employeeId: r['1005613'] || '',
           idCard: r['1003930'] || '',
-          reason: r['1005627'] || r['1005628'] || r['1005615'] || '',
-          reportedBy: r['1003936'] || '',
-          reportDate: r['105'] || '',
+          phone: r['1003929'] || '',
+          location: r['1003932'] || '',
+          gender: r['1003931'] || '',
+          birthDate: r['1005621'] || '',
           position: r['1003933'] || '',
-          location: r['1003932'] || ''
+          address: r['1003935'] || '',
+          reporterEmployeeId: r['1005614'] || '',
+          incidentDate: r['1005626'] || '',
+          reason: r['1005627'] || r['1005628'] || r['1005615'] || '',
+          internalHandling: r['1005616'] || ''
         });
       }
 
@@ -97,18 +109,26 @@ export class CautionListService {
       return `✅ 此人不在慎用名單中`;
     }
 
-    let response = `⚠️ 注意！此人在慎用名單中\n`;
-    response += `身分證：${this.maskIdCard(idCard)}\n`;
+    let response = `🚨 注意！此人在慎用名單中\n`;
     response += `━━━━━━━━━━━━━━━━\n`;
 
     result.records.forEach((record, index) => {
-      response += `\n📌 記錄 #${index + 1}\n`;
-      response += `姓名：${record.name}\n`;
-      if (record.position) response += `應聘職位：${record.position}\n`;
+      response += `\n【慎用資料】\n`;
+      if (record.name) response += `姓名：${record.name}\n`;
+      if (record.employeeId) response += `員工編號：${record.employeeId}\n`;
+      response += `身分證字號：${this.maskIdCard(idCard)}\n`;
+      if (record.phone) response += `電話：${record.phone}\n`;
       if (record.location) response += `應聘館別：${record.location}\n`;
-      if (record.reason) response += `事由：${record.reason}\n`;
-      if (record.reportedBy) response += `提報人：${record.reportedBy}\n`;
-      if (record.reportDate) response += `提報日期：${record.reportDate}\n`;
+      if (record.gender) response += `性別：${record.gender}\n`;
+      if (record.birthDate) response += `出生年月日：${record.birthDate}\n`;
+      if (record.position) response += `應聘職位：${record.position}\n`;
+      if (record.address) response += `聯絡地址：${record.address}\n`;
+      
+      response += `\n【慎用緣由】\n`;
+      if (record.reporterEmployeeId) response += `通報人員編：${record.reporterEmployeeId}\n`;
+      if (record.incidentDate) response += `發生時日（估）：${record.incidentDate}\n`;
+      if (record.reason) response += `具體事由：${record.reason}\n`;
+      if (record.internalHandling) response += `內部處理方式：${record.internalHandling}\n`;
     });
 
     return response;
