@@ -50,6 +50,10 @@ app.use((req, res, next) => {
     const { simpleBackupService } = await import('./services/simpleBackupService');
     await simpleBackupService.initializeBackupSystem();
     
+    // 初始化面試檢核授權用戶（確保生產環境有資料）
+    const { initializeAuthorizedUsers } = await import('./services/initializeAuthorizedUsers');
+    await initializeAuthorizedUsers();
+    
     // 啟動系統保活服務
     const { keepAliveService } = await import('./services/keepAliveService');
     keepAliveService.start();
