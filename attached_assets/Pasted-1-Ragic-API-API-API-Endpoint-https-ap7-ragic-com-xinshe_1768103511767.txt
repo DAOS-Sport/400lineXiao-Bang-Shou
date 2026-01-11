@@ -1,0 +1,168 @@
+1. Ragic API 設定資訊
+首先，你需要準備 API 的連線資訊：
+
+API Endpoint (網址): https://ap7.ragic.com/xinsheng/ragicforms4/21/3
+
+API Key: 你需要在 Ragic 的「個人設定」中產生 API Key。
+
+查詢邏輯: 我們使用 Ragic 的篩選參數 where，針對 身分證字號 (1003930) 進行完全匹配查詢。
+
+2. TypeScript 介面定義 (Type Definition)
+Ragic 的欄位都是數字編號，為了讓程式碼好讀，我們需要定義一個介面來映射這些編號。
+
+TypeScript
+
+// types/ragic.ts
+
+export interface RagicRestrictedUser {
+  _index_id?: number;   // Ragic 內部索引
+  '1003928': string;    // 姓名
+  '1003930': string;    // 身分證字號 (Key)
+  '1005628': string;    // 具體事由 (主表單)
+  '1005615'?: string;   // 具體事由 (子表格，如果有)
+  '1005616': string;    // 內部處理方式
+  '1003929'?: string;   // 電話
+  '105'?: string;       // 建立日期
+}
+
+export interface RagicApiResponse {
+  [key: string]: RagicRestrictedUser; // Ragic API 回傳是 Key-Value 物件，Key 是資料 ID
+}
+3. 新增 Ragic 查詢服務 (ragicService.ts)
+這個服務專門用來跟 Ragic 溝通。請將 YOUR_RAGIC_API_KEY 換成你實際的 Key (建議放在環境變數)。
+
+TypeScript
+
+// services/ragicService.ts
+import fetch from 'node-fetch'; // 如果環境是 Node 18+ 原生支援 fetch，則不需要這行
+import { RagicApiResponse, RagicRestrictedUser } from '../types/ragic';
+
+const RAGIC_API_URL = 'https://ap7.ragic.com/xinsheng/ragicforms4/21/3';
+const RAGIC_API_KEY = process.env.RAGIC_API_KEY || '你的_RAGIC_API_KEY';
+
+export const ragicService = {
+  /**
+   * 根據身分證查詢慎用名單
+   * @param idCard 身分證字號
+   */
+  async queryCautionList(idCard: string): Promise<RagicRestrictedUser | null> {
+    try {
+      // 構建查詢網址: 篩選欄位 1003930 (身分證) 等於 輸入的 idCard
+      const url = `${RAGIC_API_URL}?where=1003930,eq,${idCard}`;
+
+      console.log(`🌐 正在查詢 Ragic 資料庫: ${idCard}`);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${Buffer.from(RAGIC_API_KEY).toString('base64')}`,
+          // 或者如果是透過 URL 參數帶 Key: 
+          // 'Authorization' header 比較安全
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`Ragic API Error: ${response.statusText}`);
+        return null;
+      }
+
+      const data = await response.json() as RagicApiResponse;
+      
+      // Ragic 回傳的是一個物件，Key 是資料 ID。如果物件是空的，代表沒查到。
+      const keys = Object.keys(data);
+      if (keys.length > 0) {
+        const record = data[keys[0]]; // 取得第一筆符合的資料
+        return record;
+      }
+
+      return null; // 沒查到
+
+    } catch (error) {
+      console.error('Ragic 查詢失敗:', error);
+      return null; // 發生錯誤視為沒查到 (或依需求拋出錯誤)
+    }
+  },
+
+  /**
+   * 格式化警告訊息
+   */
+  formatCautionMessage(record: RagicRestrictedUser): string {
+    const name = record['1003928'];
+    const reason = record['1005628'] || record['1005615'] || '未填寫原因';
+    const handling = record['1005616'] || '無';
+    const date = record['105'] || '未知日期';
+
+    return `⚠️ 【慎用名單警告】\n姓名：${name}\n通報日期：${date}\n具體事由：${reason}\n處理方式：${handling}`;
+  }
+};
+4. 整合回主程式 (InterviewCheckService)
+現在我們可以把剛剛寫好的 ragicService 整合進去，替換掉原本假的 checkCautionList。
+
+TypeScript
+
+// services/interviewCheckService.ts (部分修改)
+import { ragicService } from './ragicService'; // 引入剛剛寫的服務
+
+// ... (前面的 code 不變)
+
+export class InterviewCheckService {
+
+  // ... (isAuthorizedForInterview 不變)
+
+  async performInterviewCheck(userId: string, idCard: string): Promise<InterviewCheckResult> {
+    // 1. 權限檢查 (略...)
+    // ...
+
+    console.log(`🔍 正在執行面試檢核...`);
+
+    // 2. 平行執行「證照查詢」與「Ragic 慎用名單查詢」以節省時間
+    const [licenseResultRaw, ragicRecord] = await Promise.all([
+       lifeguardLicenseService.queryLicense(idCard).catch(e => null), // 容錯
+       ragicService.queryCautionList(idCard)
+    ]);
+
+    // 3. 處理證照結果
+    let licenseText = '';
+    if (licenseResultRaw) {
+       licenseText = lifeguardLicenseService.formatLicenseResult(licenseResultRaw, idCard);
+    } else {
+       licenseText = '⚠️ 證照系統連線失敗或無資料';
+    }
+
+    // 4. 處理 Ragic 慎用名單結果
+    let cautionText = '✅ 此人不在慎用名單中';
+    let isRisky = false;
+
+    if (ragicRecord) {
+      isRisky = true;
+      cautionText = ragicService.formatCautionMessage(ragicRecord);
+    }
+
+    // 5. 組合最終報告
+    let combinedResult = `📋 救生員資格與背景查核報告\n`;
+    combinedResult += `查詢人：${authResult.userName}\n`;
+    combinedResult += `時間：${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}\n`;
+    combinedResult += `━━━━━━━━━━━━━━━━\n`;
+    
+    // 如果有風險，用醒目標示
+    if (isRisky) {
+       combinedResult += `${cautionText}\n`;
+       combinedResult += `━━━━━━━━━━━━━━━━\n`;
+    } else {
+       combinedResult += `✅ 內部名單檢查通過 (Ragic)\n\n`;
+    }
+
+    combinedResult += `${licenseText}`;
+
+    // 6. 寫入 Log (略...)
+    // ...
+
+    return {
+      authorized: true,
+      userName: authResult.userName,
+      licenseResult: licenseText,
+      cautionResult: cautionText,
+      combinedResult
+    };
+  }
+}

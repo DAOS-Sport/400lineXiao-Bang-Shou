@@ -23,31 +23,28 @@ interface CautionListResult {
 
 export class CautionListService {
   private readonly apiKey: string;
-  private readonly domain: string;
   private readonly baseUrl: string;
-  private readonly sheetIndex = '3';
 
   constructor() {
-    this.apiKey = process.env.RAGIC_API_KEY || '';
-    this.domain = process.env.RAGIC_DOMAIN || 'ap7.ragic.com';
-    this.baseUrl = `https://${this.domain}/xinsheng/ragicforms4/21`;
+    this.apiKey = process.env.RAGIC_CAUTION_API_KEY || '';
+    this.baseUrl = 'https://ap7.ragic.com/xinsheng/ragicforms4/21/3';
   }
 
   async queryByIdCard(idCard: string): Promise<CautionListResult> {
     if (!this.apiKey) {
-      console.error('RAGIC API Key 缺失');
-      return { found: false, records: [], error: 'RAGIC 設定不完整' };
+      console.error('RAGIC_CAUTION_API_KEY 缺失');
+      return { found: false, records: [], error: 'RAGIC 慎用名單 API Key 未設定' };
     }
 
     try {
-      const url = `${this.baseUrl}/${this.sheetIndex}?api&where=1003930,eq,${encodeURIComponent(idCard)}`;
+      const url = `${this.baseUrl}?api&where=1003930,eq,${encodeURIComponent(idCard)}`;
       
       console.log(`🔍 查詢慎用名單: ${this.maskIdCard(idCard)}`);
       
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Basic ${Buffer.from(this.apiKey + ':').toString('base64')}`,
+          'Authorization': `Basic ${Buffer.from(this.apiKey).toString('base64')}`,
           'Content-Type': 'application/json'
         }
       });
