@@ -28,8 +28,12 @@ export class LifeguardLicenseService {
       }, 20000);
 
       try {
-        // 直接使用 python3 執行（依賴已透過 Nix 安裝）
-        const pythonProcess = spawn('python3', [this.scriptPath, idCard], {
+        // 使用 nix-shell 執行 Python 腳本（確保依賴可用）
+        const command = `python3 '${this.scriptPath}' '${idCard}'`;
+        const pythonProcess = spawn('nix-shell', [
+          '-p', 'python311', 'python311Packages.requests', 'python311Packages.beautifulsoup4',
+          '--run', command
+        ], {
           cwd: process.cwd(),
           env: process.env
         });
