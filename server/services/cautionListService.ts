@@ -61,11 +61,18 @@ export class CautionListService {
       }
 
       const records: CautionRecord[] = [];
+      const normalizedQueryId = idCard.toUpperCase().trim();
       
       for (const [recordId, record] of Object.entries(data)) {
         if (recordId === 'status' || !record || typeof record !== 'object') continue;
         
         const r = record as Record<string, any>;
+        
+        const recordIdCard = (r['身分證字號'] || '').toUpperCase().trim();
+        if (recordIdCard !== normalizedQueryId) {
+          console.log(`⚠️ 身分證不符，跳過記錄: 查詢=${normalizedQueryId}, 記錄=${recordIdCard}`);
+          continue;
+        }
         
         const location = Array.isArray(r['應聘館別']) ? r['應聘館別'].join('、') : (r['應聘館別'] || '');
         const position = Array.isArray(r['應聘職位']) ? r['應聘職位'].join('、') : (r['應聘職位'] || '');
@@ -90,7 +97,7 @@ export class CautionListService {
           id: recordId,
           name: r['姓名'] || '',
           employeeId: r['員工編號'] || '',
-          idCard: r['身分證字號'] || '',
+          idCard: recordIdCard,
           phone: r['電話'] || '',
           location,
           gender: r['性別'] || '',

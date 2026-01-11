@@ -1428,12 +1428,14 @@ async function handleInterviewCheck(event: any, idCard: string) {
   try {
     const source = event.source;
     let userId = source.userId?.trim();
+    const targetId = source.type === 'group' ? source.groupId : userId;
+    const maskedIdCard = `${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`;
     
     console.log(`🔍 開始面試檢核`);
     console.log(`   來源類型: ${source.type}`);
     console.log(`   原始 userId: [${source.userId}]`);
     console.log(`   群組 ID: [${source.groupId || 'N/A'}]`);
-    console.log(`   身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
+    console.log(`   身分證: ${maskedIdCard}`);
     
     // 如果 userId 為空，說明用戶未加 Bot 為好友（LINE 隱私保護機制）
     if (!userId) {
@@ -1457,32 +1459,42 @@ async function handleInterviewCheck(event: any, idCard: string) {
     
     console.log(`   處理後 userId: [${userId}] (長度: ${userId.length})`);
     
+    // 先回覆「查詢中...」提示
+    try {
+      await lineService.replyMessage(event.replyToken, 
+        `🔍 正在查詢面試檢核資料...\n` +
+        `身分證：${maskedIdCard}\n` +
+        `━━━━━━━━━━━━━━━━\n` +
+        `📋 慎用名單檢核中...\n` +
+        `📜 救生員證照查詢中...\n\n` +
+        `請稍候，結果將於幾秒後顯示`
+      );
+      console.log(`✅ 已發送查詢中提示`);
+    } catch (replyError) {
+      console.error(`⚠️ 發送查詢中提示失敗，繼續執行查詢:`, replyError);
+    }
+    
     // 執行面試檢核
     const result = await interviewCheckService.performInterviewCheck(userId, idCard);
     
     if (result.combinedResult) {
       try {
-        await lineService.replyMessage(event.replyToken, result.combinedResult);
-        console.log(`✅ 面試檢核結果已發送`);
-      } catch (replyError) {
-        console.error(`❌ 回覆面試檢核失敗:`, replyError);
-        // 嘗試使用推送
-        const targetId = source.type === 'group' ? source.groupId : userId;
-        try {
-          await lineService.pushMessage(targetId, result.combinedResult);
-          console.log(`✅ 改用推送方式發送面試檢核結果`);
-        } catch (pushError) {
-          console.error(`❌ 推送面試檢核結果也失敗:`, pushError);
-        }
+        // 使用 pushMessage 發送結果（因為 replyToken 已用於查詢中提示）
+        await lineService.pushMessage(targetId, result.combinedResult);
+        console.log(`✅ 面試檢核結果已推送`);
+      } catch (pushError) {
+        console.error(`❌ 推送面試檢核結果失敗:`, pushError);
       }
     }
     
   } catch (error) {
     console.error("面試檢核失敗:", error);
+    const source = event.source;
+    const targetId = source.type === 'group' ? source.groupId : source.userId;
     try {
-      await lineService.replyMessage(event.replyToken, "❌ 面試檢核功能暫時無法使用，請稍後再試");
+      await lineService.pushMessage(targetId, "❌ 面試檢核功能暫時無法使用，請稍後再試");
     } catch (e) {
-      console.error("回覆錯誤訊息也失敗:", e);
+      console.error("推送錯誤訊息也失敗:", e);
     }
   }
 }
