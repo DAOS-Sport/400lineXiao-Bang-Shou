@@ -43,10 +43,10 @@ export class CautionListService {
     console.log(`✅ RAGIC_CAUTION_API_KEY 已載入 (長度: ${apiKey.length})`);
 
     try {
-      const url = `${this.baseUrl}?api&where=身分證字號,eq,${encodeURIComponent(idCard)}`;
+      const url = `${this.baseUrl}?api`;
       
       console.log(`🔍 查詢慎用名單: ${this.maskIdCard(idCard)}`);
-      console.log(`📡 API URL: ${this.baseUrl}?api&where=身分證字號,eq,${this.maskIdCard(idCard)}`);
+      console.log(`📡 API URL: ${this.baseUrl}?api (獲取所有記錄，在應用層比對身分證)`);
       
       const response = await fetch(url, {
         method: 'GET',
