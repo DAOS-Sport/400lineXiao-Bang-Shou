@@ -23,24 +23,41 @@ interface CautionListResult {
 
 export class CautionListService {
   private readonly baseUrl: string;
+  
+  private readonly FIELDS = {
+    ID_CARD: '身分證字號',
+    NAME: '姓名',
+    EMPLOYEE_ID: '員工編號',
+    PHONE: '電話',
+    LOCATION: '應聘館別',
+    GENDER: '性別',
+    REASON: '具體事由',
+    BIRTH_DATE: '出生年月日',
+    POSITION: '應聘職位',
+    ADDRESS: '聯絡地址',
+    REPORTER_EMPLOYEE_ID: '通報人員編',
+    INCIDENT_DATE: '發生時日（估）',
+    INTERNAL_HANDLING: '內部處理方式',
+    REASON_CONCAT: '具體事由（串）'
+  };
 
   constructor() {
-    this.baseUrl = 'https://ap7.ragic.com/xinsheng/ragicforms4/21/3';
+    this.baseUrl = 'https://ap7.ragic.com/xinsheng/ragicforms4/21';
   }
 
   private getApiKey(): string {
-    return process.env.RAGIC_CAUTION_API_KEY || '';
+    return process.env.RAGIC_API_KEY || '';
   }
 
   async queryByIdCard(idCard: string): Promise<CautionListResult> {
     const apiKey = this.getApiKey();
     
     if (!apiKey) {
-      console.error('❌ RAGIC_CAUTION_API_KEY 缺失（每次查詢時動態檢查）');
-      return { found: false, records: [], error: 'RAGIC 慎用名單 API Key 未設定' };
+      console.error('❌ RAGIC_API_KEY 缺失（每次查詢時動態檢查）');
+      return { found: false, records: [], error: 'RAGIC API Key 未設定' };
     }
 
-    console.log(`✅ RAGIC_CAUTION_API_KEY 已載入 (長度: ${apiKey.length})`);
+    console.log(`✅ RAGIC_API_KEY 已載入 (長度: ${apiKey.length})`);
 
     try {
       const url = `${this.baseUrl}?api`;
@@ -75,16 +92,18 @@ export class CautionListService {
         
         const r = record as Record<string, any>;
         
-        const recordIdCard = (r['身分證字號'] || '').toUpperCase().trim();
+        const recordIdCard = (r[this.FIELDS.ID_CARD] || '').toUpperCase().trim();
         if (recordIdCard !== normalizedQueryId) {
           console.log(`⚠️ 身分證不符，跳過記錄: 查詢=${normalizedQueryId}, 記錄=${recordIdCard}`);
           continue;
         }
         
-        const location = Array.isArray(r['應聘館別']) ? r['應聘館別'].join('、') : (r['應聘館別'] || '');
-        const position = Array.isArray(r['應聘職位']) ? r['應聘職位'].join('、') : (r['應聘職位'] || '');
+        const locationField = r[this.FIELDS.LOCATION];
+        const positionField = r[this.FIELDS.POSITION];
+        const location = Array.isArray(locationField) ? locationField.join('、') : (locationField || '');
+        const position = Array.isArray(positionField) ? positionField.join('、') : (positionField || '');
         
-        let reason = r['具體事由'] || '';
+        let reason = r[this.FIELDS.REASON] || '';
         let internalHandling = '';
         let reporterEmployeeId = '';
         let incidentDate = '';
@@ -93,24 +112,24 @@ export class CautionListService {
         if (subtable && typeof subtable === 'object') {
           const firstEntry = Object.values(subtable)[0] as Record<string, any> | undefined;
           if (firstEntry) {
-            reason = firstEntry['具體事由'] || firstEntry['具體事由（串）'] || reason;
-            internalHandling = firstEntry['內部處理方式'] || '';
-            reporterEmployeeId = firstEntry['通報人員編'] || '';
-            incidentDate = firstEntry['發生時日（估）'] || '';
+            reason = firstEntry[this.FIELDS.REASON] || firstEntry[this.FIELDS.REASON_CONCAT] || reason;
+            internalHandling = firstEntry[this.FIELDS.INTERNAL_HANDLING] || '';
+            reporterEmployeeId = firstEntry[this.FIELDS.REPORTER_EMPLOYEE_ID] || '';
+            incidentDate = firstEntry[this.FIELDS.INCIDENT_DATE] || '';
           }
         }
         
         records.push({
           id: recordId,
-          name: r['姓名'] || '',
-          employeeId: r['員工編號'] || '',
+          name: r[this.FIELDS.NAME] || '',
+          employeeId: r[this.FIELDS.EMPLOYEE_ID] || '',
           idCard: recordIdCard,
-          phone: r['電話'] || '',
+          phone: r[this.FIELDS.PHONE] || '',
           location,
-          gender: r['性別'] || '',
-          birthDate: r['出生年月日'] || '',
+          gender: r[this.FIELDS.GENDER] || '',
+          birthDate: r[this.FIELDS.BIRTH_DATE] || '',
           position,
-          address: r['聯絡地址'] || '',
+          address: r[this.FIELDS.ADDRESS] || '',
           reporterEmployeeId,
           incidentDate,
           reason,
