@@ -26,14 +26,14 @@ export class CautionListService {
   private readonly baseUrl: string;
 
   constructor() {
-    this.apiKey = process.env.RAGIC_API_KEY || '';
+    this.apiKey = process.env.RAGIC_CAUTION_API_KEY || '';
     this.baseUrl = 'https://ap7.ragic.com/xinsheng/ragicforms4/21/3';
   }
 
   async queryByIdCard(idCard: string): Promise<CautionListResult> {
     if (!this.apiKey) {
-      console.error('RAGIC_API_KEY 缺失');
-      return { found: false, records: [], error: 'RAGIC API Key 未設定' };
+      console.error('RAGIC_CAUTION_API_KEY 缺失');
+      return { found: false, records: [], error: 'RAGIC 慎用名單 API Key 未設定' };
     }
 
     try {
@@ -44,7 +44,7 @@ export class CautionListService {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Basic ${Buffer.from(this.apiKey).toString('base64')}`,
+          'Authorization': `Basic ${this.apiKey}`,
           'Content-Type': 'application/json'
         }
       });
@@ -66,21 +66,41 @@ export class CautionListService {
         if (recordId === 'status' || !record || typeof record !== 'object') continue;
         
         const r = record as Record<string, any>;
+        
+        const location = Array.isArray(r['應聘館別']) ? r['應聘館別'].join('、') : (r['應聘館別'] || '');
+        const position = Array.isArray(r['應聘職位']) ? r['應聘職位'].join('、') : (r['應聘職位'] || '');
+        
+        let reason = r['具體事由'] || '';
+        let internalHandling = '';
+        let reporterEmployeeId = '';
+        let incidentDate = '';
+        
+        const subtable = r['_subtable_1005619'];
+        if (subtable && typeof subtable === 'object') {
+          const firstEntry = Object.values(subtable)[0] as Record<string, any> | undefined;
+          if (firstEntry) {
+            reason = firstEntry['具體事由'] || firstEntry['具體事由（串）'] || reason;
+            internalHandling = firstEntry['內部處理方式'] || '';
+            reporterEmployeeId = firstEntry['通報人員編'] || '';
+            incidentDate = firstEntry['發生時日（估）'] || '';
+          }
+        }
+        
         records.push({
           id: recordId,
-          name: r['1003928'] || '',
-          employeeId: r['1005613'] || '',
-          idCard: r['1003930'] || '',
-          phone: r['1003929'] || '',
-          location: r['1003932'] || '',
-          gender: r['1003931'] || '',
-          birthDate: r['1005621'] || '',
-          position: r['1003933'] || '',
-          address: r['1003935'] || '',
-          reporterEmployeeId: r['1005614'] || '',
-          incidentDate: r['1005626'] || '',
-          reason: r['1005627'] || r['1005628'] || r['1005615'] || '',
-          internalHandling: r['1005616'] || ''
+          name: r['姓名'] || '',
+          employeeId: r['員工編號'] || '',
+          idCard: r['身分證字號'] || '',
+          phone: r['電話'] || '',
+          location,
+          gender: r['性別'] || '',
+          birthDate: r['出生年月日'] || '',
+          position,
+          address: r['聯絡地址'] || '',
+          reporterEmployeeId,
+          incidentDate,
+          reason,
+          internalHandling
         });
       }
 
