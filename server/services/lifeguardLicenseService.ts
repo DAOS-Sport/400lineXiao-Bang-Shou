@@ -28,14 +28,22 @@ export class LifeguardLicenseService {
       }, 20000);
 
       try {
-        // 使用 nix-shell 執行 Python 腳本（確保依賴可用）
-        const command = `python3 '${this.scriptPath}' '${idCard}'`;
-        const pythonProcess = spawn('nix-shell', [
-          '-p', 'python311', 'python311Packages.requests', 'python311Packages.beautifulsoup4',
-          '--run', command
-        ], {
+        // 直接使用 python3 執行（依賴已透過 Nix 安裝到環境）
+        // 設置 PYTHONPATH 以包含 nix 安裝的套件
+        const pythonPath = [
+          '/nix/store/nicjg1xpimrn3zfbndwix25gphv88zlx-python3.11-requests-2.31.0/lib/python3.11/site-packages',
+          '/nix/store/b121a8zifm7qr2qcxc7hrkqn3qgfbm0l-python3.11-beautifulsoup4-4.12.3/lib/python3.11/site-packages',
+          '/nix/store/4pd17akwf211chzgjg782wi9azr30rfz-python3.11-soupsieve-2.5/lib/python3.11/site-packages',
+          '/nix/store/y84qvvzrarmks4k7qb9ras6qfsxksnds-python3.11-idna-3.7/lib/python3.11/site-packages',
+          '/nix/store/2sd6mncv58k6065w8cf9b5pmagf2jc2f-python3.11-urllib3-2.2.1/lib/python3.11/site-packages',
+          '/nix/store/jrr6l56xssk4szz6xxk9mxhk8pxwghhg-python3.11-charset-normalizer-3.3.2/lib/python3.11/site-packages',
+          '/nix/store/qgglxpjjja3qpxi6mayabj417n16d3lh-python3.11-certifi-2024.02.02/lib/python3.11/site-packages',
+          process.env.PYTHONPATH
+        ].filter(Boolean).join(':');
+
+        const pythonProcess = spawn('python3', [this.scriptPath, idCard], {
           cwd: process.cwd(),
-          env: process.env
+          env: { ...process.env, PYTHONPATH: pythonPath }
         });
 
         let stdout = '';
