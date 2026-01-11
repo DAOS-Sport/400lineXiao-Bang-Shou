@@ -2,6 +2,7 @@ import { db } from '../db';
 import { interviewAuthorizedUsers } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { lifeguardLicenseService } from './lifeguardLicenseService';
+import { cautionListService } from './cautionListService';
 import { storage } from '../storage';
 
 interface InterviewCheckResult {
@@ -120,7 +121,13 @@ export class InterviewCheckService {
   }
 
   private async checkCautionList(idCard: string): Promise<string> {
-    return `✅ 此人不在慎用名單中`;
+    try {
+      const result = await cautionListService.queryByIdCard(idCard);
+      return cautionListService.formatCautionResult(result, idCard);
+    } catch (error) {
+      console.error('慎用名單查詢錯誤:', error);
+      return `⚠️ 慎用名單查詢失敗，請稍後再試`;
+    }
   }
 
   private maskIdCard(idCard: string): string {
