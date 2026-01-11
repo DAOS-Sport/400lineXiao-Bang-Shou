@@ -1427,11 +1427,35 @@ async function handleBackupHistory(event: any) {
 async function handleInterviewCheck(event: any, idCard: string) {
   try {
     const source = event.source;
-    const userId = source.userId?.trim(); // 移除可能的空格
+    let userId = source.userId?.trim();
     
     console.log(`🔍 開始面試檢核`);
-    console.log(`   用戶ID: [${userId}] (長度: ${userId?.length})`);
+    console.log(`   來源類型: ${source.type}`);
+    console.log(`   原始 userId: [${source.userId}]`);
+    console.log(`   群組 ID: [${source.groupId || 'N/A'}]`);
     console.log(`   身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
+    
+    // 如果 userId 為空，說明用戶未加 Bot 為好友（LINE 隱私保護機制）
+    if (!userId) {
+      console.log(`⚠️ userId 為空，用戶可能未加 Bot 為好友`);
+      console.log(`   來源: ${JSON.stringify(source)}`);
+      
+      if (source.type === 'group') {
+        await lineService.replyMessage(event.replyToken, 
+          "⚠️ 無法識別您的身份\n\n" +
+          "使用面試檢核功能需要先加「駿斯小助理」為好友：\n" +
+          "1️⃣ 點擊聊天室上方的 Bot 頭像\n" +
+          "2️⃣ 點擊「加入好友」\n" +
+          "3️⃣ 重新發送指令\n\n" +
+          "或直接私訊 Bot 使用此功能"
+        );
+      } else {
+        await lineService.replyMessage(event.replyToken, "❌ 無法識別您的身份，請稍後再試");
+      }
+      return;
+    }
+    
+    console.log(`   處理後 userId: [${userId}] (長度: ${userId.length})`);
     
     // 執行面試檢核
     const result = await interviewCheckService.performInterviewCheck(userId, idCard);
