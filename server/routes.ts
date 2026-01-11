@@ -652,8 +652,8 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
-      // 0. 面試檢核模組（授權人員限定）
-      const interviewMatch = text.match(/^面試\s+([A-Z][0-9]{9})$/i);
+      // 0. 面試檢核模組（授權人員限定）- 支援「面試A123456789」格式（無空格）
+      const interviewMatch = text.match(/^面試\s*([A-Z][0-9]{9})$/i);
       if (interviewMatch) {
         const idCard = interviewMatch[1].toUpperCase();
         console.log(`🔍 偵測到面試檢核請求，身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
