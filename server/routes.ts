@@ -1022,18 +1022,20 @@ async function handleIdCommand(event: any) {
   const source = event.source;
 
   if (source.type === 'user') {
-    // 私人對話：先回覆查詢中提示，再用 pushMessage 發送結果
+    // 私人對話：先觸發 LINE 原生 loading 動畫 + 文字提示，再用 pushMessage 發送結果
     try {
       console.log('🔍 開始查詢員工編號，用戶:', source.userId);
       
-      // 1. 先回覆「查詢中...」提示
+      // 1. 同時觸發 LINE 原生 loading 動畫 + 發送文字提示
       try {
-        await lineService.replyMessage(event.replyToken, 
-          `請稍後，系統查詢中...\n🔴🟠🟣`
-        );
-        console.log('✅ 已發送查詢中提示');
-      } catch (replyError) {
-        console.error(`⚠️ 發送查詢中提示失敗，繼續執行查詢:`, replyError);
+        // 並行執行：LINE loading API + 文字訊息
+        await Promise.all([
+          lineService.startLoading(source.userId, 15),
+          lineService.replyMessage(event.replyToken, `請稍後，系統查詢中...\n🔴🟠🟣`)
+        ]);
+        console.log('✅ 已啟動 LINE loading 動畫 + 發送查詢中提示');
+      } catch (loadingError) {
+        console.error(`⚠️ 發送查詢中提示失敗，繼續執行查詢:`, loadingError);
       }
 
       // 2. 做查詢（去 RAGIC 抓資料，包含在職狀態驗證）
@@ -1468,14 +1470,16 @@ async function handleInterviewCheck(event: any, idCard: string) {
     
     console.log(`   處理後 userId: [${userId}] (長度: ${userId.length})`);
     
-    // 先回覆「查詢中...」提示（使用紅橙紫彩色點與員工查詢區分）
+    // 同時觸發 LINE 原生 loading 動畫 + 發送文字提示
     try {
-      await lineService.replyMessage(event.replyToken, 
-        `請稍後，系統查詢中...\n🔴🟠🟣`
-      );
-      console.log(`✅ 已發送查詢中提示`);
-    } catch (replyError) {
-      console.error(`⚠️ 發送查詢中提示失敗，繼續執行查詢:`, replyError);
+      // 並行執行：LINE loading API + 文字訊息
+      await Promise.all([
+        lineService.startLoading(userId, 15),
+        lineService.replyMessage(event.replyToken, `請稍後，系統查詢中...\n🔴🟠🟣`)
+      ]);
+      console.log(`✅ 已啟動 LINE loading 動畫 + 發送查詢中提示`);
+    } catch (loadingError) {
+      console.error(`⚠️ 發送查詢中提示失敗，繼續執行查詢:`, loadingError);
     }
     
     // 執行面試檢核
