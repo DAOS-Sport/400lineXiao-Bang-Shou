@@ -1031,7 +1031,7 @@ async function handleIdCommand(event: any) {
         // 並行執行：LINE loading API + 文字訊息
         await Promise.all([
           lineService.startLoading(source.userId, 15),
-          lineService.replyMessage(event.replyToken, `請稍後，系統查詢中...\n🔴🟠🟣`)
+          lineService.replyMessage(event.replyToken, `請稍後，系統查詢中...`)
         ]);
         console.log('✅ 已啟動 LINE loading 動畫 + 發送查詢中提示');
       } catch (loadingError) {
@@ -1475,7 +1475,7 @@ async function handleInterviewCheck(event: any, idCard: string) {
       // 並行執行：LINE loading API + 文字訊息
       await Promise.all([
         lineService.startLoading(userId, 15),
-        lineService.replyMessage(event.replyToken, `請稍後，系統查詢中...\n🔴🟠🟣`)
+        lineService.replyMessage(event.replyToken, `請稍後，系統查詢中...`)
       ]);
       console.log(`✅ 已啟動 LINE loading 動畫 + 發送查詢中提示`);
     } catch (loadingError) {
