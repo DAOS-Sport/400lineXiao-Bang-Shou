@@ -1022,13 +1022,19 @@ async function handleIdCommand(event: any) {
   const source = event.source;
 
   if (source.type === 'user') {
-    // 私人對話：使用LINE官方loading API
+    // 私人對話：先回覆查詢中提示，再用 pushMessage 發送結果
     try {
       console.log('🔍 開始查詢員工編號，用戶:', source.userId);
       
-      // 1. 先顯示 LINE 官方 loading 動畫
-      await lineService.startLoading(source.userId, 10);
-      console.log('✅ LINE loading API 已啟動');
+      // 1. 先回覆「查詢中...」提示
+      try {
+        await lineService.replyMessage(event.replyToken, 
+          `請稍後，系統查詢中...\n🔴🟠🟣`
+        );
+        console.log('✅ 已發送查詢中提示');
+      } catch (replyError) {
+        console.error(`⚠️ 發送查詢中提示失敗，繼續執行查詢:`, replyError);
+      }
 
       // 2. 做查詢（去 RAGIC 抓資料，包含在職狀態驗證）
       let employeeDetails: any = null;
@@ -1092,7 +1098,8 @@ async function handleIdCommand(event: any) {
         });
       }
       
-      await lineService.replyMessage(event.replyToken, resultMessage);
+      // 使用 pushMessage 發送結果（因為 replyToken 已用於查詢中提示）
+      await lineService.pushMessage(source.userId, resultMessage);
       
       console.log(`✅ ID 查詢完成，結果: ${employeeDetails?.employeeId || '查無資料'}`);
       
