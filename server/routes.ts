@@ -652,11 +652,13 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
-      // 0. 面試檢核模組（授權人員限定）- 支援「面試A123456789」格式（無空格）
-      const interviewMatch = text.match(/^面試\s*([A-Z][0-9]{9})$/i);
+      // 0. 面試檢核模組（授權人員限定）- 支援身分證（A123456789）和居留證（AB12345678）格式
+      // 身分證：1英文+9數字，居留證：2英文+8-10數字
+      const interviewMatch = text.match(/^面試\s*([A-Z]{1,2}[0-9]{8,10})$/i);
       if (interviewMatch) {
         const idCard = interviewMatch[1].toUpperCase();
-        console.log(`🔍 偵測到面試檢核請求，身分證: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
+        const idType = idCard.length === 10 && /^[A-Z][0-9]{9}$/.test(idCard) ? '身分證' : '居留證';
+        console.log(`🔍 偵測到面試檢核請求，${idType}: ${idCard.substring(0,1)}***${idCard.substring(idCard.length-4)}`);
         await handleInterviewCheck(event, idCard);
         return;
       }
@@ -1459,15 +1461,10 @@ async function handleInterviewCheck(event: any, idCard: string) {
     
     console.log(`   處理後 userId: [${userId}] (長度: ${userId.length})`);
     
-    // 先回覆「查詢中...」提示
+    // 先回覆「查詢中...」提示（使用紅橙紫彩色點與員工查詢區分）
     try {
       await lineService.replyMessage(event.replyToken, 
-        `🔍 正在查詢面試檢核資料...\n` +
-        `身分證：${maskedIdCard}\n` +
-        `━━━━━━━━━━━━━━━━\n` +
-        `📋 慎用名單檢核中...\n` +
-        `📜 救生員證照查詢中...\n\n` +
-        `請稍候，結果將於幾秒後顯示`
+        `請稍後，系統查詢中...\n🔴🟠🟣`
       );
       console.log(`✅ 已發送查詢中提示`);
     } catch (replyError) {

@@ -160,7 +160,6 @@ export class CautionListService {
     }
 
     let response = `🚨 注意！此人在慎用名單中\n`;
-    response += `━━━━━━━━━━━━━━━━\n`;
 
     result.records.forEach((record, index) => {
       response += `\n【慎用資料】\n`;

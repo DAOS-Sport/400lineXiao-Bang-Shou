@@ -102,9 +102,7 @@ export class InterviewCheckService {
     const cautionText = await this.checkCautionList(idCard);
 
     let combinedResult = `📋 面試檢核報告\n`;
-    combinedResult += `查詢人：${authResult.userName}\n`;
-    combinedResult += `查詢時間：${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}\n`;
-    combinedResult += `━━━━━━━━━━━━━━━━\n\n`;
+    combinedResult += `查詢人：${authResult.userName}\n\n`;
     
     combinedResult += `【慎用名單檢核】\n${cautionText}\n\n`;
     combinedResult += `【救生員證照查詢】\n${licenseText}`;
