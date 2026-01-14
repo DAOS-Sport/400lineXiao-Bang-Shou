@@ -117,7 +117,8 @@ export class InterviewCheckService {
         : `⚠️ 未取得救生員證照\n`;
     }
 
-    // 如果在慎用名單中，顯示詳細資料
+    // 慎用名單詳細資料（不管是否找到都顯示）
+    combinedResult += `\n【慎用名單查詢】\n`;
     if (cautionResult.found && cautionResult.records.length > 0) {
       const record = cautionResult.records[0];
       combinedResult += `\n【慎用資料】\n`;
@@ -131,6 +132,9 @@ export class InterviewCheckService {
       if (record.incidentDate) combinedResult += `發生時日（估）：${record.incidentDate}\n`;
       if (record.reason) combinedResult += `具體事由：${record.reason}\n`;
       if (record.internalHandling) combinedResult += `內部處理方式：${record.internalHandling}\n`;
+    } else {
+      combinedResult += `身分證：${this.maskIdCard(idCard)}\n`;
+      combinedResult += `查詢結果：此人不在慎用名單中\n`;
     }
 
     // 救生員證照詳細資料
