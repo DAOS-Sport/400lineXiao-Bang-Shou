@@ -265,7 +265,7 @@ export class CombinedForecastService {
   }
 
   /**
-   * 獲取風力預報（每小時）
+   * 獲取風力預報（未來5小時，每小時一筆）
    */
   private async getWindForecast(): Promise<WindForecastData[]> {
     try {
@@ -299,9 +299,9 @@ export class CombinedForecastService {
       
       console.log(`💨 當前風力: ${windSpeed} m/s, 陣風: ${gustSpeed} m/s`);
 
-      const forecasts = this.generate4HourForecast(windSpeed, gustSpeed, windDirection);
+      const forecasts = this.generate5HourForecast(windSpeed, gustSpeed, windDirection);
       
-      console.log(`✅ 已生成未來4小時風力預測`);
+      console.log(`✅ 已生成未來5小時風力預測`);
       return forecasts;
 
     } catch (error) {
@@ -311,13 +311,13 @@ export class CombinedForecastService {
   }
 
   /**
-   * 生成未來4小時風力預測
+   * 生成未來5小時風力預測
    */
-  private generate4HourForecast(currentSpeed: number, currentGust: number, direction: number): WindForecastData[] {
+  private generate5HourForecast(currentSpeed: number, currentGust: number, direction: number): WindForecastData[] {
     const forecasts: WindForecastData[] = [];
     const now = new Date();
     
-    for (let hour = 1; hour <= 4; hour++) {
+    for (let hour = 1; hour <= 5; hour++) {
       const forecastTime = new Date(now.getTime() + hour * 60 * 60 * 1000);
       
       const speedVariation = (Math.random() - 0.5) * 2;
@@ -373,13 +373,13 @@ export class CombinedForecastService {
   }
 
   /**
-   * 模擬風力數據
+   * 模擬風力數據（未來5小時）
    */
   private getSimulatedWindData(): WindForecastData[] {
     const now = new Date();
     const forecasts: WindForecastData[] = [];
 
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 5; i++) {
       const forecastTime = new Date(now.getTime() + i * 60 * 60 * 1000);
       const windSpeed = Math.random() * 6 + 2;
       const gustSpeed = windSpeed + Math.random() * 2;
