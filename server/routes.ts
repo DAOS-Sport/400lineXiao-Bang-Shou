@@ -175,6 +175,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/admin/trigger-combined-forecast - 手動觸發合併天氣風力預報
+  app.post("/api/admin/trigger-combined-forecast", authMiddleware, async (req, res) => {
+    try {
+      const { combinedForecastService } = await import('./services/combinedForecastService');
+      const timeSlot = new Date().toLocaleTimeString('zh-TW', { 
+        timeZone: 'Asia/Taipei', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      console.log(`🌤️🌬️ 管理員手動觸發合併報告 (${timeSlot})`);
+      const success = await combinedForecastService.generateAndPushCombinedReport(timeSlot);
+      res.json({ success, message: success ? "合併報告已推送" : "推送失敗" });
+    } catch (error) {
+      console.error("手動觸發合併報告失敗:", error);
+      res.status(500).json({ error: "觸發失敗" });
+    }
+  });
+
   // GET /api/admin/messages - 管理後台 API
   app.get("/api/admin/messages", authMiddleware, async (req, res) => {
     try {
