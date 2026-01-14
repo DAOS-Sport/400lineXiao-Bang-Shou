@@ -7,6 +7,7 @@ import { simpleBackupService } from "./simpleBackupService";
 import { waterQualityService } from "./waterQualityService";
 import { windForecastService } from "./windForecastService";
 import { weatherService } from "./weatherService";
+import { combinedForecastService } from "./combinedForecastService";
 import { getYesterday, formatDate, getOneMonthRange } from "../utils/time";
 import crypto from 'crypto';
 
@@ -82,43 +83,24 @@ export class SchedulerService {
     });
     this.cronJobs.push(gptWaterQualityAnalysisJob);
 
-    // 🌬️ 風力預報排程 - 每日 06:00, 12:00, 17:00, 21:30 (群組 C360be1fe6ea876a4df3ca0497bca4e3b)
-    const windForecastSchedules = [
-      { time: '0 6 * * *', name: '06:00 風力預報' },
-      { time: '0 12 * * *', name: '12:00 風力預報' },
-      { time: '0 17 * * *', name: '17:00 風力預報' },
-      { time: '30 21 * * *', name: '21:30 風力預報' }
+    // 🌤️🌬️ 合併天氣+風力預報排程 - 每日 06:30, 12:00, 17:00 準時直接推送 (群組 C360be1fe6ea876a4df3ca0497bca4e3b)
+    const combinedForecastSchedules = [
+      { time: '30 6 * * *', name: '06:30' },
+      { time: '0 12 * * *', name: '12:00' },
+      { time: '0 17 * * *', name: '17:00' }
     ];
 
-    windForecastSchedules.forEach(({ time, name }) => {
+    combinedForecastSchedules.forEach(({ time, name }) => {
       const job = cron.schedule(time, async () => {
-        console.log(`🌬️ ${name} 時間點標記 - 等待群組互動觸發`);
-        await this.markWindForecastAvailable(name);
+        console.log(`🌤️🌬️ ${name} 合併報告準時推送開始`);
+        await this.pushCombinedForecast(name);
       }, {
         timezone: 'Asia/Taipei'
       });
       this.cronJobs.push(job);
     });
 
-    // 🌤️ 竹科游泳池天氣預報排程 - 每日 06:30, 12:00, 17:00, 21:30 (群組 C50c2a9623a78cc5f5e9f39557e3abfe6)
-    const swimmingPoolWeatherSchedules = [
-      { time: '30 6 * * *', name: '06:30 天氣預報' },
-      { time: '0 12 * * *', name: '12:00 天氣預報' },
-      { time: '0 17 * * *', name: '17:00 天氣預報' },
-      { time: '30 21 * * *', name: '21:30 天氣預報' }
-    ];
-
-    swimmingPoolWeatherSchedules.forEach(({ time, name }) => {
-      const job = cron.schedule(time, async () => {
-        console.log(`🌤️ ${name} 時間點標記 - 等待群組互動觸發`);
-        await this.markSwimmingPoolWeatherAvailable(name);
-      }, {
-        timezone: 'Asia/Taipei'
-      });
-      this.cronJobs.push(job);
-    });
-
-    console.log('排程服務已啟動 - 每日六次任務提醒 (06:30, 09:00, 11:00, 15:00, 17:00, 20:00) + 每日02:00備份 + 每日13:00&17:30&20:30水質報告 + 每日21:00 GPT智能水質分析 + 每日06:00&12:00&17:00&21:30風力預報 + 每日06:30&12:00&17:00&21:30竹科天氣預報 (Asia/Taipei)');
+    console.log('排程服務已啟動 - 每日六次任務提醒 (06:30, 09:00, 11:00, 15:00, 17:00, 20:00) + 每日02:00備份 + 每日13:00&17:30&20:30水質報告 + 每日21:00 GPT智能水質分析 + 每日06:30&12:00&17:00合併天氣風力預報 (Asia/Taipei)');
   }
 
   stop(): void {
@@ -625,41 +607,32 @@ export class SchedulerService {
     });
   }
 
-  // 標記風力預報可用時間點
-  private async markWindForecastAvailable(timeSlot: string): Promise<void> {
-    const today = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
-    
-    await storage.insertAuditLog({
-      id: crypto.randomUUID(),
-      level: 'info',
-      category: 'pending_wind_forecast',
-      message: `風力預報 ${timeSlot} 已標記為可觸發`,
-      details: {
-        timeSlot,
-        date: today,
-        status: 'awaiting_trigger',
-        type: 'wind_forecast'
+  // 準時推送合併天氣+風力報告
+  private async pushCombinedForecast(timeSlot: string): Promise<void> {
+    try {
+      console.log(`🌤️🌬️ 開始推送 ${timeSlot} 合併報告...`);
+      
+      const success = await combinedForecastService.generateAndPushCombinedReport(timeSlot);
+      
+      if (success) {
+        console.log(`✅ ${timeSlot} 合併報告推送成功`);
+      } else {
+        console.error(`❌ ${timeSlot} 合併報告推送失敗`);
       }
-    });
-  }
-
-  // 標記竹科游泳池天氣預報可用時間點
-  private async markSwimmingPoolWeatherAvailable(timeSlot: string): Promise<void> {
-    const today = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei' });
-    
-    await storage.insertAuditLog({
-      id: crypto.randomUUID(),
-      level: 'info',
-      category: 'pending_swimming_pool_weather',
-      message: `竹科天氣預報 ${timeSlot} 已標記為可觸發`,
-      details: {
-        timeSlot,
-        date: today,
-        status: 'awaiting_trigger',
-        type: 'swimming_pool_weather',
-        targetGroupId: 'C50c2a9623a78cc5f5e9f39557e3abfe6'
-      }
-    });
+    } catch (error) {
+      console.error(`❌ ${timeSlot} 合併報告推送錯誤:`, error);
+      
+      await storage.insertAuditLog({
+        id: crypto.randomUUID(),
+        level: 'error',
+        category: 'combined_forecast_error',
+        message: `合併報告推送失敗 (${timeSlot})`,
+        details: {
+          timeSlot,
+          error: (error as Error).message
+        }
+      });
+    }
   }
 }
 
