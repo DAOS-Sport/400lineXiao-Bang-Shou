@@ -97,15 +97,56 @@ export class InterviewCheckService {
     console.log(`🔍 ${authResult.userName} 正在執行面試檢核，身分證: ${this.maskIdCard(idCard)}`);
 
     const licenseResult = await lifeguardLicenseService.queryLicense(idCard);
-    const licenseText = lifeguardLicenseService.formatLicenseResult(licenseResult, idCard);
+    const cautionResult = await cautionListService.queryByIdCard(idCard);
 
-    const cautionText = await this.checkCautionList(idCard);
-
+    // 先顯示快速檢核結果
     let combinedResult = `📋 面試檢核報告\n`;
     combinedResult += `查詢人：${authResult.userName}\n\n`;
     
-    combinedResult += `【慎用名單檢核】\n${cautionText}\n\n`;
-    combinedResult += `【救生員證照查詢】\n${licenseText}`;
+    combinedResult += `【查詢檢核】\n`;
+    combinedResult += cautionResult.found 
+      ? `🚨 注意！此人在慎用名單中\n` 
+      : `✅ 此人不在慎用名單中\n`;
+    const hasLicense = licenseResult.success && licenseResult.data && licenseResult.data.length > 0;
+    const licenseApiError = !licenseResult.success;
+    if (licenseApiError) {
+      combinedResult += `⚠️ 無法取得證照資訊\n`;
+    } else {
+      combinedResult += hasLicense 
+        ? `✅ 已取得救生員證照\n` 
+        : `⚠️ 未取得救生員證照\n`;
+    }
+
+    // 如果在慎用名單中，顯示詳細資料
+    if (cautionResult.found && cautionResult.records.length > 0) {
+      const record = cautionResult.records[0];
+      combinedResult += `\n【慎用資料】\n`;
+      if (record.name) combinedResult += `姓名：${record.name}\n`;
+      if (record.employeeId) combinedResult += `員工編號：${record.employeeId}\n`;
+      if (record.phone) combinedResult += `電話：${record.phone}\n`;
+      if (record.birthDate) combinedResult += `出生年月日：${record.birthDate}\n`;
+      if (record.position) combinedResult += `應聘職位：${record.position}\n`;
+      
+      combinedResult += `\n【慎用緣由】\n`;
+      if (record.incidentDate) combinedResult += `發生時日（估）：${record.incidentDate}\n`;
+      if (record.reason) combinedResult += `具體事由：${record.reason}\n`;
+      if (record.internalHandling) combinedResult += `內部處理方式：${record.internalHandling}\n`;
+    }
+
+    // 救生員證照詳細資料
+    combinedResult += `\n【救生員證照查詢】\n`;
+    combinedResult += `ℹ️ 救生員證照查詢結果\n`;
+    combinedResult += `身分證：${this.maskIdCard(idCard)}\n`;
+    if (licenseApiError) {
+      combinedResult += `無法取得證照資訊（${licenseResult.error || '查詢失敗'}）`;
+    } else {
+      combinedResult += hasLicense 
+        ? `此人已考取救生員證照` 
+        : `此人未考取救生員證照`;
+    }
+
+    const licenseText = lifeguardLicenseService.formatLicenseResult(licenseResult, idCard);
+    const cautionText = cautionListService.formatCautionResult(cautionResult, idCard);
 
     await this.logInterviewCheck(userId, authResult.userName || '', idCard, combinedResult);
 

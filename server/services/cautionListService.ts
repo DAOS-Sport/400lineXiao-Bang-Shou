@@ -152,7 +152,7 @@ export class CautionListService {
 
   formatCautionResult(result: CautionListResult, idCard: string): string {
     if (result.error) {
-      return `⚠️ 慎用名單查詢失敗\n身分證：${this.maskIdCard(idCard)}\n原因：${result.error}`;
+      return `⚠️ 慎用名單查詢失敗\n原因：${result.error}`;
     }
 
     if (!result.found || result.records.length === 0) {
@@ -165,16 +165,11 @@ export class CautionListService {
       response += `\n【慎用資料】\n`;
       if (record.name) response += `姓名：${record.name}\n`;
       if (record.employeeId) response += `員工編號：${record.employeeId}\n`;
-      response += `身分證字號：${this.maskIdCard(idCard)}\n`;
       if (record.phone) response += `電話：${record.phone}\n`;
-      if (record.location) response += `應聘館別：${record.location}\n`;
-      if (record.gender) response += `性別：${record.gender}\n`;
       if (record.birthDate) response += `出生年月日：${record.birthDate}\n`;
       if (record.position) response += `應聘職位：${record.position}\n`;
-      if (record.address) response += `聯絡地址：${record.address}\n`;
       
       response += `\n【慎用緣由】\n`;
-      if (record.reporterEmployeeId) response += `通報人員編：${record.reporterEmployeeId}\n`;
       if (record.incidentDate) response += `發生時日（估）：${record.incidentDate}\n`;
       if (record.reason) response += `具體事由：${record.reason}\n`;
       if (record.internalHandling) response += `內部處理方式：${record.internalHandling}\n`;
