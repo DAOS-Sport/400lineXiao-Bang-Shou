@@ -465,7 +465,7 @@ export class SchedulerService {
       console.log('🤖 開始執行 GPT 智能水質分析...');
       
       // 支援的水質監測群組
-      const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6'];
       
       for (const groupId of waterQualityGroups) {
         try {

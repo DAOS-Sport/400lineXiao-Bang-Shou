@@ -496,7 +496,7 @@ export class WaterQualityService {
       console.log('🚀 開始生成水質報告...');
       
       // 支援的群組列表
-      const supportedGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      const supportedGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6'];
       
       for (const groupId of supportedGroups) {
         try {
@@ -529,7 +529,7 @@ export class WaterQualityService {
   // 處理水質訊息
   async handleWaterQualityMessage(text: string, messageId: string, userId: string, groupId: string): Promise<void> {
     // 支援多個群組的水質訊息處理
-    const supportedGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+    const supportedGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6'];
     if (!supportedGroups.includes(groupId)) {
       return;
     }
@@ -541,11 +541,6 @@ export class WaterQualityService {
       // 原有群組：使用原有解析方式
       if (this.isWaterQualityMessage(text)) {
         data = this.parseWaterQualityMessage(text, messageId, userId);
-      }
-    } else if (groupId === 'C9b3c5dfe2e005adafd2ed914714a1930') {
-      // 新群組：使用新的多池解析方式
-      if (this.isMultiPoolWaterQualityMessage(text)) {
-        data = this.parseMultiPoolWaterQualityMessage(text, messageId, userId, groupId);
       }
     }
     
@@ -562,7 +557,7 @@ export class WaterQualityService {
       console.log(`🤖 開始 GPT 智能水質分析 - 群組: ${groupId}`);
       
       // 支援的群組檢查
-      const supportedGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      const supportedGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6'];
       if (!supportedGroups.includes(groupId)) {
         console.log(`❌ 群組 ${groupId} 不支援水質監測`);
         return;

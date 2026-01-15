@@ -503,7 +503,7 @@ export class LineService {
   private async checkAndTriggerWaterQualityReport(groupId: string, replyToken: string, today: string): Promise<boolean> {
     try {
       // 只有水質監測群組才觸發
-      const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6', 'C9b3c5dfe2e005adafd2ed914714a1930'];
+      const waterQualityGroups = ['C50c2a9623a78cc5f5e9f39557e3abfe6'];
       if (!waterQualityGroups.includes(groupId)) {
         return false;
       }
