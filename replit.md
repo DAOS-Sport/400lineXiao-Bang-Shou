@@ -95,6 +95,24 @@ Preferred communication style: Simple, everyday language.
 - **Smart Scheduling**: Daily GPT analysis for missed records.
 - **Weather-Based Recommendations**: Recommendations influenced by real-time weather, UV index, temperature, and rainfall.
 
+### Customer Satisfaction Survey Integration
+- **Google Sheet Integration**: Receives survey data via Google Apps Script webhook (`/api/survey-webhook`).
+- **Facility-to-Group Mapping**: Routes feedback to corresponding LINE groups based on facility name.
+- **Real-time Push**: Immediately sends formatted survey feedback to the target group upon form submission.
+- **Supported Facilities**: 新北高中游泳池&運動中心, 三重商工游泳池&籃球場, 三民高中游泳池, 松山國小室內溫水游泳池, 竹科戶外游泳池, 竹科高爾夫球練習場, 竹科網球場&籃球場.
+- **Service File**: `server/services/surveyService.ts`
+- **Google Apps Script**: `docs/google-apps-script.js`
+
+### Group ID Reference
+| Group ID | Facility |
+|----------|----------|
+| C66a4b3bb3fbc3dcf52d42626ec512484 | 新北高中游泳池 & 運動中心 |
+| C6f6f163895d5b528a6ab044015e1a37b | 三重商工游泳池 & 籃球場 |
+| C2dc6991e51074dd47d5d275d568318f7 | 三民高中游泳池 |
+| C9b3c5dfe2e005adafd2ed914714a1930 | 松山國小室內溫水游泳池 |
+| C50c2a9623a78cc5f5e9f39557e3abfe6 | 竹科戶外游泳池 |
+| C360be1fe6ea876a4df3ca0497bca4e3b | 竹科高爾夫球練習場 / 竹科網球場&籃球場 |
+
 ### Development Tools
 - **ESBuild**: Fast bundling.
 - **PostCSS**: CSS processing.

@@ -14,6 +14,7 @@ import { authMiddleware } from "./middleware/auth";
 import { validateLineSignature } from "./middleware/lineSignature";
 import { ragicService } from "./services/ragicService";
 import { interviewCheckService } from "./services/interviewCheckService";
+import { surveyService } from "./services/surveyService";
 import { getOneMonthRange } from "./utils/time";
 import dayjs from "dayjs";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
@@ -124,6 +125,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         service: "LINE Bot Service", 
         timestamp: new Date().toISOString()
       });
+    }
+  });
+
+  const surveyLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 30,
+    message: { error: "請求過於頻繁" },
+    keyGenerator: () => 'survey',
+  });
+
+  console.log('🔗 註冊 /api/survey-webhook 路由');
+  app.post("/api/survey-webhook", surveyLimiter, express.json(), async (req, res) => {
+    try {
+      const token = req.headers['x-survey-token'] || req.query.token;
+      const expectedToken = process.env.SURVEY_WEBHOOK_TOKEN;
+      if (expectedToken && token !== expectedToken) {
+        res.status(403).json({ success: false, error: '未授權' });
+        return;
+      }
+
+      const { facility, purpose, courseVariety, serviceAttitude, cleanliness, equipment, teachingStaff, suggestion, timestamp } = req.body;
+
+      if (!facility || typeof facility !== 'string') {
+        res.status(400).json({ success: false, error: '缺少或無效的場館資訊' });
+        return;
+      }
+
+      const result = await surveyService.handleSurveyWebhook({
+        facility: facility.trim(),
+        purpose: purpose || '',
+        courseVariety: courseVariety || '',
+        serviceAttitude: serviceAttitude || '',
+        cleanliness: cleanliness || '',
+        equipment: equipment || '',
+        teachingStaff: teachingStaff || '',
+        suggestion: suggestion || '',
+        timestamp: timestamp || new Date().toISOString()
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error('❌ 處理 survey webhook 失敗:', error);
+      res.status(500).json({ success: false, error: '伺服器錯誤' });
     }
   });
 
