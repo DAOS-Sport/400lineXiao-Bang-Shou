@@ -24,7 +24,7 @@
 var CONFIG = {
   WEBHOOK_URL: 'https://line-bot-assistant-ronchen2.replit.app/api/survey-webhook',
   SURVEY_TOKEN: 'daos-survey-2025',
-  HAS_TIMESTAMP: true  // Google 表單通常會自動加時間戳記在第一欄，設 true；若沒有時間戳記欄，設 false
+  HAS_TIMESTAMP: false  // Google 表單通常會自動加時間戳記在第一欄，設 true；若沒有時間戳記欄，設 false
 };
 // ============================
 
