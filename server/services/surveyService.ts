@@ -29,7 +29,7 @@ export interface SurveyData {
   timestamp?: string;
 }
 
-function matchFacilityToGroupId(facility: string): string | null {
+export function matchFacilityToGroupId(facility: string): string | null {
   const trimmed = facility.trim();
   if (FACILITY_GROUP_MAP[trimmed]) {
     return FACILITY_GROUP_MAP[trimmed];
@@ -42,7 +42,7 @@ function matchFacilityToGroupId(facility: string): string | null {
   return null;
 }
 
-function formatSurveyMessage(data: SurveyData): string {
+export function formatSurveyMessage(data: SurveyData): string {
   const lines: string[] = [];
   lines.push(`📋 顧客滿意度回饋通知`);
   lines.push(`━━━━━━━━━━━━━━━`);
@@ -70,6 +70,27 @@ function formatSurveyMessage(data: SurveyData): string {
   return lines.join('\n');
 }
 
+function formatSurveySummary(surveys: SurveyData[]): string {
+  if (surveys.length === 0) return '';
+
+  const lines: string[] = [];
+  lines.push(`📋 滿意度調查彙整（共 ${surveys.length} 筆新回饋）`);
+  lines.push(`━━━━━━━━━━━━━━━`);
+
+  surveys.forEach((survey, index) => {
+    if (index > 0) lines.push(``);
+    lines.push(`【第 ${index + 1} 筆】`);
+    lines.push(`🏢 場館：${survey.facility}`);
+    lines.push(`🎯 來訪目的：${survey.purpose || '未填寫'}`);
+    lines.push(`📊 課程${survey.courseVariety || '-'} / 服務${survey.serviceAttitude || '-'} / 整潔${survey.cleanliness || '-'} / 設備${survey.equipment || '-'} / 師資${survey.teachingStaff || '-'}`);
+    if (survey.suggestion && survey.suggestion.trim()) {
+      lines.push(`💬 建議：${survey.suggestion}`);
+    }
+  });
+
+  return lines.join('\n');
+}
+
 class SurveyService {
   async handleSurveyWebhook(data: SurveyData): Promise<{ success: boolean; groupId?: string; error?: string }> {
     try {
@@ -89,29 +110,107 @@ class SurveyService {
         return { success: false, error: `找不到場館「${data.facility}」對應的群組` };
       }
 
-      const message = formatSurveyMessage(data);
-      await lineService.pushMessage(groupId, message);
-
       await storage.insertAuditLog({
         id: crypto.randomUUID(),
         level: 'info',
-        category: 'survey_feedback',
-        message: `滿意度回饋已推送至群組`,
+        category: 'pending_survey_feedback',
+        message: `滿意度回饋已暫存，等待排程觸發推送`,
         details: {
           facility: data.facility,
           groupId,
-          purpose: data.purpose,
-          suggestion: data.suggestion,
-          timestamp: data.timestamp || new Date().toISOString()
+          surveyData: data,
+          status: 'pending',
+          receivedAt: data.timestamp || new Date().toISOString()
         }
       });
 
-      console.log(`✅ 滿意度回饋已推送至群組 ${groupId}`);
+      console.log(`✅ 滿意度回饋已暫存（群組 ${groupId.substring(0, 8)}...），等待排程觸發`);
       return { success: true, groupId };
     } catch (error) {
       console.error('❌ 處理滿意度調查回饋失敗:', error);
       return { success: false, error: (error as Error).message };
     }
+  }
+
+  async getPendingSurveys(groupId: string): Promise<SurveyData[]> {
+    try {
+      const pendingLogs = await storage.getAuditLogsByCategory('pending_survey_feedback');
+      const sentLogs = await storage.getAuditLogsByCategory('survey_feedback_sent');
+
+      const sentOriginalIds = new Set(
+        sentLogs
+          .filter(log => log.details && typeof log.details === 'object' && 'originalLogId' in log.details)
+          .map(log => (log.details as any).originalLogId)
+      );
+
+      const pending = pendingLogs.filter(log =>
+        log.details &&
+        typeof log.details === 'object' &&
+        'groupId' in log.details &&
+        'status' in log.details &&
+        log.details.groupId === groupId &&
+        log.details.status === 'pending' &&
+        !sentOriginalIds.has(log.id)
+      );
+
+      return pending.map(log => {
+        const details = log.details as any;
+        return details.surveyData as SurveyData;
+      }).filter(Boolean);
+    } catch (error) {
+      console.error('❌ 取得待發送滿意度調查失敗:', error);
+      return [];
+    }
+  }
+
+  async markSurveysAsSent(groupId: string): Promise<void> {
+    try {
+      const pendingLogs = await storage.getAuditLogsByCategory('pending_survey_feedback');
+      const sentLogs = await storage.getAuditLogsByCategory('survey_feedback_sent');
+
+      const sentOriginalIds = new Set(
+        sentLogs
+          .filter(log => log.details && typeof log.details === 'object' && 'originalLogId' in log.details)
+          .map(log => (log.details as any).originalLogId)
+      );
+
+      const pending = pendingLogs.filter(log =>
+        log.details &&
+        typeof log.details === 'object' &&
+        'groupId' in log.details &&
+        'status' in log.details &&
+        log.details.groupId === groupId &&
+        log.details.status === 'pending' &&
+        !sentOriginalIds.has(log.id)
+      );
+
+      for (const log of pending) {
+        await storage.insertAuditLog({
+          id: crypto.randomUUID(),
+          level: 'info',
+          category: 'survey_feedback_sent',
+          message: `滿意度回饋已透過排程觸發發送`,
+          details: {
+            originalLogId: log.id,
+            groupId,
+            facility: (log.details as any)?.facility,
+            status: 'sent',
+            sentAt: new Date().toISOString(),
+            method: 'reply_trigger'
+          }
+        });
+      }
+
+      console.log(`🧹 已標記 ${pending.length} 筆滿意度調查為已發送 (群組 ${groupId.substring(0, 8)}...)`);
+    } catch (error) {
+      console.error('❌ 標記滿意度調查為已發送失敗:', error);
+    }
+  }
+
+  async getSurveySummaryText(groupId: string): Promise<string | null> {
+    const surveys = await this.getPendingSurveys(groupId);
+    if (surveys.length === 0) return null;
+    return formatSurveySummary(surveys);
   }
 }
 

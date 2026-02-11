@@ -386,6 +386,10 @@ export class LineService {
       const pendingSwimmingPoolWeather = await this.checkAndTriggerSwimmingPoolWeather(groupId, replyToken, today);
       if (pendingSwimmingPoolWeather) return;
       
+      // 檢查是否有待發送的滿意度調查（獨立觸發，不需要排程標記）
+      const pendingSurvey = await this.checkAndTriggerSurveyFeedback(groupId, replyToken, today);
+      if (pendingSurvey) return;
+      
       console.log(`📭 群組 ${groupId.substring(0, 8)}... 目前沒有待觸發的內容`);
       
     } catch (error) {
@@ -470,19 +474,34 @@ export class LineService {
         // 生成任務提醒內容
         const summaryText = await this.generateTaskSummary(groupId);
         
-        await this.replyMessage(replyToken, `⏰ ${timeSlot} 任務提醒\n${summaryText}`);
+        // 檢查是否有待發送的滿意度調查
+        const { surveyService } = await import('./surveyService');
+        const surveySummary = await surveyService.getSurveySummaryText(groupId);
+        
+        let fullMessage = `⏰ ${timeSlot} 任務提醒\n${summaryText}`;
+        if (surveySummary) {
+          fullMessage += `\n\n${surveySummary}`;
+        }
+        
+        await this.replyMessage(replyToken, fullMessage);
+        
+        // 標記滿意度調查為已發送
+        if (surveySummary) {
+          await surveyService.markSurveysAsSent(groupId);
+        }
         
         // 標記為已發送
         await storage.insertAuditLog({
           id: crypto.randomUUID(),
           level: 'info',
           category: 'task_reminder_sent',
-          message: `任務提醒已回覆發送 (${timeSlot})`,
+          message: `任務提醒已回覆發送 (${timeSlot})${surveySummary ? ' + 滿意度調查' : ''}`,
           details: {
             groupId,
             timeSlot,
             date: today,
-            method: 'reply_trigger'
+            method: 'reply_trigger',
+            includedSurvey: !!surveySummary
           }
         });
         
@@ -724,6 +743,27 @@ export class LineService {
       
     } catch (error) {
       console.error('檢查風力預報觸發失敗:', error);
+    }
+    return false;
+  }
+
+  // 檢查並觸發滿意度調查回饋（獨立觸發，當沒有其他待觸發內容時）
+  private async checkAndTriggerSurveyFeedback(groupId: string, replyToken: string, today: string): Promise<boolean> {
+    try {
+      const { surveyService } = await import('./surveyService');
+      const surveySummary = await surveyService.getSurveySummaryText(groupId);
+      
+      if (surveySummary) {
+        console.log(`📋 找到待發送的滿意度調查回饋（群組 ${groupId.substring(0, 8)}...）`);
+        
+        await this.replyMessage(replyToken, surveySummary);
+        await surveyService.markSurveysAsSent(groupId);
+        
+        console.log(`✅ 滿意度調查已通過回覆觸發發送`);
+        return true;
+      }
+    } catch (error) {
+      console.error('檢查滿意度調查觸發失敗:', error);
     }
     return false;
   }

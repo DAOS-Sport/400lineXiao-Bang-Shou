@@ -96,12 +96,12 @@ Preferred communication style: Simple, everyday language.
 - **Weather-Based Recommendations**: Recommendations influenced by real-time weather, UV index, temperature, and rainfall.
 
 ### Customer Satisfaction Survey Integration
-- **Google Sheet Integration**: Receives survey data via Google Apps Script webhook (`/api/survey-webhook`).
+- **Google Sheet Integration**: Receives survey data via Google Apps Script webhook (`/api/survey-webhook`), using `onSheetChange` trigger for SurveyCake compatibility.
 - **Facility-to-Group Mapping**: Routes feedback to corresponding LINE groups based on facility name.
-- **Real-time Push**: Immediately sends formatted survey feedback to the target group upon form submission.
+- **Cost-Free Delivery**: Survey data is stored upon receipt and delivered via reply-trigger mechanism (replyMessage), avoiding pushMessage costs. Surveys are appended to task reminder messages or sent independently when triggered by group messages.
 - **Supported Facilities**: 新北高中游泳池&運動中心, 三重商工游泳池&籃球場, 三民高中游泳池, 松山國小室內溫水游泳池, 竹科戶外游泳池, 竹科高爾夫球練習場, 竹科網球場&籃球場.
 - **Service File**: `server/services/surveyService.ts`
-- **Google Apps Script**: `docs/google-apps-script.js`
+- **Google Apps Script**: `docs/google-apps-script.js` (uses `onSheetChange` trigger, sheet name `工作表1`)
 
 ### Group ID Reference
 | Group ID | Facility |
