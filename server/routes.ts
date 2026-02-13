@@ -21,6 +21,17 @@ import dayjs from "dayjs";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
+const TASK_ALLOWED_GROUP_IDS = new Set([
+  'C66a4b3bb3fbc3dcf52d42626ec512484', // 新北高中游泳池 & 運動中心
+  'C6f6f163895d5b528a6ab044015e1a37b', // 三重商工游泳池 & 籃球場
+  'C2dc6991e51074dd47d5d275d568318f7', // 三民高中游泳池
+  'C9b3c5dfe2e005adafd2ed914714a1930', // 松山國小室內溫水游泳池
+  'C50c2a9623a78cc5f5e9f39557e3abfe6', // 竹科戶外游泳池
+  'C360be1fe6ea876a4df3ca0497bca4e3b', // 竹科高爾夫球練習場 / 竹科網球場&籃球場
+  'C2dd9a5fce7c276f2cbfdd02c2342661c', // 三民排班群組
+  'Ce936c6bebb59b8b5683ffbcf97bf20de', // 原授權群組
+]);
+
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log('🚀 開始註冊路由...');
   
@@ -732,8 +743,8 @@ async function processWebhookEvent(event: any) {
         return;
       }
 
-      // 2. 交辦偵測（所有群組皆可使用）- 先檢查是否為完成指令，避免誤判
-      if (source.type === 'group' && savedMessage) {
+      // 2. 交辦偵測（限定群組）- 先檢查是否為完成指令，避免誤判
+      if (source.type === 'group' && savedMessage && TASK_ALLOWED_GROUP_IDS.has(source.groupId)) {
         // 檢查是否為完成指令，如果是則跳過交辦偵測
         const completeTaskPattern = /^(交辦|任務)(\d+)(完成|已完成)$/i;
         const isCompleteCommand = completeTaskPattern.test(text);
@@ -772,8 +783,8 @@ async function processWebhookEvent(event: any) {
         }
       }
 
-      // 2.2 處理事項查詢（所有群組皆可使用）
-      if (source.type === 'group' && text === '處理事項') {
+      // 2.2 處理事項查詢（限定群組）
+      if (source.type === 'group' && text === '處理事項' && TASK_ALLOWED_GROUP_IDS.has(source.groupId)) {
         console.log(`📋 偵測到處理事項查詢 來自群組 ${source.groupId}`);
         try {
           // 查詢該群組近一個月內的未完成任務
@@ -842,8 +853,8 @@ async function processWebhookEvent(event: any) {
         }
       }
 
-      // 2.1 任務完成標記（所有群組皆可使用）- 支持多種格式
-      if (source.type === 'group') {
+      // 2.1 任務完成標記（限定群組）- 支持多種格式
+      if (source.type === 'group' && TASK_ALLOWED_GROUP_IDS.has(source.groupId)) {
         // 支持三種格式：交辦01完成、任務01完成、任務01已完成
         const completeTaskPattern = /^(交辦|任務)(\d+)(完成|已完成)$/i;
         const match = text.match(completeTaskPattern);
