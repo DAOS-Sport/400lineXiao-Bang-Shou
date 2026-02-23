@@ -688,6 +688,25 @@ async function processWebhookEvent(event: any) {
       return;
     }
 
+    // GPS 打卡：location 訊息轉發給排班系統
+    if (event.message.type === 'location') {
+      try {
+        console.log(`📍 偵測到 GPS 打卡，轉發至排班系統`);
+        const forwardRes = await fetch('https://smart-schedule-manager.replit.app/api/line/webhook', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-forward-secret': process.env.CHANNEL_SECRET || ''
+          },
+          body: JSON.stringify({ events: [event] })
+        });
+        console.log(`📍 GPS 打卡轉發結果: ${forwardRes.status}`);
+      } catch (error) {
+        console.error('❌ GPS 打卡轉發失敗:', error);
+      }
+      return;
+    }
+
     // 🔧 增強去重機制 - 使用內存快取
     const eventKey = `${event.message.id}_${event.timestamp}`;
     if (processedEvents.has(eventKey)) {
