@@ -700,18 +700,36 @@ async function processWebhookEvent(event: any) {
           },
           body: JSON.stringify({ events: [event] })
         });
-        console.log(`📍 GPS 打卡轉發結果: ${forwardRes.status}`);
+        let resBody: any = null;
+        let resText = '';
+        try {
+          resText = await forwardRes.text();
+          resBody = JSON.parse(resText);
+        } catch {}
+        console.log(`📍 GPS 打卡轉發結果: ${forwardRes.status}, 回應: ${resText.substring(0, 500)}`);
 
         let replyText: string;
-        if (forwardRes.ok) {
-          let detail = '';
-          try {
-            const resBody = await forwardRes.json();
-            if (resBody.message) detail = `\n${resBody.message}`;
-          } catch {}
-          replyText = `✅ GPS 打卡成功${detail}`;
+        if (!forwardRes.ok) {
+          const reason = resBody?.message || resBody?.error || '';
+          replyText = `❌ GPS 打卡失敗${reason ? `\n原因：${reason}` : '，請稍後再試'}`;
+        } else if (resBody && resBody.success === false) {
+          const reason = resBody.message || resBody.error || resBody.note || '未知原因';
+          replyText = `❌ GPS 打卡失敗\n原因：${reason}`;
+        } else if (resBody && resBody.status === 'failed') {
+          const reason = resBody.message || resBody.note || resBody.reason || '未知原因';
+          replyText = `❌ GPS 打卡失敗\n原因：${reason}`;
+        } else if (resBody && (resBody.result || resBody.data)) {
+          const result = resBody.result || resBody.data;
+          if (result.status === 'failed' || result.status === '失敗') {
+            const reason = result.note || result.message || result.reason || '未知原因';
+            const distance = result.distance ? `\n距離：${result.distance}` : '';
+            replyText = `❌ GPS 打卡失敗\n原因：${reason}${distance}`;
+          } else {
+            const facility = result.facility || result.venue || '';
+            replyText = `✅ GPS 打卡成功${facility ? `\n場館：${facility}` : ''}`;
+          }
         } else {
-          replyText = `❌ GPS 打卡失敗，請稍後再試`;
+          replyText = `✅ GPS 打卡已送出`;
         }
 
         try {
