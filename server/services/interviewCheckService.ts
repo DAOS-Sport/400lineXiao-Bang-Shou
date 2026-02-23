@@ -96,8 +96,18 @@ export class InterviewCheckService {
 
     console.log(`🔍 ${authResult.userName} 正在執行面試檢核，身分證: ${this.maskIdCard(idCard)}`);
 
-    const licenseResult = await lifeguardLicenseService.queryLicense(idCard);
-    const cautionResult = await cautionListService.queryByIdCard(idCard);
+    console.log(`⏱️ 開始並行查詢：救生員證照 + 慎用名單...`);
+    const [licenseResult, cautionResult] = await Promise.all([
+      lifeguardLicenseService.queryLicense(idCard).catch(err => {
+        console.error(`❌ 救生員證照查詢異常:`, err.message || err);
+        return { success: false, error: `查詢異常: ${err.message || '未知錯誤'}` } as any;
+      }),
+      cautionListService.queryByIdCard(idCard).catch(err => {
+        console.error(`❌ 慎用名單查詢異常:`, err.message || err);
+        return { found: false, records: [] } as any;
+      }),
+    ]);
+    console.log(`⏱️ 並行查詢完成：證照=${licenseResult.success ? '成功' : licenseResult.error}, 慎用=${cautionResult.found ? '有記錄' : '無記錄'}`);
 
     // 先顯示快速檢核結果
     let combinedResult = `📋 面試檢核報告\n`;

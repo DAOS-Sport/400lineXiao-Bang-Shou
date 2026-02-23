@@ -1,5 +1,6 @@
-import { spawn } from 'child_process';
-import path from 'path';
+import * as cheerio from 'cheerio';
+import https from 'https';
+import http from 'http';
 
 interface LicenseInfo {
   name: string;
@@ -15,109 +16,151 @@ interface LicenseQueryResult {
 }
 
 export class LifeguardLicenseService {
-  private readonly scriptPath: string;
+  private readonly queryUrl = 'https://isports.sa.gov.tw/Apps/LGM/LGM09/LGM0970Q_01V1.aspx?MENU_PRG_CD=5&ITEM_PRG_CD=1';
+  private readonly userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  // isports.sa.gov.tw 的 SSL 證書鏈不完整，需要跳過驗證
+  // 此 agent 僅用於此政府網站查詢，不應用於其他用途
+  private readonly agent = new https.Agent({ rejectUnauthorized: false });
 
-  constructor() {
-    this.scriptPath = path.join(process.cwd(), 'scripts', 'lifeguard_query.py');
-  }
-
-  async queryLicense(idCard: string): Promise<LicenseQueryResult> {
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        resolve({ success: false, error: '查詢超時（15秒）' });
-      }, 20000);
-
-      try {
-        // 直接使用 python3 執行（依賴已透過 Nix 安裝到環境）
-        // 設置 PYTHONPATH 以包含 nix 安裝的套件
-        const pythonPath = [
-          '/nix/store/nicjg1xpimrn3zfbndwix25gphv88zlx-python3.11-requests-2.31.0/lib/python3.11/site-packages',
-          '/nix/store/b121a8zifm7qr2qcxc7hrkqn3qgfbm0l-python3.11-beautifulsoup4-4.12.3/lib/python3.11/site-packages',
-          '/nix/store/4pd17akwf211chzgjg782wi9azr30rfz-python3.11-soupsieve-2.5/lib/python3.11/site-packages',
-          '/nix/store/y84qvvzrarmks4k7qb9ras6qfsxksnds-python3.11-idna-3.7/lib/python3.11/site-packages',
-          '/nix/store/2sd6mncv58k6065w8cf9b5pmagf2jc2f-python3.11-urllib3-2.2.1/lib/python3.11/site-packages',
-          '/nix/store/jrr6l56xssk4szz6xxk9mxhk8pxwghhg-python3.11-charset-normalizer-3.3.2/lib/python3.11/site-packages',
-          '/nix/store/qgglxpjjja3qpxi6mayabj417n16d3lh-python3.11-certifi-2024.02.02/lib/python3.11/site-packages',
-          process.env.PYTHONPATH
-        ].filter(Boolean).join(':');
-
-        const pythonProcess = spawn('python3', [this.scriptPath, idCard], {
-          cwd: process.cwd(),
-          env: { ...process.env, PYTHONPATH: pythonPath }
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        pythonProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
-
-        pythonProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
-
-        pythonProcess.on('close', (code) => {
-          clearTimeout(timeout);
-          
-          if (code !== 0) {
-            console.error('Python script error:', stderr);
-            resolve({ success: false, error: '外部查詢失敗' });
-            return;
-          }
-
-          try {
-            const result = JSON.parse(stdout.trim());
-            resolve(result);
-          } catch (parseError) {
-            if (stdout.includes('查無資料')) {
-              resolve({ success: false, error: '查無資料，證照可能已過期或無效' });
-            } else if (stdout.includes('查詢成功')) {
-              const licenses = this.parseTextOutput(stdout);
-              resolve({ success: true, data: licenses });
-            } else {
-              resolve({ success: false, error: '解析結果失敗' });
-            }
-          }
-        });
-
-        pythonProcess.on('error', (err) => {
-          clearTimeout(timeout);
-          console.error('Failed to start Python process:', err);
-          resolve({ success: false, error: '無法啟動查詢程序' });
-        });
-
-      } catch (error) {
-        clearTimeout(timeout);
-        console.error('Query license error:', error);
-        resolve({ success: false, error: '查詢過程發生錯誤' });
+  private httpRequest(url: string, options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeout?: number;
+  } = {}): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
+    return new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      if (urlObj.hostname !== 'isports.sa.gov.tw') {
+        reject(new Error('此 HTTP client 僅限查詢 isports.sa.gov.tw'));
+        return;
       }
+      const reqOptions: https.RequestOptions = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || 443,
+        path: urlObj.pathname + urlObj.search,
+        method: options.method || 'GET',
+        headers: options.headers || {},
+        agent: this.agent,
+        timeout: options.timeout || 15000,
+      };
+
+      const req = https.request(reqOptions, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode || 0,
+            headers: res.headers,
+            body: data,
+          });
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('請求超時'));
+      });
+
+      if (options.body) {
+        req.write(options.body);
+      }
+      req.end();
     });
   }
 
-  private parseTextOutput(output: string): LicenseInfo[] {
-    const licenses: LicenseInfo[] = [];
-    const lines = output.split('\n');
-    
-    let currentLicense: Partial<LicenseInfo> = {};
-    
-    for (const line of lines) {
-      if (line.includes('姓名：')) {
-        currentLicense.name = line.split('姓名：')[1]?.trim() || '';
-      } else if (line.includes('資格：')) {
-        currentLicense.licenseType = line.split('資格：')[1]?.trim() || '';
-      } else if (line.includes('證號：')) {
-        currentLicense.licenseNo = line.split('證號：')[1]?.trim() || '';
-      } else if (line.includes('效期：')) {
-        currentLicense.expiryDate = line.split('效期：')[1]?.trim() || '';
-        if (currentLicense.name) {
-          licenses.push(currentLicense as LicenseInfo);
-          currentLicense = {};
+  async queryLicense(idCard: string): Promise<LicenseQueryResult> {
+    try {
+      console.log(`🔍 開始查詢救生員證照 (Node.js): ${this.maskIdCard(idCard)}`);
+
+      const getRes = await this.httpRequest(this.queryUrl, {
+        headers: {
+          'User-Agent': this.userAgent,
+          'Referer': this.queryUrl,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        timeout: 15000,
+      });
+
+      if (getRes.statusCode !== 200) {
+        console.error(`❌ GET 請求失敗: ${getRes.statusCode}`);
+        return { success: false, error: `網站回應異常 (${getRes.statusCode})` };
+      }
+
+      const cookies = (getRes.headers['set-cookie'] || [])
+        .map(c => c.split(';')[0])
+        .join('; ');
+
+      const $ = cheerio.load(getRes.body);
+      const payload: Record<string, string> = {};
+      $('input[type="hidden"]').each((_, el) => {
+        const name = $(el).attr('name');
+        const value = $(el).attr('value') || '';
+        if (name) payload[name] = value;
+      });
+
+      payload['ctl00$IsportContent$TYPE'] = 'IDN';
+      payload['ctl00$IsportContent$Q_LG_LIC_HOLDER_IDN'] = idCard;
+      payload['ctl00$IsportContent$btnQuery'] = '查詢';
+      payload['ctl00$IsportContent$Q_LG_LIC_EXAM_UNIT_CD'] = '';
+      payload['ctl00$IsportContent$Q_LG_LIC_EXAM_TP_CD'] = '';
+
+      const formBody = Object.entries(payload)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&');
+
+      console.log(`📡 POST 查詢救生員證照...`);
+      const postRes = await this.httpRequest(this.queryUrl, {
+        method: 'POST',
+        headers: {
+          'User-Agent': this.userAgent,
+          'Referer': this.queryUrl,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Cookie': cookies,
+        },
+        body: formBody,
+        timeout: 15000,
+      });
+
+      if (postRes.statusCode !== 200) {
+        console.error(`❌ POST 請求失敗: ${postRes.statusCode}`);
+        return { success: false, error: `查詢請求失敗 (${postRes.statusCode})` };
+      }
+
+      const $result = cheerio.load(postRes.body);
+      const grid = $result('table#IsportContent_DataGrid');
+
+      if (grid.length > 0) {
+        const rows = grid.find('tr');
+        if (rows.length > 1) {
+          const results: LicenseInfo[] = [];
+          rows.each((i, row) => {
+            if (i === 0) return;
+            const cols = $result(row).find('td');
+            if (cols.length >= 6) {
+              results.push({
+                name: $result(cols[2]).text().trim(),
+                licenseType: $result(cols[1]).text().trim(),
+                licenseNo: $result(cols[3]).text().trim(),
+                expiryDate: $result(cols[5]).text().trim(),
+              });
+            }
+          });
+
+          if (results.length > 0) {
+            console.log(`✅ 救生員證照查詢成功，找到 ${results.length} 筆記錄`);
+            return { success: true, data: results };
+          }
         }
       }
+
+      console.log(`ℹ️ 救生員證照查詢完成：此人未考取救生員證照`);
+      return { success: true, data: [] };
+
+    } catch (error: any) {
+      console.error('❌ 救生員證照查詢錯誤:', error.message || error);
+      return { success: false, error: `查詢過程發生錯誤: ${error.message || '未知錯誤'}` };
     }
-    
-    return licenses;
   }
 
   formatLicenseResult(result: LicenseQueryResult, idCard: string): string {
