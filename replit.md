@@ -113,6 +113,14 @@ Preferred communication style: Simple, everyday language.
 | C50c2a9623a78cc5f5e9f39557e3abfe6 | 竹科戶外游泳池 |
 | C360be1fe6ea876a4df3ca0497bca4e3b | 竹科高爾夫球練習場 / 竹科網球場&籃球場 |
 
+### Interview Check Module (面試檢核)
+- **Service File**: `server/services/interviewCheckService.ts`, `server/services/lifeguardLicenseService.ts`, `server/services/cautionListService.ts`
+- **Authorized Users**: 7 人（蔣碩仁、夏凱莉、莊嘉郡、陳柏榮、夏鈺婷、莊嘉容、莊柏彥），定義於 `server/services/initializeAuthorizedUsers.ts`
+- **Lifeguard License Query**: 使用 Node.js 原生 `https` 模組 + cheerio 查詢 `isports.sa.gov.tw`（體育署救生員證照查詢系統）
+- **SSL Note**: `isports.sa.gov.tw` 的 SSL 證書鏈不完整，目前使用 `rejectUnauthorized: false` 繞過。如果 Node.js 版本有問題，備選方案是改為只更新 SSL 憑證（CA bundle）而非跳過驗證。原本使用 Python 腳本 (`scripts/lifeguard_query.py`) 也有相同 SSL 問題，且 Nix store 路徑在部署後會失效，已棄用。
+- **Caution List Query**: 透過 RAGIC API 查詢慎用名單（`RAGIC_CAUTION_API_KEY`）
+- **Parallel Queries**: 救生員證照和慎用名單使用 `Promise.all` 並行查詢，各自有獨立錯誤處理
+
 ### Development Tools
 - **ESBuild**: Fast bundling.
 - **PostCSS**: CSS processing.
