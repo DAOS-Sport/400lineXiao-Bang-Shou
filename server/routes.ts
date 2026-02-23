@@ -688,7 +688,7 @@ async function processWebhookEvent(event: any) {
       return;
     }
 
-    // GPS 打卡：location 訊息轉發給排班系統
+    // GPS 打卡：location 訊息轉發給排班系統，並回覆結果
     if (event.message.type === 'location') {
       try {
         console.log(`📍 偵測到 GPS 打卡，轉發至排班系統`);
@@ -701,8 +701,30 @@ async function processWebhookEvent(event: any) {
           body: JSON.stringify({ events: [event] })
         });
         console.log(`📍 GPS 打卡轉發結果: ${forwardRes.status}`);
+
+        let replyText: string;
+        if (forwardRes.ok) {
+          let detail = '';
+          try {
+            const resBody = await forwardRes.json();
+            if (resBody.message) detail = `\n${resBody.message}`;
+          } catch {}
+          replyText = `✅ GPS 打卡成功${detail}`;
+        } else {
+          replyText = `❌ GPS 打卡失敗，請稍後再試`;
+        }
+
+        try {
+          await lineService.replyMessage(event.replyToken, replyText);
+          console.log(`📍 GPS 打卡回覆已發送: ${replyText}`);
+        } catch (replyError) {
+          console.error('❌ GPS 打卡回覆失敗:', replyError);
+        }
       } catch (error) {
         console.error('❌ GPS 打卡轉發失敗:', error);
+        try {
+          await lineService.replyMessage(event.replyToken, '❌ GPS 打卡系統暫時無法連線，請稍後再試');
+        } catch {}
       }
       return;
     }
