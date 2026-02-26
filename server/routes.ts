@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { lineService } from "./services/lineService";
 import { messageService } from "./services/messageService";
@@ -803,7 +804,7 @@ async function processWebhookEvent(event: any) {
       }
 
       // 2. 交辦偵測（限定群組）- 先檢查是否為完成指令，避免誤判
-      if (source.type === 'group' && savedMessage && TASK_ALLOWED_GROUP_IDS.has(source.groupId)) {
+      if (source.type === 'group' && TASK_ALLOWED_GROUP_IDS.has(source.groupId)) {
         // 檢查是否為完成指令，如果是則跳過交辦偵測
         const completeTaskPattern = /^(交辦|任務)(\d+)(完成|已完成)$/i;
         const isCompleteCommand = completeTaskPattern.test(text);
@@ -812,11 +813,27 @@ async function processWebhookEvent(event: any) {
         if (!isCompleteCommand && text.includes('交辦')) {
           console.log(`🎯 偵測到交辦任務: "${text}" 來自群組 ${source.groupId}`);
           try {
+            // 若 savedMessage 為 null（DB 存入失敗），建立備用 message 物件
+            const messageForTask = savedMessage || {
+              id: crypto.randomUUID(),
+              groupId: (source as any).groupId,
+              userId: (source as any).userId || '',
+              displayName: null,
+              messageId: event.message.id || '',
+              text: text,
+              type: 'text',
+              sourceType: 'group',
+              roomId: null,
+              timestamp: new Date(),
+              rawEvent: null,
+              createdAt: new Date()
+            };
+            
             console.log(`🔍 DEBUG: 準備創建任務，replyToken: ${event.replyToken?.substring(0, 20)}...`);
-            const taskResult = await taskService.createTaskFromMessage(savedMessage, text);
+            const taskResult = await taskService.createTaskFromMessage(messageForTask as any, text);
             console.log(`🎯 任務創建結果:`, taskResult);
             
-            // 如果成功創建任務，自動回覆確認
+            // 如果成功創建任務，自動回覆確認後立即 return（避免 replyToken 被後續流程重複使用）
             if (taskResult) {
               const confirmationText = `✅ 已登記交辦任務-${taskResult.taskSerial}`;
               console.log(`📤 準備回覆任務創建確認: "${confirmationText}"`);
@@ -824,13 +841,16 @@ async function processWebhookEvent(event: any) {
               try {
                 await lineService.replyMessage(event.replyToken, confirmationText);
                 console.log(`✅ 任務創建確認已發送`);
+                return; // 🔑 確認送出後立即返回，防止 token 被後續 reply-trigger 消耗
               } catch (replyError) {
                 console.error(`❌ 回覆任務創建確認失敗:`, replyError);
                 try {
-                  await lineService.pushMessage(source.groupId, confirmationText);
-                  console.log(`✅ 改用推送方式發送任務創建確認到群組 ${source.groupId}`);
+                  await lineService.pushMessage((source as any).groupId, confirmationText);
+                  console.log(`✅ 改用推送方式發送任務創建確認到群組 ${(source as any).groupId}`);
+                  return; // push 也成功，直接返回
                 } catch (pushError) {
                   console.error(`❌ 推送任務創建確認也失敗:`, pushError);
+                  // 兩種方式都失敗，繼續執行讓 reply-trigger 有機會送訊息
                 }
               }
             } else {
