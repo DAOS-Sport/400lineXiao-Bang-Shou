@@ -110,13 +110,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     keyGenerator: () => 'webhook', // 使用固定 key 避免代理 IP 問題
   });
 
-  // GET / - 只回 "ok"
-  console.log('🔗 註冊根路由 /');
-  app.get("/", (req, res) => {
-    console.log('🏠 根路由被請求');
-    res.send("ok");
-  });
-
   // GET /health - 健康檢查
   console.log('🔗 註冊 /health 路由');
   app.get("/health", async (req, res) => {
