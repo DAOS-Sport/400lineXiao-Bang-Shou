@@ -8,10 +8,16 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
+### Deployment Mode: Pure Backend (Decoupled Architecture)
+- **Frontend**: Removed. This project is now purely a Backend/Webhook server.
+- **No Vite/React**: All Vite, React, and related front-end code has been removed from the server startup.
+- **Frontend戰情室**: Will be built in a separate project that calls this backend's REST APIs.
+
 ### Backend Architecture
 - **Framework**: Express.js with TypeScript.
-- **API Design**: RESTful headless API with endpoints for LINE webhook processing, health monitoring, and administrative message viewing.
-- **Security**: Uses Helmet for security headers, express-rate-limit, and LINE webhook signature validation.
+- **API Design**: RESTful headless API with endpoints for LINE webhook processing, health monitoring, administrative message viewing, and dashboard statistics.
+- **Security**: Uses Helmet for security headers, express-rate-limit, LINE webhook signature validation, and API Key authentication for admin endpoints.
+- **CORS**: Enabled globally (origin: *) to support external frontend projects.
 
 ### Database Layer
 - **ORM**: Drizzle ORM with PostgreSQL (Neon serverless) for type-safe operations and connection pooling.

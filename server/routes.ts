@@ -1,8 +1,9 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { createServer, type Server } from "http";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import cors from "cors";
 import { storage } from "./storage";
 import { lineService } from "./services/lineService";
 import { messageService } from "./services/messageService";
@@ -90,8 +91,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
   console.log('📁 靜態資產服務已設置：/attached_assets (絕對路徑)');
 
+  // CORS 設置（必須在 helmet 和 rate-limiter 之前，確保 OPTIONS 預檢請求能正常通過）
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  }));
+
   // 安全中間件
-  app.use(helmet());
+  app.use(helmet({
+    crossOriginResourcePolicy: false,
+  }));
   
   // Rate limiting（配置適用於 Replit 代理環境）
   const limiter = rateLimit({
@@ -108,6 +118,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     max: 100, // 最多 100 requests per minute
     message: { error: "Webhook 請求過於頻繁" },
     keyGenerator: () => 'webhook', // 使用固定 key 避免代理 IP 問題
+  });
+
+  // API Key 驗證 middleware（用於 /api/admin 路由）
+  function requireApiKey(req: Request, res: Response, next: NextFunction) {
+    const apiKey = req.headers['x-api-key'] as string | undefined;
+    const expected = process.env.DASHBOARD_API_KEY;
+    if (!expected) {
+      return res.status(503).json({ error: "Dashboard API key not configured" });
+    }
+    if (!apiKey || apiKey !== expected) {
+      return res.status(401).json({ error: "Unauthorized: invalid or missing X-API-Key header" });
+    }
+    next();
+  }
+
+  // GET /api/admin/dashboard/feature-stats - 戰情室功能滲透率統計
+  app.get("/api/admin/dashboard/feature-stats", requireApiKey, async (req: Request, res: Response) => {
+    try {
+      const authorizedGroups = await storage.getAuthorizedGroups();
+
+      const FEATURE_GROUP_IDS: Record<string, string> = {
+        'C66a4b3bb3fbc3dcf52d42626ec512484': '新北高中游泳池&運動中心',
+        'C6f6f163895d5b528a6ab044015e1a37b': '三重商工游泳池&籃球場',
+        'C2dc6991e51074dd47d5d275d568318f7': '三民高中游泳池',
+        'C9b3c5dfe2e005adafd2ed914714a1930': '松山國小室內溫水游泳池',
+        'C50c2a9623a78cc5f5e9f39557e3abfe6': '竹科戶外游泳池',
+        'C360be1fe6ea876a4df3ca0497bca4e3b': '竹科高爾夫&網球場',
+        'C2dd9a5fce7c276f2cbfdd02c2342661c': '三民排班群組',
+        'Ce936c6bebb59b8b5683ffbcf97bf20de': '授權群組(舊)',
+        'Cf7ab973766c258e5b4b4f040d35b2175': '駿斯IT技術群',
+      };
+
+      const WATER_QUALITY_GROUP_IDS = new Set([
+        'C50c2a9623a78cc5f5e9f39557e3abfe6',
+      ]);
+
+      const WEATHER_FEATURE_GROUP_IDS = new Set([
+        'C50c2a9623a78cc5f5e9f39557e3abfe6',
+        'C360be1fe6ea876a4df3ca0497bca4e3b',
+      ]);
+
+      const groupIds = Object.keys(FEATURE_GROUP_IDS);
+      const totalGroups = groupIds.length;
+
+      type GroupFeature = {
+        groupId: string;
+        groupName: string;
+        features: string[];
+        featureCount: number;
+      };
+
+      const groups: GroupFeature[] = await Promise.all(
+        groupIds.map(async (groupId) => {
+          const features: string[] = [];
+
+          const tasks = await storage.getTasksByGroupId(groupId);
+          if (tasks.length > 0) features.push('task_management');
+
+          if (WATER_QUALITY_GROUP_IDS.has(groupId)) features.push('water_quality');
+          if (WEATHER_FEATURE_GROUP_IDS.has(groupId)) features.push('weather_forecast');
+
+          const isAuthorized = authorizedGroups.some(g => g.groupId === groupId);
+          if (isAuthorized) features.push('interview_check');
+
+          return {
+            groupId,
+            groupName: FEATURE_GROUP_IDS[groupId],
+            features,
+            featureCount: features.length,
+          };
+        })
+      );
+
+      const featureNames = ['task_management', 'water_quality', 'weather_forecast', 'interview_check'];
+      const featurePenetration = featureNames.map(feature => {
+        const count = groups.filter(g => g.features.includes(feature)).length;
+        return {
+          feature,
+          activeGroups: count,
+          totalGroups,
+          penetrationRate: parseFloat((count / totalGroups * 100).toFixed(1)),
+        };
+      });
+
+      res.json({
+        generatedAt: new Date().toISOString(),
+        groups,
+        featurePenetration,
+      });
+    } catch (error) {
+      console.error('feature-stats API error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   // GET / - 只回 "ok"
