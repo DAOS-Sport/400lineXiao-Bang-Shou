@@ -47,4 +47,3 @@ externalPort = 80
 
 [userenv.shared]
 SURVEY_WEBHOOK_TOKEN = "daos-survey-2025"
-DASHBOARD_API_KEY = "daos-dashboard-2025-secure"
