@@ -141,6 +141,136 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // =============================================
+  // 戰情室 Dashboard API（公開，無需驗證）
+  // =============================================
+
+  // A. 群組功能概況
+  app.get("/api/admin/dashboard/feature-stats", async (req, res) => {
+    try {
+      const groupConfig = [
+        { id: 'C66a4b3bb3fbc3dcf52d42626ec512484', name: '新北高中',    task: true,  weather: false, gps: true  },
+        { id: 'C6f6f163895d5b528a6ab044015e1a37b', name: '三重商工',    task: true,  weather: false, gps: true  },
+        { id: 'C2dc6991e51074dd47d5d275d568318f7', name: '三民高中',    task: true,  weather: false, gps: true  },
+        { id: 'C9b3c5dfe2e005adafd2ed914714a1930', name: '松山國小',    task: true,  weather: false, gps: true  },
+        { id: 'C50c2a9623a78cc5f5e9f39557e3abfe6', name: '竹科游泳池',  task: true,  weather: true,  gps: true  },
+        { id: 'C360be1fe6ea876a4df3ca0497bca4e3b', name: '竹科高爾夫',  task: true,  weather: true,  gps: true  },
+        { id: 'C2dd9a5fce7c276f2cbfdd02c2342661c', name: '三民排班群',  task: true,  weather: false, gps: true  },
+        { id: 'Ce936c6bebb59b8b5683ffbcf97bf20de', name: '原授權群組',  task: true,  weather: false, gps: true  },
+        { id: 'Cf7ab973766c258e5b4b4f040d35b2175', name: '駿斯IT技術群', task: true, weather: false, gps: true  },
+      ];
+
+      const groups = groupConfig.map(g => ({
+        name: g.name,
+        groupId: g.id,
+        任務交辦: g.task ? 1 : 0,
+        天氣預報: g.weather ? 1 : 0,
+        GPS打卡: g.gps ? 1 : 0,
+        totalEnabled: [g.task, g.weather, g.gps].filter(Boolean).length,
+      }));
+
+      const totalGroups = groups.length;
+      const featurePenetration = [
+        { feature: '任務交辦', count: groups.filter(g => g.任務交辦).length, rate: Math.round(groups.filter(g => g.任務交辦).length / totalGroups * 100) },
+        { feature: '天氣預報', count: groups.filter(g => g.天氣預報).length, rate: Math.round(groups.filter(g => g.天氣預報).length / totalGroups * 100) },
+        { feature: 'GPS打卡',  count: groups.filter(g => g.GPS打卡).length,  rate: Math.round(groups.filter(g => g.GPS打卡).length  / totalGroups * 100) },
+      ];
+
+      res.json({ groups, featurePenetration, totalGroups });
+    } catch (error) {
+      console.error('feature-stats error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // B. 任務交辦統計
+  app.get("/api/admin/tasks/stats", async (req, res) => {
+    try {
+      const allTasks = await storage.getAllTasks();
+      const completed = allTasks.filter(t => t.status === 'completed');
+      const pending   = allTasks.filter(t => t.status === 'pending');
+      const total     = allTasks.length;
+      const completionRate = total > 0 ? `${((completed.length / total) * 100).toFixed(1)}%` : '0%';
+
+      const recentTasks = allTasks
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 10)
+        .map(t => ({
+          id: t.taskIdSerial,
+          text: t.text,
+          status: t.status,
+          groupId: t.groupId,
+          createdAt: t.createdAt,
+          completedAt: t.completedAt || null,
+        }));
+
+      // 各群組任務數量
+      const byGroup: Record<string, { total: number; completed: number; pending: number }> = {};
+      allTasks.forEach(t => {
+        if (!byGroup[t.groupId]) byGroup[t.groupId] = { total: 0, completed: 0, pending: 0 };
+        byGroup[t.groupId].total++;
+        if (t.status === 'completed') byGroup[t.groupId].completed++;
+        if (t.status === 'pending')   byGroup[t.groupId].pending++;
+      });
+
+      res.json({ total, completed: completed.length, pending: pending.length, completionRate, recentTasks, byGroup });
+    } catch (error) {
+      console.error('tasks/stats error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // C. GPS 打卡與出勤統計
+  app.get("/api/admin/attendance/stats", async (req, res) => {
+    try {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      // 從 messages 撈今日 location 訊息（GPS 打卡）
+      const result = await (storage as any).pool?.query(
+        `SELECT user_id, display_name, group_id, timestamp, raw_event
+         FROM messages
+         WHERE type = 'location' AND timestamp >= $1
+         ORDER BY timestamp DESC`,
+        [todayStart]
+      ).catch(() => null);
+
+      const checkins = result?.rows || [];
+      const todayCheckins = checkins.length;
+
+      // 從 audit_logs 查今日打卡結果（成功/失敗）
+      const auditResult = await (storage as any).pool?.query(
+        `SELECT details FROM audit_logs
+         WHERE category = 'gps' AND timestamp >= $1`,
+        [todayStart]
+      ).catch(() => null);
+
+      const auditRows = auditResult?.rows || [];
+      const successful = auditRows.filter((r: any) => r.details?.success === true).length;
+      const failed     = auditRows.filter((r: any) => r.details?.success === false).length;
+
+      // 各群組打卡人數
+      const byGroup: Record<string, number> = {};
+      checkins.forEach((c: any) => {
+        byGroup[c.group_id] = (byGroup[c.group_id] || 0) + 1;
+      });
+
+      const uniqueCheckers = new Set(checkins.map((c: any) => c.user_id)).size;
+
+      res.json({
+        todayCheckins,
+        successful: successful || todayCheckins,
+        failed,
+        uniqueCheckers,
+        byGroup,
+        asOf: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('attendance/stats error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   const surveyLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
     max: 30,

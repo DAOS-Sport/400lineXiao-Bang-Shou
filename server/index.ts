@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { db } from "./db";
@@ -6,6 +7,7 @@ import { processManager } from "./utils/processManager";
 import "./utils/stableRunner"; // 自動應用穩定運行優化
 
 const app = express();
+app.use(cors()); // 允許所有跨網域請求（戰情室前端用）
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
