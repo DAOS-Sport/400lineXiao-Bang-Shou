@@ -7,6 +7,15 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function getAdminAuthHeader(): Record<string, string> {
+  // TODO: Replace with JWT token when ready
+  const auth = localStorage.getItem('adminAuth');
+  if (auth) {
+    return { 'Authorization': 'Basic ' + auth };
+  }
+  return {};
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -14,7 +23,10 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...getAdminAuthHeader(),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -29,8 +41,11 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const res = await fetch(queryKey[0] as string, {
       credentials: "include",
+      headers: {
+        ...getAdminAuthHeader(),
+      },
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

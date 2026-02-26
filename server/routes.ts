@@ -472,6 +472,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 資料庫查看介面 - 任務
+  // GET /api/admin/dashboard/feature-stats - 群組功能戰情室資料
+  app.get('/api/admin/dashboard/feature-stats', authMiddleware, async (req, res) => {
+    try {
+      const GROUP_FEATURE_MAP = [
+        {
+          name: '新北高中',
+          fullName: '新北高中游泳池 & 運動中心',
+          groupId: 'C66a4b3bb3fbc3dcf52d42626ec512484',
+          features: { '任務交辦': 1, '客戶調查': 1, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 0 }
+        },
+        {
+          name: '三重商工',
+          fullName: '三重商工游泳池 & 籃球場',
+          groupId: 'C6f6f163895d5b528a6ab044015e1a37b',
+          features: { '任務交辦': 1, '客戶調查': 1, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 0 }
+        },
+        {
+          name: '三民高中',
+          fullName: '三民高中游泳池',
+          groupId: 'C2dc6991e51074dd47d5d275d568318f7',
+          features: { '任務交辦': 1, '客戶調查': 1, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 0 }
+        },
+        {
+          name: '松山國小',
+          fullName: '松山國小室內溫水游泳池',
+          groupId: 'C9b3c5dfe2e005adafd2ed914714a1930',
+          features: { '任務交辦': 1, '客戶調查': 1, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 0 }
+        },
+        {
+          name: '竹科戶外泳池',
+          fullName: '竹科戶外游泳池',
+          groupId: 'C50c2a9623a78cc5f5e9f39557e3abfe6',
+          features: { '任務交辦': 1, '客戶調查': 1, 'GPS打卡': 1, '水質監控': 1, '天氣預報': 1, '風力預報': 0 }
+        },
+        {
+          name: '竹科高爾夫',
+          fullName: '竹科高爾夫球練習場 / 網球場 & 籃球場',
+          groupId: 'C360be1fe6ea876a4df3ca0497bca4e3b',
+          features: { '任務交辦': 1, '客戶調查': 1, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 1 }
+        },
+        {
+          name: '三民排班群',
+          fullName: '三民排班群組',
+          groupId: 'C2dd9a5fce7c276f2cbfdd02c2342661c',
+          features: { '任務交辦': 1, '客戶調查': 0, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 0 }
+        },
+        {
+          name: '原授權群組',
+          fullName: '原授權群組',
+          groupId: 'Ce936c6bebb59b8b5683ffbcf97bf20de',
+          features: { '任務交辦': 1, '客戶調查': 0, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 0 }
+        },
+        {
+          name: 'IT技術群',
+          fullName: '駿斯IT技術群',
+          groupId: 'Cf7ab973766c258e5b4b4f040d35b2175',
+          features: { '任務交辦': 1, '客戶調查': 0, 'GPS打卡': 1, '水質監控': 0, '天氣預報': 0, '風力預報': 0 }
+        }
+      ];
+
+      const featureNames = ['任務交辦', '客戶調查', 'GPS打卡', '水質監控', '天氣預報', '風力預報'];
+      const totalGroups = GROUP_FEATURE_MAP.length;
+
+      const groups = GROUP_FEATURE_MAP.map(g => ({
+        ...g,
+        totalEnabled: Object.values(g.features).reduce((sum, v) => sum + v, 0)
+      }));
+
+      const featurePenetration = featureNames.map(feature => {
+        const enabled = groups.filter(g => g.features[feature as keyof typeof g.features] === 1).length;
+        return {
+          feature,
+          enabled,
+          disabled: totalGroups - enabled,
+          rate: Math.round((enabled / totalGroups) * 100)
+        };
+      });
+
+      const totalEnabled = groups.reduce((sum, g) => sum + g.totalEnabled, 0);
+
+      res.json({
+        groups,
+        featurePenetration,
+        summary: {
+          totalGroups,
+          totalFeatureSlots: totalGroups * featureNames.length,
+          totalEnabled,
+          healthRate: 98
+        }
+      });
+    } catch (error) {
+      console.error('feature-stats API 失敗:', error);
+      res.status(500).json({ error: '無法取得功能統計資料' });
+    }
+  });
+
   app.get('/api/admin/tasks', async (req, res) => {
     try {
       const { groupId, status, limit = 50 } = req.query;
