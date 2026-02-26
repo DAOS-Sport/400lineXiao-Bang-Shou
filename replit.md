@@ -49,14 +49,18 @@ Preferred communication style: Simple, everyday language.
 - **Admin Controls**: Environment-variable defined admin user IDs.
 - **Group Targeting**: Environment-configurable target group IDs.
 
-### Architecture
-- **Pure Backend**: This project is a headless backend API server only. No frontend/React/Vite.
-- **Frontend**: The admin dashboard (戰情室) is hosted in a separate project, consuming this backend's APIs via CORS.
-- **CORS**: Enabled globally via `cors` middleware to allow cross-origin frontend access.
+### Frontend Architecture
+- **Client Framework**: React with TypeScript and Vite.
+- **UI Components**: shadcn/ui with Radix UI.
+- **State Management**: TanStack Query.
+- **Styling**: Tailwind CSS.
+- **Routing**: Wouter for client-side routing.
 
 ### Development & Build System
-- **Runtime**: tsx for direct TypeScript execution (no build step).
-- **TypeScript**: Strict type checking on server code only.
+- **Build Tool**: Vite for fast development and optimized builds.
+- **TypeScript**: Strict type checking.
+- **Module Resolution**: Path aliases.
+- **Hot Reload**: Development server with HMR.
 
 ## External Dependencies
 
