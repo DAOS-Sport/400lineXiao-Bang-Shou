@@ -114,6 +114,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     keyGenerator: () => 'webhook', // 使用固定 key 避免代理 IP 問題
   });
 
+  // GET / - API 根路由
+  app.get("/", (req, res) => {
+    res.json({ service: "駿斯小助理 Backend API", status: "ok", version: "2.0" });
+  });
+
   // GET /health - 健康檢查
   console.log('🔗 註冊 /health 路由');
   app.get("/health", async (req, res) => {
