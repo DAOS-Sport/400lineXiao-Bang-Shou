@@ -90,8 +90,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
   console.log('📁 靜態資產服務已設置：/attached_assets (絕對路徑)');
 
-  // 安全中間件
-  app.use(helmet());
+  // 安全中間件（開發環境停用 CSP，避免 Vite HMR preamble 被 Content-Security-Policy 封鎖）
+  if (process.env.NODE_ENV === 'production') {
+    app.use(helmet());
+  } else {
+    app.use(helmet({ contentSecurityPolicy: false }));
+  }
   
   // Rate limiting（配置適用於 Replit 代理環境）
   const limiter = rateLimit({
