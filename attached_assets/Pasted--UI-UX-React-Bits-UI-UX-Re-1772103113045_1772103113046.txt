@@ -1,0 +1,88 @@
+【UI/UX 升級指示：導入 React Bits 高互動性設計】
+
+我們確認了核心需求是「群組與功能的視覺化戰情室」，現在我要進一步提升前端的 UI/UX 質感。
+請在前端實作中導入 **React Bits**（或 Framer Motion + Tailwind CSS）的設計風格，讓整個 Dashboard 具備現代化的動態互動元素（例如：進場動畫、Hover 浮動卡片、柔和的陰影變化）。
+
+**【實作要求】**
+1. **依賴套件準備：** 若需使用 Framer Motion 達成 React Bits 的動態效果，請確保前端已安裝 `framer-motion` 與 `lucide-react` (用於精美圖示)。
+2. **動態 KPI 卡片 (Spotlight/Hover Cards)：** 頂部的數據總覽（例如：總群組數、啟用最多功能的群組）請使用帶有 Hover 互動效果的卡片。
+3. **圖表動畫：** Recharts 本身支援動畫，請確保圖表載入時有平滑的繪製過程。
+4. **資料來源模擬：** 在後端 API 寫好之前，請先用 Mock Data（假資料）把畫面刻出來讓我確認視覺效果。
+
+**【參考範例程式碼 (Benchmark)】**
+以下是我期望的「動態 KPI 卡片」與「圖表容器」的質感範例，請參考此架構與風格來撰寫 `/admin/dashboard`：
+
+```tsx
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Activity, Users, Zap } from 'lucide-react';
+// 假設這裡引入 Recharts 的組件
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+
+const mockData = [
+  { name: '新北高中群', tasks: 1, weather: 1, gps: 0 },
+  { name: '竹科泳池群', tasks: 1, weather: 1, gps: 1 },
+  { name: '教練群', tasks: 0, weather: 0, gps: 1 },
+];
+
+// 動態卡片組件 (React Bits 風格)
+const AnimatedCard = ({ title, value, icon: Icon, delay }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay, duration: 0.5 }}
+    whileHover={{ y: -5, boxShadow: "0 10px 30px -10px rgba(0,0,0,0.2)" }}
+    className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer"
+  >
+    <div>
+      <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
+      <h3 className="text-3xl font-bold text-gray-800">{value}</h3>
+    </div>
+    <div className="p-4 bg-blue-50 rounded-full text-blue-600">
+      <Icon size={24} />
+    </div>
+  </motion.div>
+);
+
+export default function Dashboard() {
+  return (
+    <div className="p-8 bg-gray-50 min-h-screen">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+        className="mb-8"
+      >
+        <h1 className="text-3xl font-bold text-gray-900">群組功能戰情室</h1>
+        <p className="text-gray-500 mt-2">即時監控各 LINE 群組的模組啟用狀態</p>
+      </motion.div>
+
+      {/* KPI 卡片區塊 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <AnimatedCard title="活躍群組總數" value="12" icon={Users} delay={0.1} />
+        <AnimatedCard title="總啟用功能數" value="34" icon={Zap} delay={0.2} />
+        <AnimatedCard title="系統健康度" value="99%" icon={Activity} delay={0.3} />
+      </div>
+
+      {/* 圖表區塊 */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.4, duration: 0.5 }}
+        className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"
+      >
+        <h3 className="text-lg font-bold text-gray-800 mb-6">各群組功能分佈 (堆疊圖)</h3>
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={mockData}>
+              <XAxis dataKey="name" stroke="#8884d8" />
+              <YAxis />
+              <Tooltip cursor={{fill: 'transparent'}} />
+              <Bar dataKey="tasks" stackId="a" fill="#4F46E5" name="任務交辦" radius={[0, 0, 4, 4]} />
+              <Bar dataKey="weather" stackId="a" fill="#06B6D4" name="天氣預報" />
+              <Bar dataKey="gps" stackId="a" fill="#10B981" name="GPS打卡" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
