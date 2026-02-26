@@ -803,6 +803,16 @@ async function processWebhookEvent(event: any) {
         return;
       }
 
+      // 1.1 群組ID查詢（管理員用，方便取得群組ID以加入白名單）
+      if (text.toLowerCase() === '群組id' || text === '群組ID') {
+        if (source.type === 'group') {
+          await lineService.replyMessage(event.replyToken, `📋 群組資訊\nGroup ID: ${source.groupId}`);
+        } else {
+          await lineService.replyMessage(event.replyToken, `📋 使用者資訊\nUser ID: ${(source as any).userId}`);
+        }
+        return;
+      }
+
       // 2. 交辦偵測（限定群組）- 先檢查是否為完成指令，避免誤判
       if (source.type === 'group' && TASK_ALLOWED_GROUP_IDS.has(source.groupId)) {
         // 檢查是否為完成指令，如果是則跳過交辦偵測
