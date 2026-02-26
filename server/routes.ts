@@ -31,6 +31,7 @@ const TASK_ALLOWED_GROUP_IDS = new Set([
   'C360be1fe6ea876a4df3ca0497bca4e3b', // 竹科高爾夫球練習場 / 竹科網球場&籃球場
   'C2dd9a5fce7c276f2cbfdd02c2342661c', // 三民排班群組
   'Ce936c6bebb59b8b5683ffbcf97bf20de', // 原授權群組
+  'Cf7ab973766c258e5b4b4f040d35b2175', // 駿斯IT技術群
 ]);
 
 export async function registerRoutes(app: Express): Promise<Server> {
