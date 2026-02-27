@@ -826,6 +826,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 特定群組歷史任務查詢
+  app.get('/api/admin/tasks/history/:groupId', async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      const { status, limit = '200' } = req.query;
+
+      const allTasks = await storage.getTasksByGroupId(groupId, status as string | undefined);
+      const limited = allTasks.slice(0, parseInt(limit as string));
+
+      const result = limited.map((task: any) => ({
+        taskId:      task.taskIdSerial,
+        description: task.text,
+        status:      task.status,
+        createdAt:   task.createdAt,
+        completedAt: task.completedAt ?? null,
+        reporter:    task.authorDisplayName ?? task.authorUserId ?? 'unknown',
+        groupId:     task.groupId,
+      }));
+
+      res.json(result);
+    } catch (error) {
+      console.error('tasks/history error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   // 資料庫查看介面 - 審計日誌
   app.get('/api/admin/audit-logs', async (req, res) => {
     try {
