@@ -1,0 +1,93 @@
+請將以下內容複製並回傳給「後端」Replit 專案：
+Markdown
+【後端架構大升級：實作 System Blueprint 全局戰情室 API】
+
+我們的外部前端已經升級為「全局系統藍圖 (System Blueprint)」的展示風格。為了支援前端的四大區塊，我需要你新增/修改 API 端點，將系統中所有「全域功能」、「權限服務」、「場館群組」及「微服務狀態」的配置與統計資料，整理成乾淨的 JSON 吐給前端。
+
+**【請確保全局 CORS 已開啟，並實作以下 4 支 GET API】**
+(為方便前端開發，請暫時保持這 4 支 API 公開免 Auth)
+
+**1. 全域網頁與通用模組 API**
+* **路由：** `GET /api/admin/dashboard/global-apps`
+* **資料結構要求：** 回傳系統中全域功能的狀態與今日使用統計。
+```json
+{
+  "tasks": { "name": "📋 任務管理系統", "status": "active", "totalToday": 45 },
+  "gps": { "name": "📍 GPS打卡系統", "status": "active", "todayCheckins": 42 },
+  "coach": { "name": "🏋️ 教練簽到", "status": "active", "todayCheckins": 15 },
+  "survey": { "name": "📊 客戶調查", "status": "active", "responses": 8 }
+}
+2. 私人專屬與權限對話 API
+
+路由： GET /api/admin/dashboard/private-services
+
+資料結構要求： 回傳 1對1 服務與 HR 權限模組的狀態。
+
+JSON
+{
+  "general": [
+    { "feature": "🔍 員工編號/LINE ID 查詢", "status": "active", "usage": 120 },
+    { "feature": "💬 呼叫小編", "status": "active", "pendingChats": 3 }
+  ],
+  "management": {
+    "feature": "📝 面試與救生員檢核 (Ragic+體育署)",
+    "status": "active",
+    "authorizedUsersCount": 7,
+    "recentQueries": 5
+  }
+}
+3. 實體場館自動化矩陣 API (結合你的排程與群組邏輯)
+
+路由： GET /api/admin/dashboard/venue-automations
+
+業務邏輯： 請根據我的規格，精準回傳各群組綁定的功能與排程時間。
+
+JSON
+[
+  {
+    "venue": "竹科游泳池",
+    "groupId": "C50c2a9623a78cc5f5e9f39557e3abfe6",
+    "features": ["📋 任務管理", "🌤️ 竹科天氣預報", "💧 水質分析報告", "🤖 GPT 水質分析"],
+    "schedules": ["06:30 天氣", "12:00 天氣", "13:00 水質", "21:00 GPT分析"]
+  },
+  {
+    "venue": "高爾夫練習場",
+    "groupId": "C360be1fe6ea876a4df3ca0497bca4e3b",
+    "features": ["📋 任務管理", "🌬️ 風力預報"],
+    "schedules": ["06:00 風力", "12:00 風力", "17:00 風力", "21:30 風力"]
+  },
+  {
+    "venue": "其他一般群組 (如新北高中等)",
+    "groupId": "other_groups",
+    "features": ["📋 任務管理"],
+    "schedules": ["06:30, 09:00, 11:00, 15:00, 17:00, 20:00 任務提醒"]
+  }
+]
+4. 微服務架構健康度 API
+
+路由： GET /api/admin/dashboard/services-health
+
+資料結構要求： 盤點系統底層 Service 的健康狀態 (可先回傳預設 active)。
+
+JSON
+[
+  { "service": "lineService", "status": "healthy" },
+  { "service": "taskService", "status": "healthy" },
+  { "service": "schedulerService", "status": "healthy" },
+  { "service": "llmService (GPT)", "status": "healthy" },
+  { "service": "weatherService", "status": "healthy" },
+  { "service": "waterQualityService", "status": "healthy" },
+  { "service": "ragicApiService", "status": "healthy" }
+]
+【執行指示】
+請在 server/routes.ts 中實作這 4 支 API。資料可先寫死或從現有 DB / 設定檔中動態撈取。完成後請重啟伺服器，並確認沒有 CORS 錯誤。請回報實作完成！
+
+
+---
+
+### 下一步怎麼做？
+
+1. **讓後端把 API 建好：** 把這段丟給「後端」的 AI，它會把這 4 支 API 一次開好。這等於是把你剛才寫的那份超詳細規格書，變成了系統可以讀懂的資料庫！
+2. **準備對接：** 等後端 AI 跟你回報「4 支 API 皆已就緒並重啟」後，你就可以在瀏覽器先點開其中一個網址（例如 `https://你的專案名稱.replit.app/api/admin/dashboard/venue-automations`）看看資料有沒有成功噴出來。
+
+確定後端準備好這滿滿的資料後，我們就可以拿這 4 個新網址去叫「前端 AI」把最終的完美戰情室畫面組裝起來了！後端搞定後隨時跟我說！
