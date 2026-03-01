@@ -95,10 +95,19 @@ async function raiseIfNotOk(resp: Response) {
   const msg = map[resp.status] ?? `未知錯誤: ${resp.status}`;
   throw new Error(`${msg}｜Ragic回應：${detail.slice(0,500)}`);
 }
+const FETCH_TIMEOUT_MS = 12000; // 12 秒 per 單次請求
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Ragic API 請求逾時 (${ms}ms)`)), ms)
+    )
+  ]);
+}
 async function withRetry<T>(fn: () => Promise<T>) {
   let backoff = RAGIC_CONFIG.initialBackoffMs;
   for (let i=0; i<=RAGIC_CONFIG.maxRetries; i++) {
-    try { return await fn(); }
+    try { return await withTimeout(fn(), FETCH_TIMEOUT_MS); }
     catch (err: any) {
       const msg = String(err?.message ?? err);
       const retriable = /429|500|502|503|504/.test(msg);

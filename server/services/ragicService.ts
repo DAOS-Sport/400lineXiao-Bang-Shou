@@ -148,8 +148,14 @@ export class RagicService {
       const normalizedLineId = lineId.trim();
       console.log('🔍 正在查詢員工完整資料，個人LINE ID:', normalizedLineId);
       
-      // 使用新 SDK 查詢
-      const records = await this.sdkService.searchStd('lineId', 'eq', normalizedLineId);
+      // 使用新 SDK 查詢（加上 10 秒 timeout，防止無限等待）
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('RAGIC 查詢逾時 (10s)')), 10000)
+      );
+      const records = await Promise.race([
+        this.sdkService.searchStd('lineId', 'eq', normalizedLineId),
+        timeoutPromise
+      ]);
       
       if (records.length > 0) {
         const employee = records[0];
