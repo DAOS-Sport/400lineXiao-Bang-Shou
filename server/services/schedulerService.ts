@@ -162,13 +162,29 @@ export class SchedulerService {
     console.log('📤 補發任務完成');
   }
 
+  // 任務提醒白名單（與 routes.ts 的 TASK_ALLOWED_GROUP_IDS 同步）
+  private static readonly TASK_REMINDER_ALLOWED_GROUPS = new Set([
+    'C66a4b3bb3fbc3dcf52d42626ec512484', // 新北高中游泳池 & 運動中心
+    'C6f6f163895d5b528a6ab044015e1a37b', // 三重商工游泳池 & 籃球場
+    'C2dc6991e51074dd47d5d275d568318f7', // 三民高中游泳池
+    'C9b3c5dfe2e005adafd2ed914714a1930', // 松山國小室內溫水游泳池
+    'C50c2a9623a78cc5f5e9f39557e3abfe6', // 竹科戶外游泳池
+    'C360be1fe6ea876a4df3ca0497bca4e3b', // 竹科高爾夫球練習場 / 竹科網球場&籃球場
+    'C2dd9a5fce7c276f2cbfdd02c2342661c', // 三民排班群組
+    'Ce936c6bebb59b8b5683ffbcf97bf20de', // 原授權群組
+    'Cf7ab973766c258e5b4b4f040d35b2175', // 駿斯IT技術群
+  ]);
+
   private async dailyTaskSummary(): Promise<void> {
     try {
       // 🔒 修復：只獲取有未完成任務的群組 (排除已完成任務)
       const allPendingTasks = await storage.getTasksByStatus('pending');
       const groupIds: string[] = [];
       allPendingTasks.forEach(task => {
-        if (task.status === 'pending' && !groupIds.includes(task.groupId)) {
+        // 🔒 僅對白名單內的群組發送任務提醒，新加入群組不自動獲得此功能
+        if (task.status === 'pending' &&
+            !groupIds.includes(task.groupId) &&
+            SchedulerService.TASK_REMINDER_ALLOWED_GROUPS.has(task.groupId)) {
           groupIds.push(task.groupId);
         }
       });
