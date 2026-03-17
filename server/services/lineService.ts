@@ -125,7 +125,7 @@ export class LineService {
     }
 
     try {
-      const loadingSeconds = Math.max(5, Math.min(seconds, 60)); // 介於 5~60 秒
+      const loadingSeconds = Math.round(Math.max(5, Math.min(seconds, 60)) / 5) * 5; // 5 的倍數，介於 5~60 秒
       
       const response = await fetch("https://api.line.me/v2/bot/chat/loading/start", {
         method: "POST",

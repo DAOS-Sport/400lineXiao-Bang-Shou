@@ -90,6 +90,14 @@ function getToolDefinitionsForOpenAI(): any[] {
 
 // ========== Gemini API 呼叫 ==========
 
+const GEMINI_TIMEOUT_MS = 20_000; // 20 秒，LINE reply token 30 秒內必須回覆
+
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 async function callGemini(question: string): Promise<string> {
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY 未設定');
@@ -108,7 +116,7 @@ async function callGemini(question: string): Promise<string> {
     },
     generationConfig: {
       temperature: 0.3,
-      maxOutputTokens: 1000,
+      maxOutputTokens: 800,
     }
   };
 
@@ -119,11 +127,11 @@ async function callGemini(question: string): Promise<string> {
     }];
   }
 
-  const response = await fetch(GEMINI_URL, {
+  const response = await fetchWithTimeout(GEMINI_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody),
-  });
+  }, GEMINI_TIMEOUT_MS);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -145,7 +153,7 @@ async function callGemini(question: string): Promise<string> {
 
       const toolResult = await skillRegistry.executeTool(name, args || {});
 
-      // 將 tool 結果送回 Gemini 進行最終回覆
+      // 將 tool 結果送回 Gemini 進行最終回覆（剩餘時間內）
       const followUpBody: any = {
         contents: [
           {
@@ -171,15 +179,15 @@ async function callGemini(question: string): Promise<string> {
         },
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 1000,
+          maxOutputTokens: 800,
         }
       };
 
-      const followUpResponse = await fetch(GEMINI_URL, {
+      const followUpResponse = await fetchWithTimeout(GEMINI_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(followUpBody),
-      });
+      }, GEMINI_TIMEOUT_MS);
 
       if (!followUpResponse.ok) {
         // fallback: 直接回傳 tool 結果

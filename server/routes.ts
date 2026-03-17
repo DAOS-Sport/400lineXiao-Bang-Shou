@@ -2035,8 +2035,9 @@ async function handleAiAgentQuery(event: any, question: string): Promise<void> {
   }
 
   try {
-    // 顯示載入動畫
-    await lineService.startLoading(userId);
+    // 顯示載入動畫（群組用 groupId，DM 用 userId）
+    const chatId = source.groupId || source.roomId || userId;
+    await lineService.startLoading(chatId, 25);
 
     const { aiAgentService } = await import('./services/ai-agent/aiAgentService');
     const result = await aiAgentService.handleQuery(userId, question);
