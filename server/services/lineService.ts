@@ -39,6 +39,45 @@ export class LineService {
     }
   }
 
+  async replyWithQuickReply(replyToken: string, text: string, quickReplies: Array<{ label: string; text: string }>): Promise<void> {
+    if (!client) {
+      console.warn('LINE client 未初始化，無法發送 Quick Reply');
+      return;
+    }
+
+    try {
+      const message: any = {
+        type: 'text',
+        text: text,
+      };
+
+      // 有 Quick Reply 按鈕時附加
+      if (quickReplies && quickReplies.length > 0) {
+        message.quickReply = {
+          items: quickReplies.slice(0, 13).map(qr => ({
+            type: 'action',
+            action: {
+              type: 'message',
+              label: qr.label.substring(0, 20), // LINE 限制最多 20 字
+              text: qr.text,
+            }
+          }))
+        };
+      }
+
+      await client.replyMessage(replyToken, message);
+    } catch (error) {
+      console.error('LINE Quick Reply 回覆失敗:', error);
+      // fallback: 用純文字回覆
+      try {
+        await this.replyMessage(replyToken, text);
+      } catch (fallbackError) {
+        console.error('LINE 純文字 fallback 也失敗:', fallbackError);
+        throw fallbackError;
+      }
+    }
+  }
+
   async replyVideoMessage(replyToken: string, videoUrl: string, previewImageUrl: string): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法發送影片回覆');

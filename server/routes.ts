@@ -1129,6 +1129,13 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
+      // AI 智能客服 — @小幫手 前綴觸發
+      if (text.startsWith('@小幫手')) {
+        const question = text.substring('@小幫手'.length).trim();
+        await handleAiAgentQuery(event, question || '你好，請問有什麼可以幫助你的？');
+        return;
+      }
+
       // 0. 面試檢核模組（授權人員限定）- 支援身分證（A123456789）和居留證（AB12345678）格式
       // 身分證：1英文+9數字，居留證：2英文+8-10數字
       const interviewMatch = text.match(/^面試\s*([A-Z]{1,2}[0-9]{8,10})$/i);
@@ -2012,6 +2019,37 @@ async function handleInterviewCheck(event: any, idCard: string) {
       await lineService.pushMessage(targetId, "❌ 面試檢核功能暫時無法使用，請稍後再試");
     } catch (e: any) {
       console.error(`❌ 推送錯誤訊息也失敗: ${e.message || e}`);
+    }
+  }
+}
+
+// ========== AI 智能客服 Handler ==========
+
+async function handleAiAgentQuery(event: any, question: string): Promise<void> {
+  const source = event.source;
+  const userId = source.userId;
+
+  if (!userId) {
+    await lineService.replyMessage(event.replyToken, '⚠️ 無法識別您的身份，請先加駿斯小助理為好友。');
+    return;
+  }
+
+  try {
+    // 顯示載入動畫
+    await lineService.startLoading(userId);
+
+    const { aiAgentService } = await import('./services/ai-agent/aiAgentService');
+    const result = await aiAgentService.handleQuery(userId, question);
+
+    // 使用 Quick Reply 回覆
+    await lineService.replyWithQuickReply(event.replyToken, result.text, result.quickReplies);
+
+  } catch (error: any) {
+    console.error('❌ AI 客服處理失敗:', error.message || error);
+    try {
+      await lineService.replyMessage(event.replyToken, '❌ 智能客服暫時無法使用，請稍後再試。');
+    } catch (replyError: any) {
+      console.error('❌ 回覆錯誤訊息也失敗:', replyError.message || replyError);
     }
   }
 }

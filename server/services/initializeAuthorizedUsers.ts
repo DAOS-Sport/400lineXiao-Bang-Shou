@@ -27,9 +27,15 @@ export async function initializeAuthorizedUsers(): Promise<void> {
           userName: user.userName,
           canInterviewCheck: 'true',
           canInternalQuery: 'true',
+          canUseAiAgent: 'true',
           isActive: 'true',
         });
         console.log(`✅ 新增授權用戶: ${user.userName} (${user.userId})`);
+      } else if (existing.canUseAiAgent !== 'true') {
+        await db.update(interviewAuthorizedUsers)
+          .set({ canUseAiAgent: 'true' })
+          .where(eq(interviewAuthorizedUsers.userId, user.userId));
+        console.log(`🔄 更新 AI 客服權限: ${user.userName} (${user.userId})`);
       }
     }
     

@@ -119,6 +119,7 @@ export const interviewAuthorizedUsers = pgTable('interview_authorized_users', {
   userName: text('user_name').notNull(), // 使用者姓名
   canInterviewCheck: text('can_interview_check').default('true').notNull(), // 可使用面試檢核模組
   canInternalQuery: text('can_internal_query').default('true').notNull(), // 可使用內部查詢模組
+  canUseAiAgent: text('can_use_ai_agent').default('false').notNull(), // 可使用 AI 智能客服
   isActive: text('is_active').default('true').notNull(), // 是否啟用
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
