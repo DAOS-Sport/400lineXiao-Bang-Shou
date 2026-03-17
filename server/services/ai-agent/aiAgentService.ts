@@ -219,7 +219,7 @@ async function callOpenAI(question: string): Promise<string> {
   ];
 
   const requestOptions: any = {
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     messages,
     temperature: 0.3,
     max_tokens: 1000,
@@ -329,14 +329,14 @@ class AiAgentService {
         modelUsed = 'gemini-2.5-flash';
         console.log(`✅ Gemini 回覆成功 (${Date.now() - startTime}ms)`);
       } catch (geminiError) {
-        console.warn('⚠️ Gemini 失敗，切換到 GPT-4o:', (geminiError as Error).message);
+        console.warn('⚠️ Gemini 失敗，切換到 GPT-4o-mini:', (geminiError as Error).message);
 
         try {
           responseText = await callOpenAI(question);
-          modelUsed = 'gpt-4o';
-          console.log(`✅ GPT-4o 備援回覆成功 (${Date.now() - startTime}ms)`);
+          modelUsed = 'gpt-4o-mini';
+          console.log(`✅ GPT-4o-mini 備援回覆成功 (${Date.now() - startTime}ms)`);
         } catch (openaiError) {
-          console.error('❌ GPT-4o 也失敗:', (openaiError as Error).message);
+          console.error('❌ GPT-4o-mini 也失敗:', (openaiError as Error).message);
           throw new Error('所有 AI 模型都無法回應');
         }
       }
