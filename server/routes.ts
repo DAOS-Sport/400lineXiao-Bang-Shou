@@ -2088,7 +2088,7 @@ async function handleOnboardingQuery(event: any): Promise<void> {
   const displayGroupId = groupId || '（私訊，無群組）';
 
   const BASE_URL = 'https://onboarding-flow-optimize.replit.app';
-  const params = new URLSearchParams({ openExternalBrowser: '0' });
+  const params = new URLSearchParams();
   if (employeeId) params.set('employeeId', employeeId);
   if (userId) params.set('lineUserId', userId);
   if (groupId) params.set('groupId', groupId);
@@ -2149,6 +2149,7 @@ async function handleOnboardingQuery(event: any): Promise<void> {
               type: 'uri',
               label: '🚀 開啟入職系統',
               uri: ONBOARDING_URL,
+              openExternalBrowser: false,
             },
             style: 'primary',
             color: '#2563EB',
