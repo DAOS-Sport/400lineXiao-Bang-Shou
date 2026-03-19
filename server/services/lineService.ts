@@ -39,6 +39,19 @@ export class LineService {
     }
   }
 
+  async replyRawMessages(replyToken: string, messages: any[]): Promise<void> {
+    if (!client) {
+      console.warn('LINE client 未初始化，無法發送回覆');
+      return;
+    }
+    try {
+      await client.replyMessage(replyToken, messages);
+    } catch (error) {
+      console.error('LINE 多訊息回覆失敗:', error);
+      throw error;
+    }
+  }
+
   async replyWithQuickReply(replyToken: string, text: string, quickReplies: Array<{ label: string; text: string }>): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法發送 Quick Reply');

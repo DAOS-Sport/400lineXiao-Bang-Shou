@@ -1129,6 +1129,12 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
+      // @小幫手 入職流程 — 固定模板 + 入職系統連結（不走 AI）
+      if (text === '@小幫手 入職流程' || text === '@小幫手入職流程') {
+        await handleOnboardingQuery(event);
+        return;
+      }
+
       // AI 智能客服 — @小幫手 前綴觸發
       if (text.startsWith('@小幫手')) {
         const question = text.substring('@小幫手'.length).trim();
@@ -2020,6 +2026,90 @@ async function handleInterviewCheck(event: any, idCard: string) {
     } catch (e: any) {
       console.error(`❌ 推送錯誤訊息也失敗: ${e.message || e}`);
     }
+  }
+}
+
+// ========== 入職流程 Handler ==========
+
+async function handleOnboardingQuery(event: any): Promise<void> {
+  const ONBOARDING_URL = 'https://onboarding-flow-optimize.replit.app';
+
+  const templateText =
+    '🆕 首次加入請提供以下資訊：\n' +
+    '\n' +
+    '1. 姓名：\n' +
+    '2. 身分證字號：\n' +
+    '3. 所在場館：\n' +
+    '4. 職務 / 職稱：\n' +
+    '5. 聯繫電話：\n' +
+    '6. Email：〈請提供 Gmail〉\n' +
+    '7. 教學項目：〈游泳、羽球、瑜伽等〉\n' +
+    '\n' +
+    '⚠️ 務必提供，否則無法為您開立內部系統喔！';
+
+  const flexMessage = {
+    type: 'flex',
+    altText: '入職流程系統',
+    contents: {
+      type: 'bubble',
+      size: 'kilo',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'text',
+            text: '📋 入職流程系統',
+            weight: 'bold',
+            color: '#ffffff',
+            size: 'md',
+          }
+        ],
+        backgroundColor: '#2563EB',
+        paddingAll: '12px',
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'text',
+            text: '填寫完資訊後，請點下方按鈕進入入職系統完成後續流程。',
+            wrap: true,
+            size: 'sm',
+            color: '#374151',
+          }
+        ],
+        paddingAll: '12px',
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'uri',
+              label: '🚀 開啟入職系統',
+              uri: ONBOARDING_URL,
+            },
+            style: 'primary',
+            color: '#2563EB',
+          }
+        ],
+        paddingAll: '10px',
+      }
+    }
+  };
+
+  try {
+    await lineService.replyRawMessages(event.replyToken, [
+      { type: 'text', text: templateText },
+      flexMessage,
+    ]);
+    console.log('✅ 入職流程訊息已送出');
+  } catch (error: any) {
+    console.error('❌ 入職流程訊息發送失敗:', error.message || error);
   }
 }
 
