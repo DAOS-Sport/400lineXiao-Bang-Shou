@@ -2032,10 +2032,46 @@ async function handleInterviewCheck(event: any, idCard: string) {
 // ========== 入職流程 Handler ==========
 
 async function handleOnboardingQuery(event: any): Promise<void> {
-  const ONBOARDING_URL = 'https://onboarding-flow-optimize.replit.app?openExternalBrowser=0';
+  const source = event.source;
+  const userId = source.userId || '';
+  const groupId = source.groupId || source.roomId || '';
 
+  // 先回 loading，再查詢
+  const chatId = groupId || userId;
+  await lineService.startLoading(chatId, 15);
+
+  // 嘗試從 Ragic 查員工編號（新人可能查不到，用 LINE ID 代替）
+  let employeeId = '';
+  let employeeName = '';
+  try {
+    const { ragicService } = await import('./services/ragicService');
+    const details = await ragicService.getEmployeeDetailsByLineId(userId);
+    if (details) {
+      employeeId = details.employeeId || '';
+      employeeName = details.employeeName || '';
+    }
+  } catch (err) {
+    console.warn('⚠️ Ragic 查詢失敗，使用 LINE ID 作為識別碼');
+  }
+
+  // 顯示用的識別資訊
+  const displayEmployeeId = employeeId || userId;
+  const displayGroupId = groupId || '（私訊，無群組）';
+
+  const BASE_URL = 'https://onboarding-flow-optimize.replit.app';
+  const params = new URLSearchParams({ openExternalBrowser: '0' });
+  if (employeeId) params.set('employeeId', employeeId);
+  if (userId) params.set('lineUserId', userId);
+  if (groupId) params.set('groupId', groupId);
+  const ONBOARDING_URL = `${BASE_URL}?${params.toString()}`;
+
+  const nameHint = employeeName ? `（${employeeName}）` : '';
   const templateText =
     '🆕 首次加入請提供以下資訊：\n' +
+    '\n' +
+    `💡 系統識別碼（請截圖保存）\n` +
+    `員工ID：${displayEmployeeId}${nameHint}\n` +
+    `群組ID：${displayGroupId}\n` +
     '\n' +
     '1. 姓名：\n' +
     '2. 身分證字號：\n' +
@@ -2074,7 +2110,7 @@ async function handleOnboardingQuery(event: any): Promise<void> {
         contents: [
           {
             type: 'text',
-            text: '填寫完資訊後，請點下方按鈕進入入職系統完成後續流程。',
+            text: '填寫完上方資訊後，請點下方按鈕進入入職系統完成後續流程。',
             wrap: true,
             size: 'sm',
             color: '#374151',
@@ -2107,7 +2143,7 @@ async function handleOnboardingQuery(event: any): Promise<void> {
       { type: 'text', text: templateText },
       flexMessage,
     ]);
-    console.log('✅ 入職流程訊息已送出');
+    console.log(`✅ 入職流程訊息已送出 (employeeId: ${displayEmployeeId}, groupId: ${displayGroupId})`);
   } catch (error: any) {
     console.error('❌ 入職流程訊息發送失敗:', error.message || error);
   }
