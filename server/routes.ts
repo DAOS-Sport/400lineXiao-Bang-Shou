@@ -1135,6 +1135,12 @@ async function processWebhookEvent(event: any) {
         return;
       }
 
+      // 面試者查詢 ID — 任何人皆可使用，不需授權
+      if (text === '查詢ID' || text === '查詢id' || text === '我的ID' || text === '我的id') {
+        await handleQueryMyId(event);
+        return;
+      }
+
       // AI 智能客服 — @小幫手 前綴觸發
       if (text.startsWith('@小幫手')) {
         const question = text.substring('@小幫手'.length).trim();
@@ -2029,6 +2035,29 @@ async function handleInterviewCheck(event: any, idCard: string) {
   }
 }
 
+// ========== 面試者查詢 ID Handler ==========
+
+async function handleQueryMyId(event: any): Promise<void> {
+  const source = event.source;
+  const userId = source.userId || '（無法取得）';
+  const groupId = source.groupId || source.roomId || '（私訊，無群組）';
+
+  const msg =
+    '🪪 您的識別資訊如下：\n' +
+    '\n' +
+    `USERID：${userId}\n` +
+    `群組ID：${groupId}\n` +
+    '\n' +
+    '📋 請截圖保存，並回填至入職系統。\n' +
+    '若要開啟入職系統，請輸入「@小幫手 入職流程」';
+
+  try {
+    await lineService.replyMessage(event.replyToken, msg);
+  } catch (error: any) {
+    console.error('❌ 查詢ID回覆失敗:', error.message || error);
+  }
+}
+
 // ========== 入職流程 Handler ==========
 
 async function handleOnboardingQuery(event: any): Promise<void> {
@@ -2069,19 +2098,11 @@ async function handleOnboardingQuery(event: any): Promise<void> {
   const templateText =
     '🆕 首次加入請提供以下資訊：\n' +
     '\n' +
-    `💡 系統識別碼（請截圖保存）\n` +
-    `員工ID：${displayEmployeeId}${nameHint}\n` +
+    '💡 系統識別碼（請截圖保存）\n' +
+    `USERID：${displayEmployeeId}${nameHint}\n` +
     `群組ID：${displayGroupId}\n` +
     '\n' +
-    '1. 姓名：\n' +
-    '2. 身分證字號：\n' +
-    '3. 所在場館：\n' +
-    '4. 職務 / 職稱：\n' +
-    '5. 聯繫電話：\n' +
-    '6. Email：〈請提供 Gmail〉\n' +
-    '7. 教學項目：〈游泳、羽球、瑜伽等〉\n' +
-    '\n' +
-    '⚠️ 務必提供，否則無法為您開立內部系統喔！';
+    '請回填至入職系統';
 
   const flexMessage = {
     type: 'flex',
