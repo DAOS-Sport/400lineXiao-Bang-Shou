@@ -2032,7 +2032,7 @@ async function handleInterviewCheck(event: any, idCard: string) {
 // ========== 入職流程 Handler ==========
 
 async function handleOnboardingQuery(event: any): Promise<void> {
-  const ONBOARDING_URL = 'https://onboarding-flow-optimize.replit.app';
+  const ONBOARDING_URL = 'https://onboarding-flow-optimize.replit.app?openExternalBrowser=0';
 
   const templateText =
     '🆕 首次加入請提供以下資訊：\n' +
