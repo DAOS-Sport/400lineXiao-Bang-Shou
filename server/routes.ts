@@ -2065,9 +2065,8 @@ async function handleOnboardingQuery(event: any): Promise<void> {
   const userId = source.userId || '';
   const groupId = source.groupId || source.roomId || '';
 
-  // 先回 loading，再查詢
-  const chatId = groupId || userId;
-  await lineService.startLoading(chatId, 15);
+  // loading 只能用 userId（LINE API 不接受 groupId）
+  await lineService.startLoading(userId, 15);
 
   // 嘗試從 Ragic 查員工編號（新人可能查不到，用 LINE ID 代替）
   let employeeId = '';
@@ -2149,7 +2148,6 @@ async function handleOnboardingQuery(event: any): Promise<void> {
               type: 'uri',
               label: '🚀 開啟入職系統',
               uri: ONBOARDING_URL,
-              openExternalBrowser: false,
             },
             style: 'primary',
             color: '#2563EB',
@@ -2183,9 +2181,8 @@ async function handleAiAgentQuery(event: any, question: string): Promise<void> {
   }
 
   try {
-    // 顯示載入動畫（群組用 groupId，DM 用 userId）
-    const chatId = source.groupId || source.roomId || userId;
-    await lineService.startLoading(chatId, 25);
+    // loading 只能用 userId（LINE API 不接受 groupId）
+    await lineService.startLoading(userId, 25);
 
     const { aiAgentService } = await import('./services/ai-agent/aiAgentService');
     const result = await aiAgentService.handleQuery(userId, question);
