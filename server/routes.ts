@@ -2042,17 +2042,17 @@ async function handleQueryMyId(event: any): Promise<void> {
   const userId = source.userId || '（無法取得）';
   const groupId = source.groupId || source.roomId || '（私訊，無群組）';
 
-  const msg =
-    '🪪 您的識別資訊如下：\n' +
-    '\n' +
+  const msg1 =
+    '🆕 首次加入請提供以下資訊：\n' +
+    '💡 系統識別碼（請截圖保存）\n' +
     `USERID：${userId}\n` +
-    `群組ID：${groupId}\n` +
-    '\n' +
-    '📋 請截圖保存，並回填至入職系統。\n' +
-    '若要開啟入職系統，請輸入「@小幫手 入職流程」';
+    `群組ID：${groupId}`;
 
   try {
-    await lineService.replyMessage(event.replyToken, msg);
+    await lineService.replyRawMessages(event.replyToken, [
+      { type: 'text', text: msg1 },
+      { type: 'text', text: groupId },
+    ]);
   } catch (error: any) {
     console.error('❌ 查詢ID回覆失敗:', error.message || error);
   }
