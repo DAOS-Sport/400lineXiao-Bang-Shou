@@ -2086,7 +2086,7 @@ async function handleOnboardingQuery(event: any): Promise<void> {
   const displayEmployeeId = employeeId || userId;
   const displayGroupId = groupId || '（私訊，無群組）';
 
-  const BASE_URL = 'https://onboarding-flow-optimize.replit.app';
+  const BASE_URL = 'https://liff.line.me/2009442238-qBJaHJpK';
   const params = new URLSearchParams();
   if (employeeId) params.set('employeeId', employeeId);
   if (userId) params.set('lineUserId', userId);
