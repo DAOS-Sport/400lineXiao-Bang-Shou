@@ -2103,65 +2103,28 @@ async function handleOnboardingQuery(event: any): Promise<void> {
     '\n' +
     '請回填至入職系統';
 
-  const flexMessage = {
-    type: 'flex',
-    altText: '入職流程系統',
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'text',
-            text: '📋 入職流程系統',
-            weight: 'bold',
-            color: '#ffffff',
-            size: 'md',
-          }
-        ],
-        backgroundColor: '#2563EB',
-        paddingAll: '12px',
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'text',
-            text: '填寫完上方資訊後，請點下方按鈕進入入職系統完成後續流程。',
-            wrap: true,
-            size: 'sm',
-            color: '#374151',
-          }
-        ],
-        paddingAll: '12px',
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'button',
-            action: {
-              type: 'uri',
-              label: '🚀 開啟入職系統',
-              uri: ONBOARDING_URL,
-            },
-            style: 'primary',
-            color: '#2563EB',
-          }
-        ],
-        paddingAll: '10px',
-      }
-    }
+  // Button Template 明確支援 openExternalBrowser: false（Flex Message 不支援此屬性）
+  const buttonTemplate = {
+    type: 'template',
+    altText: '📋 入職流程系統 — 點擊開啟',
+    template: {
+      type: 'buttons',
+      text: '填寫完上方識別碼後，點下方按鈕進入入職系統完成後續流程。',
+      actions: [
+        {
+          type: 'uri',
+          label: '開啟入職系統',
+          uri: ONBOARDING_URL,
+          openExternalBrowser: false,
+        },
+      ],
+    },
   };
 
   try {
     await lineService.replyRawMessages(event.replyToken, [
       { type: 'text', text: templateText },
-      flexMessage,
+      buttonTemplate,
     ]);
     console.log(`✅ 入職流程訊息已送出 (employeeId: ${displayEmployeeId}, groupId: ${displayGroupId})`);
   } catch (error: any) {
