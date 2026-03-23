@@ -2090,14 +2090,12 @@ async function handleOnboardingQuery(event: any): Promise<void> {
   const ONBOARDING_URL = `${BASE_URL}?${params.toString()}`;
 
   const nameHint = employeeName ? `（${employeeName}）` : '';
-  const templateText =
-    '🆕 首次加入請提供以下資訊：\n' +
-    '\n' +
+  const msg1 = '🆕 首次加入請提供以下資訊：';
+  const msg2 =
     '💡 系統識別碼（請截圖保存）\n' +
     `USERID：${displayEmployeeId}${nameHint}\n` +
-    `群組ID：${displayGroupId}\n` +
-    '\n' +
-    '請回填至入職系統';
+    '群組ID：';
+  // msg3 = displayGroupId（獨立一則，方便複製）
 
   // 使用 LIFF 網址後不需 openExternalBrowser，改回 Flex Message 以提升視覺效果
   const flexCard = {
@@ -2180,7 +2178,9 @@ async function handleOnboardingQuery(event: any): Promise<void> {
 
   try {
     await lineService.replyRawMessages(event.replyToken, [
-      { type: 'text', text: templateText },
+      { type: 'text', text: msg1 },
+      { type: 'text', text: msg2 },
+      { type: 'text', text: displayGroupId },
       flexCard,
     ]);
     console.log(`✅ 入職流程訊息已送出 (employeeId: ${displayEmployeeId}, groupId: ${displayGroupId})`);
