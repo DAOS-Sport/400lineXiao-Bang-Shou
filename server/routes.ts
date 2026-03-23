@@ -2099,28 +2099,89 @@ async function handleOnboardingQuery(event: any): Promise<void> {
     '\n' +
     '請回填至入職系統';
 
-  // Button Template 明確支援 openExternalBrowser: false（Flex Message 不支援此屬性）
-  const buttonTemplate = {
-    type: 'template',
-    altText: '📋 入職流程系統 — 點擊開啟',
-    template: {
-      type: 'buttons',
-      text: '填寫完上方識別碼後，點下方按鈕進入入職系統完成後續流程。',
-      actions: [
-        {
-          type: 'uri',
-          label: '開啟入職系統',
-          uri: ONBOARDING_URL,
-          openExternalBrowser: false,
-        },
-      ],
+  // 使用 LIFF 網址後不需 openExternalBrowser，改回 Flex Message 以提升視覺效果
+  const flexCard = {
+    type: 'flex',
+    altText: '📋 入職申請表 — 點擊填寫',
+    contents: {
+      type: 'bubble',
+      size: 'kilo',
+      header: {
+        type: 'box',
+        layout: 'horizontal',
+        contents: [
+          {
+            type: 'text',
+            text: '📋',
+            size: 'xl',
+            flex: 0,
+            gravity: 'center',
+          },
+          {
+            type: 'box',
+            layout: 'vertical',
+            flex: 1,
+            paddingStart: '10px',
+            contents: [
+              {
+                type: 'text',
+                text: '入職申請表',
+                weight: 'bold',
+                color: '#ffffff',
+                size: 'md',
+              },
+              {
+                type: 'text',
+                text: '駿斯運動管理顧問',
+                color: '#d1e3ff',
+                size: 'xs',
+              },
+            ],
+          },
+        ],
+        backgroundColor: '#1d4ed8',
+        paddingAll: '14px',
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'text',
+            text: '填寫完上方識別碼後，請點下方按鈕完成入職申請。',
+            wrap: true,
+            size: 'sm',
+            color: '#374151',
+          },
+        ],
+        paddingAll: '14px',
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'uri',
+              label: '前往填寫入職申請表',
+              uri: ONBOARDING_URL,
+            },
+            style: 'primary',
+            color: '#1d4ed8',
+            height: 'sm',
+          },
+        ],
+        paddingAll: '10px',
+        backgroundColor: '#f8fafc',
+      },
     },
   };
 
   try {
     await lineService.replyRawMessages(event.replyToken, [
       { type: 'text', text: templateText },
-      buttonTemplate,
+      flexCard,
     ]);
     console.log(`✅ 入職流程訊息已送出 (employeeId: ${displayEmployeeId}, groupId: ${displayGroupId})`);
   } catch (error: any) {
