@@ -2348,15 +2348,15 @@ async function handlePostbackEvent(event: any): Promise<void> {
     const base = getAppBaseUrl();
     const images = [
       {
-        url: `${base}/attached_assets/image_1774438264133.png`,
+        url: `${base}/images/clockin-help-1.png`,
         label: '方法1：LINE 背景定位權限設定',
       },
       {
-        url: `${base}/attached_assets/image_1774438279217.png`,
+        url: `${base}/images/clockin-help-2.png`,
         label: '方法2：設定瀏覽器位置權限',
       },
       {
-        url: `${base}/attached_assets/image_1774438285089.png`,
+        url: `${base}/images/clockin-help-3.png`,
         label: '方法3：從隱私權中心設定',
       },
     ];
