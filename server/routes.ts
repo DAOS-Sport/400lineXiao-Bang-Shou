@@ -2247,43 +2247,77 @@ function getAppBaseUrl(): string {
 }
 
 function buildClockInFlexCard(): object {
+  const logoUrl = `${getAppBaseUrl()}/images/juns-logo.jpg`;
   return {
     type: 'flex',
-    altText: '🕐 上下班打卡 — 點擊進行打卡',
+    altText: '🏃 駿斯運動 — 上下班打卡',
     contents: {
       type: 'bubble',
       size: 'kilo',
       header: {
         type: 'box',
         layout: 'horizontal',
-        backgroundColor: '#1d4ed8',
-        paddingAll: '14px',
+        backgroundColor: '#1a3a5c',
+        paddingAll: '0px',
         contents: [
           {
-            type: 'text',
-            text: '🕐',
-            size: 'xl',
-            flex: 0,
-            gravity: 'center',
+            type: 'box',
+            layout: 'vertical',
+            flex: 3,
+            paddingAll: '16px',
+            justifyContent: 'center',
+            contents: [
+              {
+                type: 'box',
+                layout: 'horizontal',
+                spacing: 'sm',
+                contents: [
+                  {
+                    type: 'image',
+                    url: logoUrl,
+                    size: '28px',
+                    aspectMode: 'cover',
+                    flex: 0,
+                  },
+                  {
+                    type: 'text',
+                    text: '駿斯運動',
+                    color: '#ffffff',
+                    weight: 'bold',
+                    size: 'sm',
+                    gravity: 'center',
+                    flex: 0,
+                  },
+                ],
+              },
+              {
+                type: 'text',
+                text: '打卡系統',
+                color: '#a8c8e8',
+                size: 'xs',
+                margin: 'sm',
+              },
+            ],
           },
           {
             type: 'box',
             layout: 'vertical',
             flex: 1,
-            paddingStart: '10px',
+            paddingAll: '0px',
             contents: [
               {
-                type: 'text',
-                text: '上下班打卡',
-                weight: 'bold',
-                color: '#ffffff',
-                size: 'md',
+                type: 'box',
+                layout: 'vertical',
+                height: '80px',
+                backgroundColor: '#2a5a8c',
+                contents: [],
               },
               {
-                type: 'text',
-                text: '駿斯運動管理顧問',
-                color: '#d1e3ff',
-                size: 'xs',
+                type: 'box',
+                layout: 'vertical',
+                height: '10px',
+                backgroundColor: '#4a9fd4',
+                contents: [],
               },
             ],
           },
@@ -2292,44 +2326,60 @@ function buildClockInFlexCard(): object {
       body: {
         type: 'box',
         layout: 'vertical',
-        paddingAll: '14px',
+        backgroundColor: '#ffffff',
+        paddingAll: '18px',
+        spacing: 'sm',
         contents: [
           {
             type: 'text',
-            text: '點擊下方按鈕分享 GPS 位置進行打卡。\n如遇問題請點「打卡問題」查看說明。',
+            text: '打卡系統',
+            weight: 'bold',
+            size: 'xl',
+            color: '#1a3a5c',
+            wrap: true,
+          },
+          {
+            type: 'text',
+            text: '如有異常 ⚠️，請先「截圖」打卡畫面後，回傳400帳號。',
             wrap: true,
             size: 'sm',
-            color: '#374151',
+            color: '#5a7a9a',
+            margin: 'sm',
           },
         ],
       },
       footer: {
         type: 'box',
         layout: 'vertical',
+        backgroundColor: '#ffffff',
         paddingAll: '10px',
-        backgroundColor: '#f8fafc',
-        spacing: 'sm',
+        spacing: 'xs',
         contents: [
+          {
+            type: 'separator',
+            color: '#e2e8f0',
+          },
           {
             type: 'button',
             action: {
               type: 'uri',
-              label: '點我進行上下班打卡 👆',
+              label: '「點我進行上下班打卡」👆',
               uri: 'https://liff.line.me/2009202105-UZQm1Soa',
             },
-            style: 'primary',
-            color: '#1d4ed8',
+            style: 'link',
+            color: '#1a6fba',
             height: 'sm',
           },
           {
             type: 'button',
             action: {
               type: 'postback',
-              label: '打卡問題 🔍',
+              label: '常見問題 🔍',
               data: 'action=clockin_help',
-              displayText: '打卡問題 🔍',
+              displayText: '常見問題 🔍',
             },
-            style: 'secondary',
+            style: 'link',
+            color: '#1a6fba',
             height: 'sm',
           },
         ],
@@ -2345,32 +2395,143 @@ async function handlePostbackEvent(event: any): Promise<void> {
   console.log(`📲 Postback 事件: "${data}" 來自 ${event.source?.userId}`);
 
   if (data === 'action=clockin_help') {
-    const base = getAppBaseUrl();
-    const images = [
+    const methods = [
       {
-        url: `${base}/images/clockin-help-1.png`,
-        label: '方法1：LINE 背景定位權限設定',
+        num: '1',
+        title: 'LINE 的背景定位權限',
+        steps: [
+          '系統設定',
+          '點擊搜尋框，輸入並選擇「LINE」',
+          '點擊「位置」',
+          '勾選「永遠」✅',
+          '開啟「準確位置」✅',
+        ],
       },
       {
-        url: `${base}/images/clockin-help-2.png`,
-        label: '方法2：設定瀏覽器位置權限',
+        num: '2',
+        title: '設定瀏覽器位置權限',
+        steps: [
+          '系統設定',
+          '滑至底部，「App」',
+          '選擇您常用的瀏覽器',
+          '點擊「位置」',
+          '選擇「詢問」✅',
+        ],
       },
       {
-        url: `${base}/images/clockin-help-3.png`,
-        label: '方法3：從隱私權中心設定',
+        num: '3',
+        title: '從隱私權中心設定瀏覽器權限',
+        steps: [
+          '系統設定',
+          '「隱私權與安全性」',
+          '「定位服務」',
+          '選擇常用的瀏覽器',
+          '「使用 App 期間」✅',
+          '「準確位置」✅',
+        ],
       },
     ];
 
+    const stepNums = ['①', '②', '③', '④', '⑤', '⑥'];
+
+    const bubbles = methods.map(m => ({
+      type: 'bubble',
+      size: 'kilo',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#1e4976',
+        paddingAll: '16px',
+        contents: [
+          {
+            type: 'box',
+            layout: 'horizontal',
+            contents: [
+              {
+                type: 'text',
+                text: '方法',
+                color: '#ffffff',
+                size: 'xl',
+                weight: 'bold',
+                gravity: 'bottom',
+                flex: 0,
+              },
+              {
+                type: 'text',
+                text: m.num,
+                color: '#f5a623',
+                size: '3xl',
+                weight: 'bold',
+                gravity: 'bottom',
+                paddingStart: '8px',
+                flex: 0,
+              },
+            ],
+          },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '14px',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'text',
+            text: m.title,
+            weight: 'bold',
+            size: 'sm',
+            wrap: true,
+            color: '#1e4976',
+          },
+          {
+            type: 'separator',
+            margin: 'sm',
+            color: '#d0dce9',
+          },
+          ...m.steps.map((step, i) => ({
+            type: 'box',
+            layout: 'horizontal',
+            spacing: 'sm',
+            margin: 'sm',
+            contents: [
+              {
+                type: 'text',
+                text: stepNums[i],
+                size: 'xs',
+                color: '#1e4976',
+                flex: 0,
+                gravity: 'top',
+              },
+              {
+                type: 'text',
+                text: step,
+                size: 'xs',
+                wrap: true,
+                color: '#374151',
+                flex: 1,
+              },
+            ],
+          })),
+        ],
+      },
+    }));
+
+    const clockInHelpFlex = {
+      type: 'flex',
+      altText: '📋 GPS 打卡問題說明 — 三種設定方式',
+      contents: {
+        type: 'carousel',
+        contents: bubbles,
+      },
+    };
+
     try {
       await lineService.replyRawMessages(event.replyToken, [
-        { type: 'text', text: '📋 GPS 打卡問題說明\n以下為三種常見設定方式，請依序嘗試：' },
-        ...images.map(img => ({
-          type: 'image',
-          originalContentUrl: img.url,
-          previewImageUrl: img.url,
-        })),
+        { type: 'text', text: '📋 GPS 打卡問題說明\n以下為三種常見設定方式，請依序嘗試 👉' },
+        clockInHelpFlex,
       ]);
-      console.log('✅ 打卡問題說明圖已發送');
+      console.log('✅ 打卡問題說明 Flex 已發送');
     } catch (error: any) {
       console.error('❌ 打卡問題說明發送失敗:', error.message || error);
     }
