@@ -1139,11 +1139,11 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
-      // 打卡 — 圖文選單按鈕觸發，回覆打卡 Flex 卡片
-      if (text === '打卡') {
-        await lineService.replyRawMessages(event.replyToken, [buildClockInFlexCard()]);
-        return;
-      }
+      // 打卡 — 暫時停用，待上線再啟用
+      // if (text === '打卡') {
+      //   await lineService.replyRawMessages(event.replyToken, [buildClockInFlexCard()]);
+      //   return;
+      // }
 
       // @小幫手 入職流程 — 固定模板 + 入職系統連結（不走 AI）
       if (text === '@小幫手 入職流程' || text === '@小幫手入職流程') {
