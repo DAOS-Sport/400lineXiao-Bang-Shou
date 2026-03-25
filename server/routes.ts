@@ -1028,6 +1028,12 @@ const processedEvents = new Set<string>();
 // 處理 Webhook 事件
 async function processWebhookEvent(event: any) {
   try {
+    // 處理 postback 事件（打卡問題說明等）
+    if (event.type === 'postback') {
+      await handlePostbackEvent(event);
+      return;
+    }
+
     // 只處理 message 類型事件
     if (event.type !== 'message') {
       return;
@@ -1078,7 +1084,11 @@ async function processWebhookEvent(event: any) {
         }
 
         try {
-          await lineService.replyMessage(event.replyToken, replyText);
+          const flexCard = buildClockInFlexCard();
+          await lineService.replyRawMessages(event.replyToken, [
+            { type: 'text', text: replyText },
+            flexCard,
+          ]);
           console.log(`📍 GPS 打卡回覆已發送: ${replyText}`);
         } catch (replyError) {
           console.error('❌ GPS 打卡回覆失敗:', replyError);
@@ -1129,6 +1139,12 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
+      // 打卡 — 圖文選單按鈕觸發，回覆打卡 Flex 卡片
+      if (text === '打卡') {
+        await lineService.replyRawMessages(event.replyToken, [buildClockInFlexCard()]);
+        return;
+      }
+
       // @小幫手 入職流程 — 固定模板 + 入職系統連結（不走 AI）
       if (text === '@小幫手 入職流程' || text === '@小幫手入職流程') {
         await handleOnboardingQuery(event);
@@ -2218,4 +2234,148 @@ async function handleAiAgentQuery(event: any, question: string): Promise<void> {
       console.error('❌ 回覆錯誤訊息也失敗:', replyError.message || replyError);
     }
   }
+}
+
+// ========== 打卡系統輔助函式 ==========
+
+function getAppBaseUrl(): string {
+  if (process.env.REPLIT_DOMAINS) {
+    const domain = process.env.REPLIT_DOMAINS.split(',')[0];
+    return `https://${domain}`;
+  }
+  return 'http://localhost:5000';
+}
+
+function buildClockInFlexCard(): object {
+  return {
+    type: 'flex',
+    altText: '🕐 上下班打卡 — 點擊進行打卡',
+    contents: {
+      type: 'bubble',
+      size: 'kilo',
+      header: {
+        type: 'box',
+        layout: 'horizontal',
+        backgroundColor: '#1d4ed8',
+        paddingAll: '14px',
+        contents: [
+          {
+            type: 'text',
+            text: '🕐',
+            size: 'xl',
+            flex: 0,
+            gravity: 'center',
+          },
+          {
+            type: 'box',
+            layout: 'vertical',
+            flex: 1,
+            paddingStart: '10px',
+            contents: [
+              {
+                type: 'text',
+                text: '上下班打卡',
+                weight: 'bold',
+                color: '#ffffff',
+                size: 'md',
+              },
+              {
+                type: 'text',
+                text: '駿斯運動管理顧問',
+                color: '#d1e3ff',
+                size: 'xs',
+              },
+            ],
+          },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '14px',
+        contents: [
+          {
+            type: 'text',
+            text: '點擊下方按鈕分享 GPS 位置進行打卡。\n如遇問題請點「打卡問題」查看說明。',
+            wrap: true,
+            size: 'sm',
+            color: '#374151',
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '10px',
+        backgroundColor: '#f8fafc',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'uri',
+              label: '點我進行上下班打卡 👆',
+              uri: 'https://liff.line.me/2009202105-UZQm1Soa',
+            },
+            style: 'primary',
+            color: '#1d4ed8',
+            height: 'sm',
+          },
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
+              label: '打卡問題 🔍',
+              data: 'action=clockin_help',
+              displayText: '打卡問題 🔍',
+            },
+            style: 'secondary',
+            height: 'sm',
+          },
+        ],
+      },
+    },
+  };
+}
+
+// ========== Postback 事件 Handler ==========
+
+async function handlePostbackEvent(event: any): Promise<void> {
+  const data = event.postback?.data || '';
+  console.log(`📲 Postback 事件: "${data}" 來自 ${event.source?.userId}`);
+
+  if (data === 'action=clockin_help') {
+    const base = getAppBaseUrl();
+    const images = [
+      {
+        url: `${base}/attached_assets/image_1774438264133.png`,
+        label: '方法1：LINE 背景定位權限設定',
+      },
+      {
+        url: `${base}/attached_assets/image_1774438279217.png`,
+        label: '方法2：設定瀏覽器位置權限',
+      },
+      {
+        url: `${base}/attached_assets/image_1774438285089.png`,
+        label: '方法3：從隱私權中心設定',
+      },
+    ];
+
+    try {
+      await lineService.replyRawMessages(event.replyToken, [
+        { type: 'text', text: '📋 GPS 打卡問題說明\n以下為三種常見設定方式，請依序嘗試：' },
+        ...images.map(img => ({
+          type: 'image',
+          originalContentUrl: img.url,
+          previewImageUrl: img.url,
+        })),
+      ]);
+      console.log('✅ 打卡問題說明圖已發送');
+    } catch (error: any) {
+      console.error('❌ 打卡問題說明發送失敗:', error.message || error);
+    }
+    return;
+  }
+
+  console.log(`⚠️ 未知 Postback data: "${data}"，略過`);
 }
