@@ -61,6 +61,7 @@ export default function AnnouncementsPage() {
   const [status, setStatus] = useState<string>('');
   const [candidateType, setCandidateType] = useState<string>('');
   const [keyword, setKeyword] = useState<string>('');
+  const [vipOnly, setVipOnly] = useState<boolean>(false);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Candidate | null>(null);
 
@@ -68,9 +69,10 @@ export default function AnnouncementsPage() {
   if (status) params.set('status', status);
   if (candidateType) params.set('candidateType', candidateType);
   if (keyword) params.set('keyword', keyword);
+  if (vipOnly) params.set('vipOnly', 'true');
 
   const { data, isLoading } = useQuery<CandidatesResponse>({
-    queryKey: ['/api/announcement-candidates', status, candidateType, keyword, page],
+    queryKey: ['/api/announcement-candidates', status, candidateType, keyword, vipOnly, page],
     queryFn: () => fetch(`/api/announcement-candidates?${params}`).then(r => r.json()),
   });
 
@@ -141,6 +143,14 @@ export default function AnnouncementsPage() {
                 <SelectItem value="script">標準說詞</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant={vipOnly ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => { setVipOnly(v => !v); setPage(1); }}
+              className={vipOnly ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'border-amber-400 text-amber-600 hover:bg-amber-50'}
+            >
+              ⭐ 特別關注
+            </Button>
             {data && <span className="text-sm text-gray-400 self-center">共 {data.total} 筆</span>}
           </div>
 
@@ -164,6 +174,9 @@ export default function AnnouncementsPage() {
                       </span>
                       {c.isFromSupervisor === 'true' && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">主管</span>
+                      )}
+                      {Array.isArray(c.reasoningTags) && (c.reasoningTags as string[]).some(t => t.startsWith('⭐特別關注:')) && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⭐ 特別關注</span>
                       )}
                       <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
                         信心 {Math.round(parseFloat(c.confidence) * 100)}%

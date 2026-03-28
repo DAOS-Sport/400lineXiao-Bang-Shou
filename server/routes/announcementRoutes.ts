@@ -88,6 +88,7 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
       dateFrom,
       dateTo,
       keyword,
+      vipOnly,
       page = '1',
       pageSize = '20',
     } = req.query as Record<string, string>;
@@ -102,6 +103,10 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
     if (dateTo)        rows = rows.filter(r => r.detectedAt <= new Date(dateTo));
     if (keyword)       rows = rows.filter(r =>
       r.originalText?.includes(keyword) || r.title?.includes(keyword) || r.summary?.includes(keyword)
+    );
+    // ⭐ VIP 用戶篩選
+    if (vipOnly === 'true') rows = rows.filter(r =>
+      Array.isArray(r.reasoningTags) && (r.reasoningTags as string[]).some(t => t.startsWith('⭐特別關注:'))
     );
 
     const total = rows.length;
