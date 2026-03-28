@@ -883,6 +883,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 面試授權用戶列表
+  app.get('/api/admin/interview-users', async (req, res) => {
+    try {
+      const { db } = await import('./db');
+      const { interviewAuthorizedUsers } = await import('@shared/schema');
+      const users = await db.select().from(interviewAuthorizedUsers);
+      res.json({
+        success: true,
+        total: users.length,
+        users: users.map(u => ({
+          id: u.id,
+          userId: u.userId,
+          userName: u.userName,
+          isActive: u.isActive,
+          canInterviewCheck: u.canInterviewCheck,
+          canInternalQuery: u.canInternalQuery,
+          createdAt: u.createdAt,
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  // 系統總覽（前端管理頁面用）
+  app.get('/api/admin/overview', async (req, res) => {
+    try {
+      const allTasks = await storage.getAllTasks();
+      const recentLogs = await storage.getAuditLogs(20);
+      const pending = allTasks.filter(t => t.status === 'pending').length;
+      const completed = allTasks.filter(t => t.status === 'completed').length;
+      const total = allTasks.length;
+
+      const groups = [
+        { id: 'C66a4b3bb3fbc3dcf52d42626ec512484', name: '新北高中游泳池&運動中心', features: ['task', 'gps'] },
+        { id: 'C6f6f163895d5b528a6ab044015e1a37b', name: '三重商工游泳池&籃球場', features: ['task', 'gps'] },
+        { id: 'C2dc6991e51074dd47d5d275d568318f7', name: '三民高中游泳池', features: ['task', 'gps'] },
+        { id: 'C9b3c5dfe2e005adafd2ed914714a1930', name: '松山國小室內溫水游泳池', features: ['task', 'gps'] },
+        { id: 'C50c2a9623a78cc5f5e9f39557e3abfe6', name: '竹科戶外游泳池', features: ['task', 'weather', 'gps'] },
+        { id: 'C360be1fe6ea876a4df3ca0497bca4e3b', name: '竹科高爾夫/網球&籃球', features: ['task', 'weather', 'gps'] },
+        { id: 'C2dd9a5fce7c276f2cbfdd02c2342661c', name: '三民排班群', features: ['task', 'gps'] },
+        { id: 'Ce936c6bebb59b8b5683ffbcf97bf20de', name: '原授權群組', features: ['task', 'gps'] },
+        { id: 'Cf7ab973766c258e5b4b4f040d35b2175', name: '駿斯IT技術群', features: ['task', 'gps'] },
+      ];
+
+      const apis = [
+        { method: 'GET', path: '/api/admin/overview', desc: '系統總覽' },
+        { method: 'GET', path: '/api/admin/feature-stats', desc: '功能使用統計' },
+        { method: 'GET', path: '/api/admin/tasks/stats', desc: '任務統計' },
+        { method: 'GET', path: '/api/admin/tasks', desc: '任務列表' },
+        { method: 'GET', path: '/api/admin/tasks/history/:groupId', desc: '群組任務歷史' },
+        { method: 'GET', path: '/api/admin/attendance/stats', desc: '出勤統計' },
+        { method: 'GET', path: '/api/admin/messages', desc: '訊息備份' },
+        { method: 'GET', path: '/api/admin/audit-logs', desc: '系統日誌' },
+        { method: 'GET', path: '/api/admin/interview-users', desc: '面試授權用戶' },
+        { method: 'GET', path: '/api/admin/dashboard/services-health', desc: '服務健康狀態' },
+        { method: 'POST', path: '/api/admin/trigger-tasks', desc: '手動觸發任務提醒' },
+        { method: 'POST', path: '/api/admin/trigger-combined-forecast', desc: '手動觸發天氣預報' },
+        { method: 'GET', path: '/api/ragic/employee/line-id/:lineId', desc: 'Ragic 員工查詢(LINE ID)' },
+        { method: 'GET', path: '/api/ragic/employee/employee-id/:employeeId', desc: 'Ragic 員工查詢(員工編號)' },
+        { method: 'GET', path: '/api/water-quality/report', desc: '水質報告' },
+      ];
+
+      res.json({
+        success: true,
+        timestamp: new Date().toISOString(),
+        tasks: { total, pending, completed },
+        groups: { total: groups.length, list: groups },
+        recentLogs: recentLogs.slice(0, 10).map(l => ({
+          id: l.id, level: l.level, category: l.category,
+          message: l.message, timestamp: l.timestamp
+        })),
+        apis,
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message });
+    }
+  });
+
   // 簡單查看介面 - API 版本（無需 JavaScript）
   app.get('/admin', async (req, res) => {
     try {
@@ -2105,13 +2184,10 @@ async function handleOnboardingQuery(event: any): Promise<void> {
   if (groupId) params.set('groupId', groupId);
   const ONBOARDING_URL = `${BASE_URL}?${params.toString()}`;
 
-  const nameHint = employeeName ? `（${employeeName}）` : '';
-  const msg1 = '🆕 首次加入請提供以下資訊：';
-  const msg2 =
-    '💡 系統識別碼（請截圖保存）\n' +
-    `USERID：${displayEmployeeId}${nameHint}\n` +
-    '群組ID：';
-  // msg3 = displayGroupId（獨立一則，方便複製）
+  // 「密碼/驗證碼」優先使用群組ID，無群組時用 userId
+  const codeToShow = groupId || userId;
+  const msg1 = '🆕 請複製以下密碼，稍後填寫時需輸入認證';
+  // msg2 = codeToShow（獨立一則，方便長按複製）
 
   // 使用 LIFF 網址後不需 openExternalBrowser，改回 Flex Message 以提升視覺效果
   const flexCard = {
@@ -2195,11 +2271,10 @@ async function handleOnboardingQuery(event: any): Promise<void> {
   try {
     await lineService.replyRawMessages(event.replyToken, [
       { type: 'text', text: msg1 },
-      { type: 'text', text: msg2 },
-      { type: 'text', text: displayGroupId },
+      { type: 'text', text: codeToShow },
       flexCard,
     ]);
-    console.log(`✅ 入職流程訊息已送出 (employeeId: ${displayEmployeeId}, groupId: ${displayGroupId})`);
+    console.log(`✅ 入職流程訊息已送出 (code: ${codeToShow.substring(0, 8)}..., groupId: ${displayGroupId})`);
   } catch (error: any) {
     console.error('❌ 入職流程訊息發送失敗:', error.message || error);
   }

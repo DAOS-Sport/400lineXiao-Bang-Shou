@@ -5,13 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { KeepAlive } from "@/components/KeepAlive";
 import NotFound from "@/pages/not-found";
+import AdminPage from "@/pages/admin";
 
 function Router() {
   return (
     <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
+      <Route path="/" component={AdminPage} />
+      <Route path="/admin-dashboard" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
   );

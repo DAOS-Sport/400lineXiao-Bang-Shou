@@ -164,10 +164,13 @@ export class CautionListService {
     result.records.forEach((record, index) => {
       response += `\n【慎用資料】\n`;
       if (record.name) response += `姓名：${record.name}\n`;
+      if (record.gender) response += `性別：${record.gender}\n`;
       if (record.employeeId) response += `員工編號：${record.employeeId}\n`;
       if (record.phone) response += `電話：${record.phone}\n`;
       if (record.birthDate) response += `出生年月日：${record.birthDate}\n`;
+      if (record.address) response += `地址：${record.address}\n`;
       if (record.position) response += `應聘職位：${record.position}\n`;
+      if (record.location) response += `應聘館別：${record.location}\n`;
       
       response += `\n【慎用緣由】\n`;
       if (record.incidentDate) response += `發生時日（估）：${record.incidentDate}\n`;

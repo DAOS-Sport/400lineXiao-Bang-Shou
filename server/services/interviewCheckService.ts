@@ -133,10 +133,13 @@ export class InterviewCheckService {
       const record = cautionResult.records[0];
       combinedResult += `\n【慎用資料】\n`;
       if (record.name) combinedResult += `姓名：${record.name}\n`;
+      if (record.gender) combinedResult += `性別：${record.gender}\n`;
       if (record.employeeId) combinedResult += `員工編號：${record.employeeId}\n`;
       if (record.phone) combinedResult += `電話：${record.phone}\n`;
       if (record.birthDate) combinedResult += `出生年月日：${record.birthDate}\n`;
+      if (record.address) combinedResult += `地址：${record.address}\n`;
       if (record.position) combinedResult += `應聘職位：${record.position}\n`;
+      if (record.location) combinedResult += `應聘館別：${record.location}\n`;
       
       combinedResult += `\n【慎用緣由】\n`;
       if (record.incidentDate) combinedResult += `發生時日（估）：${record.incidentDate}\n`;
