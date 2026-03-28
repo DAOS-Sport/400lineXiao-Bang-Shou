@@ -186,7 +186,12 @@ export default function AnnouncementsPage() {
                       </span>
                     </div>
                     <p className="font-medium text-sm text-gray-800 truncate">{c.title ?? '（無標題）'}</p>
-                    <p className="text-xs text-gray-500 truncate">{c.facilityName ?? c.groupId} ‧ {c.displayName ?? '未知'}</p>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-xs font-medium text-[#1a3a5c] bg-blue-50 px-1.5 py-0.5 rounded">
+                        📍 {c.facilityName ?? c.groupId}
+                      </span>
+                      <span className="text-xs text-gray-400">‧ {c.displayName ?? '未知'}</span>
+                    </div>
                     <p className="text-xs text-gray-400 mt-0.5 truncate">{c.originalText}</p>
                   </div>
                   <span className="text-xs text-gray-300 shrink-0">
@@ -215,6 +220,17 @@ export default function AnnouncementsPage() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-sm text-gray-800">詳細資訊</h3>
                   <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕ 關閉</button>
+                </div>
+
+                {/* 來源群組 */}
+                <div className="bg-blue-50 rounded-lg p-2.5 space-y-1">
+                  <p className="text-xs text-gray-400 font-medium">📍 來源群組</p>
+                  <p className="text-sm font-semibold text-[#1a3a5c]">{selected.facilityName ?? '未知場館'}</p>
+                  <p className="text-xs text-gray-400 font-mono break-all">{selected.groupId}</p>
+                  <p className="text-xs text-gray-500">
+                    發話者：{selected.displayName ?? '未知'}
+                    {selected.isFromSupervisor === 'true' && <span className="ml-1 text-indigo-600 font-medium">（主管）</span>}
+                  </p>
                 </div>
 
                 <div>
