@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { db } from '../db';
 import { announcementCandidates, announcementReviews } from '@shared/schema';
 import { eq, gte, desc } from 'drizzle-orm';
+import { getPipelineStats } from '../services/announcement/pipelineStats';
+import { FOCUS_GROUP_IDS } from '../services/announcement/announcementIngestService';
 
 export const announcementRouter = Router();
 
@@ -39,17 +41,36 @@ announcementRouter.get('/announcement-dashboard/summary', async (_req, res) => {
       byGroup[r.groupId] = (byGroup[r.groupId] ?? 0) + 1;
     }
 
+    // 管理員 vs 重點群組 分類
+    const supervisorCount  = allRows.filter(r => r.isFromSupervisor === 'true').length;
+    const nonSupervisorCount = allRows.filter(r => r.isFromSupervisor !== 'true').length;
+    const todaySupervisor  = todayRows.filter(r => r.isFromSupervisor === 'true').length;
+
+    // 信心分布
+    const highConf = allRows.filter(r => parseFloat(r.confidence) >= 0.7).length;
+    const midConf  = allRows.filter(r => parseFloat(r.confidence) >= 0.4 && parseFloat(r.confidence) < 0.7).length;
+    const lowConf  = allRows.filter(r => parseFloat(r.confidence) < 0.4).length;
+
+    // 重點群組清單
+    const focusGroups = [...FOCUS_GROUP_IDS];
+
     res.json({
       success: true,
       totalMessagesToday: todayRows.length,
       analyzedMessagesToday: todayRows.length,
+      todaySupervisorCount: todaySupervisor,
       pendingReviewCount: pendingCount,
       approvedCount,
       rejectedCount,
       totalCandidates: allRows.length,
+      supervisorCount,
+      nonSupervisorCount,
+      confidenceDist: { high: highConf, mid: midConf, low: lowConf },
       byType,
       byFacility,
       byGroup,
+      focusGroups,
+      pipeline: getPipelineStats(),
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

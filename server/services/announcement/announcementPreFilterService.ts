@@ -30,11 +30,16 @@ export interface PreFilterResult {
   detectedKeywords: string[];
   hintType: 'rule' | 'campaign' | 'script' | 'notice' | 'unknown';
   scopeHint: 'group' | 'facility' | 'multi_facility' | 'global';
+  passReason: 'keyword' | 'supervisor_length' | 'focus_group_length' | 'none';
 }
 
-export function preFilterMessage(text: string, isFromSupervisor: boolean): PreFilterResult {
+export function preFilterMessage(
+  text: string,
+  isFromSupervisor: boolean,
+  isFocusGroup: boolean,
+): PreFilterResult {
   if (!text || text.trim().length < 8) {
-    return { pass: false, detectedKeywords: [], hintType: 'unknown', scopeHint: 'group' };
+    return { pass: false, detectedKeywords: [], hintType: 'unknown', scopeHint: 'group', passReason: 'none' };
   }
 
   const detected: string[] = [];
@@ -59,9 +64,17 @@ export function preFilterMessage(text: string, isFromSupervisor: boolean): PreFi
   }
 
   const hasKeyword = detected.length > 0;
-  const pass = isFromSupervisor
-    ? (hasKeyword || text.length >= 30)
-    : hasKeyword;
 
-  return { pass, detectedKeywords: [...new Set(detected)], hintType, scopeHint };
+  // 優先順序：關鍵字 → 管理員長度門檻 → 重點群組長度門檻
+  if (hasKeyword) {
+    return { pass: true, detectedKeywords: [...new Set(detected)], hintType, scopeHint, passReason: 'keyword' };
+  }
+  if (isFromSupervisor && text.length >= 30) {
+    return { pass: true, detectedKeywords: [], hintType, scopeHint, passReason: 'supervisor_length' };
+  }
+  if (isFocusGroup && text.length >= 15) {
+    return { pass: true, detectedKeywords: [], hintType, scopeHint, passReason: 'focus_group_length' };
+  }
+
+  return { pass: false, detectedKeywords: [...new Set(detected)], hintType, scopeHint, passReason: 'none' };
 }
