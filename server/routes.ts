@@ -18,6 +18,8 @@ import { interviewCheckService } from "./services/interviewCheckService";
 import { surveyService } from "./services/surveyService";
 import { getOneMonthRange } from "./utils/time";
 import dayjs from "dayjs";
+import { announcementRouter } from "./routes/announcementRoutes";
+import { ingestMessageForAnnouncement } from "./services/announcement/announcementIngestService";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -883,6 +885,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== 重要事項公告歸納器 API ==========
+  app.use('/api', announcementRouter);
+
   // 面試授權用戶列表
   app.get('/api/admin/interview-users', async (req, res) => {
     try {
@@ -1210,6 +1215,19 @@ async function processWebhookEvent(event: any) {
     } catch (error) {
       console.error('❌ 訊息儲存失敗，但繼續處理指令:', error);
       savedMessage = null;
+    }
+
+    // 🔍 公告歸納 — 非同步分析，不阻塞主流程
+    if (event.message.type === 'text' && event.message.text && event.source.type === 'group') {
+      setImmediate(() => {
+        ingestMessageForAnnouncement({
+          messageId: event.message.id,
+          groupId: event.source.groupId,
+          userId: event.source.userId,
+          displayName: savedMessage?.displayName ?? null,
+          text: event.message.text,
+        }).catch((err: any) => console.error('❌ [公告歸納] setImmediate error:', err?.message));
+      });
     }
 
     // 處理指令和任務檢測

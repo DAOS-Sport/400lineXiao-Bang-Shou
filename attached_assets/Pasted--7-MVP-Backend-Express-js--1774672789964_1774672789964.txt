@@ -1,0 +1,240 @@
+你現在要在現有的「駿斯小助理」專案中，新增一個「重要事項公告歸納器」模組，先做可試跑 7 天的 MVP。
+
+【現有技術背景，請沿用，不要重建整套】
+- Backend: Express.js + TypeScript
+- API: RESTful headless API
+- DB: Drizzle ORM + PostgreSQL
+- LINE: @line/bot-sdk webhook
+- AI: OpenAI GPT-4o-mini
+- Frontend: React + TypeScript + Vite + TanStack Query + shadcn/ui
+- 現有系統已支援 strict group isolation、raw event preservation、message backup、admin controls、authorized group management
+- 現有系統已部署在 Replit，請以增量開發為原則，不要破壞原本功能
+
+【這次新功能目標】
+做一個「重要事項公告歸納器」，從 LINE 群組訊息中，自動抓取主管發出的重要事項，判斷是否屬於：
+1. 規則 / SOP
+2. 新公告 / 通知
+3. 活動
+4. 折扣優惠
+5. 標準說詞 / 禁止說詞
+6. 其他無關聊天（忽略）
+
+【很重要的限制】
+- 預設以「來源群組」為作用範圍
+- 若訊息來自某群組，先預設只屬於該群組與該館
+- 只有在訊息內容明確提到全館、全公司、所有館別、統一規定時，才可升級 scope
+- 第一週先不要自動發布正式公告，全部都先進 pending_review
+- 第一週以穩定收集、分類、可檢查為主
+
+【資料流】
+LINE webhook
+→ 存 raw_events
+→ 轉 messages
+→ 判斷是否主管或公告型訊息
+→ 規則式預篩
+→ GPT-4o-mini 分類與抽取
+→ 存到 announcement_candidates
+→ 儀表板 API 查詢
+
+【請新增資料表】
+1. facilities
+- id
+- name
+- code
+- isActive
+- createdAt
+
+2. groups
+- id
+- lineGroupId
+- name
+- facilityId
+- groupType
+- isActive
+- createdAt
+
+3. users
+- id
+- lineUserId
+- displayName
+- role
+- isSupervisor
+- isActive
+- createdAt
+
+4. raw_events
+- id
+- lineEventId
+- groupId
+- payloadJson
+- receivedAt
+
+5. messages
+- id
+- rawEventId
+- groupId
+- facilityId
+- userId
+- lineMessageId
+- text
+- normalizedText
+- sentAt
+- isFromSupervisor
+- createdAt
+
+6. announcement_candidates
+- id
+- sourceMessageId
+- groupId
+- facilityId
+- candidateType  // rule, notice, campaign, discount, script, ignore
+- scopeType      // group, facility, multi_facility, global
+- title
+- summary
+- recommendedAction
+- badExample
+- recommendedReply
+- confidence
+- extractedJson
+- status         // pending_review, approved, rejected
+- detectedAt
+
+7. announcement_reviews
+- id
+- candidateId
+- reviewerUserId
+- action
+- comment
+- reviewedAt
+
+【請新增後端 service】
+1. announcementIngestService.ts
+- 從 webhook 後處理 message event
+- 寫入 raw_events / messages
+
+2. supervisorResolverService.ts
+- 依 lineUserId 或設定判斷是否主管
+- 若不是主管，但文字像公告，也可進入低優先分析
+
+3. announcementPreFilterService.ts
+- 用關鍵字與規則先篩選
+- 關鍵詞例：
+  - 規則: 即日起、請統一、不得、禁止、務必、一律、遇到...請...
+  - 活動: 活動、優惠、折扣、期間、報名、特價、贈送
+  - 說詞: 請勿這樣回、統一說法、客人若問、請這樣回覆
+
+4. announcementClassifierService.ts
+- 呼叫 GPT-4o-mini
+- 請求必須輸出 JSON
+- 要抽出:
+  - candidateType
+  - scopeType
+  - title
+  - summary
+  - recommendedAction
+  - badExample
+  - recommendedReply
+  - confidence
+  - appliesToRoles
+  - startAt
+  - endAt
+
+5. announcementDashboardService.ts
+- 提供統計資料
+- 提供待審核列表
+- 提供依群組 / 館別 / 類型查詢
+
+【GPT 分類 Prompt 要求】
+請建立一個 server/prompts/announcementClassifier.ts
+system prompt 內容要求：
+- 你是企業內部公告分類助理
+- 任務是從 LINE 群組訊息中識別重要事項
+- 只根據訊息文字與來源群組做判斷，不要腦補不存在的政策
+- 預設 scopeType = group
+- 若文字明確提到全館/所有館/全公司/統一適用，才可升級 scope
+- 若只是抱怨、閒聊、單純討論，不可誤判成公告
+- 輸出必須為 JSON，不要多餘文字
+- 如果不確定，candidateType = ignore，confidence 降低
+
+【請實作 API】
+1. GET /api/announcement-dashboard/summary
+回傳：
+- totalMessagesToday
+- analyzedMessagesToday
+- pendingReviewCount
+- approvedCount
+- rejectedCount
+- byType
+- byFacility
+- byGroup
+
+2. GET /api/announcement-candidates
+支援 query:
+- status
+- candidateType
+- facilityId
+- groupId
+- dateFrom
+- dateTo
+- keyword
+- page
+- pageSize
+
+3. GET /api/announcement-candidates/:id
+回傳單筆候選公告詳細資料 + 原始 message
+
+4. POST /api/announcement-candidates/:id/approve
+5. POST /api/announcement-candidates/:id/reject
+
+6. GET /api/announcement-reports/weekly
+回傳最近 7 天：
+- 每日抓取量
+- 每日判定量
+- 各類型分布
+- 各館分布
+- 高信心公告數
+- 誤判率估算（依審核結果）
+
+【請提供外部儀表板 API 格式】
+請 API 回傳穩定 JSON，欄位命名固定，方便外部前端讀取。
+不可回傳混亂字串或 HTML。
+
+【請新增前端頁面】
+在現有前端新增：
+1. /announcements
+- 待審核列表
+- 類型篩選
+- 館別篩選
+- 群組篩選
+- 搜尋
+- 點進單筆看詳情
+
+2. /announcements/summary
+- 今日統計
+- 最近 7 天統計
+- 各館分布
+- 各類型分布
+
+【請保持的工程原則】
+- 型別完整
+- 使用 zod 驗證 request / response
+- 新模組與既有模組分開
+- route / service / db schema 分層
+- 不要破壞既有 survey、task、water quality、message backup 功能
+- 不要直接修改舊表邏輯，盡量新增表與新 service
+
+【驗收標準】
+- LINE webhook 收到訊息後可寫入 message
+- 主管或公告型訊息可進分類流程
+- GPT 回傳 JSON 可寫入 announcement_candidates
+- 外部儀表板可透過 API 看到 summary 與候選公告列表
+- 可人工 approve / reject
+- 最近 7 天報表可正常回傳
+- 所有新功能可在 Replit 上正常啟動
+
+最後請輸出：
+1. 新增/修改檔案列表
+2. migration 清單
+3. API 路由清單
+4. 測試方式
+5. 尚未完成風險點

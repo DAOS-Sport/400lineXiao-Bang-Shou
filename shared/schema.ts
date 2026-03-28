@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, timestamp, jsonb, serial, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, text, timestamp, jsonb, serial, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
 import { z } from 'zod';
@@ -145,6 +145,67 @@ export const employeeCache = pgTable('employee_cache', {
   cachedAtIdx: index('employee_cache_cached_at_idx').on(table.cachedAt.desc()),
   lastAccessedIdx: index('employee_cache_last_accessed_idx').on(table.lastAccessed.desc())
 }));
+
+// ========== 重要事項公告歸納器 ==========
+
+// Announcement Candidates Table - 公告候選項目
+export const announcementCandidates = pgTable('announcement_candidates', {
+  id: serial('id').primaryKey(),
+  sourceMessageId: text('source_message_id'), // 來源 messages.messageId
+  groupId: text('group_id').notNull(),
+  facilityName: text('facility_name'), // 場館名稱（由 groupId 對應）
+  userId: text('user_id'),
+  displayName: text('display_name'),
+  originalText: text('original_text').notNull(),
+  isFromSupervisor: text('is_from_supervisor').notNull().default('false'),
+  candidateType: text('candidate_type').notNull().default('ignore'), // rule | notice | campaign | discount | script | ignore
+  scopeType: text('scope_type').notNull().default('group'),           // group | facility | multi_facility | global
+  title: text('title'),
+  summary: text('summary'),
+  recommendedAction: text('recommended_action'),
+  badExample: text('bad_example'),
+  recommendedReply: text('recommended_reply'),
+  appliesToRoles: jsonb('applies_to_roles'), // string[]
+  startAt: timestamp('start_at', { withTimezone: true }),
+  endAt: timestamp('end_at', { withTimezone: true }),
+  confidence: text('confidence').notNull().default('0'),
+  reasoningTags: jsonb('reasoning_tags'), // string[]
+  extractedJson: jsonb('extracted_json'), // 完整 GPT 輸出
+  status: text('status').notNull().default('pending_review'), // pending_review | approved | rejected | ignored
+  detectedAt: timestamp('detected_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  groupIdIdx: index('ann_candidates_group_id_idx').on(table.groupId),
+  statusIdx: index('ann_candidates_status_idx').on(table.status),
+  candidateTypeIdx: index('ann_candidates_type_idx').on(table.candidateType),
+  detectedAtIdx: index('ann_candidates_detected_at_idx').on(table.detectedAt.desc()),
+}));
+
+// Announcement Reviews Table - 公告審核記錄
+export const announcementReviews = pgTable('announcement_reviews', {
+  id: serial('id').primaryKey(),
+  candidateId: integer('candidate_id').notNull(),
+  reviewerUserId: text('reviewer_user_id'),
+  action: text('action').notNull(), // approve | reject
+  comment: text('comment'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  candidateIdIdx: index('ann_reviews_candidate_id_idx').on(table.candidateId),
+  reviewedAtIdx: index('ann_reviews_reviewed_at_idx').on(table.reviewedAt.desc()),
+}));
+
+export const insertAnnouncementCandidateSchema = createInsertSchema(announcementCandidates).omit({
+  id: true,
+  detectedAt: true,
+});
+export const insertAnnouncementReviewSchema = createInsertSchema(announcementReviews).omit({
+  id: true,
+  reviewedAt: true,
+});
+
+export type AnnouncementCandidate = typeof announcementCandidates.$inferSelect;
+export type InsertAnnouncementCandidate = z.infer<typeof insertAnnouncementCandidateSchema>;
+export type AnnouncementReview = typeof announcementReviews.$inferSelect;
+export type InsertAnnouncementReview = z.infer<typeof insertAnnouncementReviewSchema>;
 
 // Relations
 export const messagesRelations = relations(messages, ({ many }) => ({
