@@ -51,9 +51,11 @@ const STATUS_COLOR: Record<string, string> = {
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
   ignored: 'bg-gray-100 text-gray-400',
+  vip_chat: 'bg-amber-100 text-amber-700',
 };
 const STATUS_LABEL: Record<string, string> = {
   pending_review: '待審核', approved: '已核准', rejected: '已退回', ignored: '已忽略',
+  vip_chat: '⭐ VIP閒聊',
 };
 
 export default function AnnouncementsPage() {
@@ -130,6 +132,7 @@ export default function AnnouncementsPage() {
                 <SelectItem value="approved">已核准</SelectItem>
                 <SelectItem value="rejected">已退回</SelectItem>
                 <SelectItem value="ignored">已忽略</SelectItem>
+                <SelectItem value="vip_chat">⭐ VIP閒聊</SelectItem>
               </SelectContent>
             </Select>
             <Select value={candidateType || 'all'} onValueChange={v => { setCandidateType(v === 'all' ? '' : v); setPage(1); }}>

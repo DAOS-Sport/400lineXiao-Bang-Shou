@@ -104,9 +104,10 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
     if (keyword)       rows = rows.filter(r =>
       r.originalText?.includes(keyword) || r.title?.includes(keyword) || r.summary?.includes(keyword)
     );
-    // ⭐ VIP 用戶篩選
+    // ⭐ VIP 用戶篩選（含 vip_chat 狀態 + reasoningTags 雙重比對）
     if (vipOnly === 'true') rows = rows.filter(r =>
-      Array.isArray(r.reasoningTags) && (r.reasoningTags as string[]).some(t => t.startsWith('⭐特別關注:'))
+      r.status === 'vip_chat' ||
+      (Array.isArray(r.reasoningTags) && (r.reasoningTags as string[]).some(t => t.startsWith('⭐特別關注:')))
     );
 
     const total = rows.length;

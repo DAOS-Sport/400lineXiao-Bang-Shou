@@ -16,14 +16,11 @@ const GROUP_FACILITY_MAP: Record<string, string> = {
   C2dd9a5fce7c276f2cbfdd02c2342661c: '三民排班群',
   Ce936c6bebb59b8b5683ffbcf97bf20de: '原授權群組',
   Cf7ab973766c258e5b4b4f040d35b2175: '駿斯IT技術群',
-  // TODO: 待補「駿斯-三蘆區櫃台」Group ID
-  // 'C???': '駿斯-三蘆區櫃台',
+  Cc2100498c7c5627c1e86e93f7c4eb817: '駿斯-三蘆區櫃台', // ⭐ 新增
 };
 
 /**
- * 重點群組（前台/服務台，門檻降至 ≥15 字）
- * ─ 駿斯IT技術群：Cf7ab973…（已加入）
- * ─ 駿斯-三蘆區櫃台：TODO 等候 Group ID
+ * 重點群組（前台/服務台，門檻降至 ≥15 字即送 GPT）
  */
 export const FOCUS_GROUP_IDS = new Set([
   'C66a4b3bb3fbc3dcf52d42626ec512484', // 新北高中游泳池&運動中心
@@ -32,17 +29,18 @@ export const FOCUS_GROUP_IDS = new Set([
   'C9b3c5dfe2e005adafd2ed914714a1930', // 松山國小室內溫水游泳池
   'C50c2a9623a78cc5f5e9f39557e3abfe6', // 竹科戶外游泳池
   'C360be1fe6ea876a4df3ca0497bca4e3b', // 竹科高爾夫/網球&籃球
-  'Cf7ab973766c258e5b4b4f040d35b2175', // ⭐ 駿斯IT技術群（重點群組）
-  // TODO: 'C???': '駿斯-三蘆區櫃台',
+  'Cf7ab973766c258e5b4b4f040d35b2175', // 駿斯IT技術群
+  'Cc2100498c7c5627c1e86e93f7c4eb817', // ⭐ 駿斯-三蘆區櫃台
 ]);
 
 /**
  * VIP 特別關注人員
- * ─ 發話時：跳過預篩、直送 GPT、reasoningTags 標注 vip_user
- * ─ 新增人員：{ userId: 'U...', name: '姓名' }
+ * ─ 所有訊息（含閒聊）全部抓取儲存，供人工判讀
+ * ─ 不受預篩、信心分數、類型限制
+ * ─ 新增人員：'LINE_USER_ID': '姓名'
  */
 const VIP_USERS: Record<string, string> = {
-  'U8fd0e4be4e44a1304f9fa2e9855f4559': '陳柏榮', // ⭐ 特別關注
+  'U8fd0e4be4e44a1304f9fa2e9855f4559': '陳柏榮', // ⭐ 特別關注（全抓）
 };
 
 // 主管職稱關鍵字（displayName 含以下字樣視為主管）
@@ -65,7 +63,7 @@ export async function ingestMessageForAnnouncement(params: {
 }): Promise<void> {
   const { messageId, groupId, userId, displayName, text } = params;
 
-  if (!text || text.trim().length < 8) return;
+  if (!text || text.trim().length < 4) return;
   if (text.startsWith('@小幫手')) return;
   if (text.startsWith('交辦')) return;
 
@@ -73,10 +71,10 @@ export async function ingestMessageForAnnouncement(params: {
 
   try {
     // ── 身份判斷 ──────────────────────────────────────────
-    const isAdminInDb       = await storage.isAdmin(userId);
-    const isAdminByName     = isSupervisorByDisplayName(displayName);
-    const isFromSupervisor  = isAdminInDb || isAdminByName;
-    const isFocusGroup      = FOCUS_GROUP_IDS.has(groupId);
+    const isAdminInDb      = await storage.isAdmin(userId);
+    const isAdminByName    = isSupervisorByDisplayName(displayName);
+    const isFromSupervisor = isAdminInDb || isAdminByName;
+    const isFocusGroup     = FOCUS_GROUP_IDS.has(groupId);
 
     const vipName = VIP_USERS[userId] ?? null;
     const isVip   = vipName !== null;
@@ -84,7 +82,7 @@ export async function ingestMessageForAnnouncement(params: {
     if (isFromSupervisor) inc('supervisorChecked');
     if (isFocusGroup)     inc('focusGroupChecked');
 
-    // ⭐ VIP 人員：完全跳過預篩，直接進 GPT
+    // ── 預篩（VIP 全跳過） ─────────────────────────────────
     let passReason: string;
     if (!isVip) {
       const preFilter = preFilterMessage(text, isFromSupervisor, isFocusGroup);
@@ -92,7 +90,7 @@ export async function ingestMessageForAnnouncement(params: {
       passReason = preFilter.passReason;
     } else {
       passReason = `vip_bypass:${vipName}`;
-      console.log(`⭐ [公告歸納] VIP 用戶「${vipName}」訊息直接進入分析: "${text.substring(0, 40)}…"`);
+      console.log(`⭐ [公告歸納] VIP「${vipName}」訊息全抓: "${text.substring(0, 50)}"`);
     }
 
     inc('preFilterPass');
@@ -118,47 +116,63 @@ export async function ingestMessageForAnnouncement(params: {
     if (!result) return;
     inc('gptClassified');
 
-    if (result.candidateType === 'ignore' && result.confidence < 0.4) {
-      inc('skippedLowConf');
-      console.log(`⏭️ [公告歸納] 信心不足，跳過 (confidence=${result.confidence})`);
-      return;
+    // ── 信心過濾（VIP 全跳過，閒聊也保留） ──────────────────
+    if (!isVip) {
+      if (result.candidateType === 'ignore' && result.confidence < 0.4) {
+        inc('skippedLowConf');
+        console.log(`⏭️ [公告歸納] 信心不足，跳過 (confidence=${result.confidence})`);
+        return;
+      }
     }
 
-    // ⭐ VIP 特別標注：加入 reasoningTags
+    // ── VIP 特別標注 ──────────────────────────────────────
     const finalReasoningTags: string[] = [...(result.reasoningTags ?? [])];
     if (isVip) {
       finalReasoningTags.unshift(`⭐特別關注:${vipName}`);
+      // 標注 GPT 研判結果（公告 or 閒聊）
+      const chatLabel = result.candidateType === 'ignore' ? '閒聊/一般對話' : `公告(${result.candidateType})`;
+      finalReasoningTags.splice(1, 0, `GPT研判:${chatLabel}`);
     }
 
-    const status = result.candidateType === 'ignore' ? 'ignored' : 'pending_review';
+    // ── 狀態決定 ─────────────────────────────────────────
+    // VIP 的 ignore 類訊息存為 vip_chat（儀表板可特別篩選）
+    // 其他一般 ignore 存為 ignored
+    let status: string;
+    if (isVip && result.candidateType === 'ignore') {
+      status = 'vip_chat';
+    } else if (result.candidateType === 'ignore') {
+      status = 'ignored';
+    } else {
+      status = 'pending_review';
+    }
 
     await db.insert(announcementCandidates).values({
-      sourceMessageId:  messageId,
+      sourceMessageId:   messageId,
       groupId,
       facilityName,
       userId,
-      displayName:      isVip ? `⭐ ${vipName}（特別關注）` : displayName,
-      originalText:     text,
-      isFromSupervisor: (isFromSupervisor || isVip) ? 'true' : 'false',
-      candidateType:    result.candidateType,
-      scopeType:        result.scopeType,
-      title:            result.title,
-      summary:          result.summary,
+      displayName:       isVip ? `⭐ ${vipName}（特別關注）` : displayName,
+      originalText:      text,
+      isFromSupervisor:  (isFromSupervisor || isVip) ? 'true' : 'false',
+      candidateType:     result.candidateType,
+      scopeType:         result.scopeType,
+      title:             result.title,
+      summary:           result.summary,
       recommendedAction: result.recommendedAction,
-      badExample:       result.badExample,
-      recommendedReply: result.recommendedReply,
-      appliesToRoles:   result.appliesToRoles ?? [],
-      startAt:          result.startAt ? new Date(result.startAt) : null,
-      endAt:            result.endAt   ? new Date(result.endAt)   : null,
-      confidence:       String(result.confidence),
-      reasoningTags:    finalReasoningTags,
-      extractedJson:    { ...result, passReason, isVip, vipName } as any,
+      badExample:        result.badExample,
+      recommendedReply:  result.recommendedReply,
+      appliesToRoles:    result.appliesToRoles ?? [],
+      startAt:           result.startAt ? new Date(result.startAt) : null,
+      endAt:             result.endAt   ? new Date(result.endAt)   : null,
+      confidence:        String(result.confidence),
+      reasoningTags:     finalReasoningTags,
+      extractedJson:     { ...result, passReason, isVip, vipName } as any,
       status,
     });
 
     inc('stored');
     console.log(
-      `✅ [公告歸納] 已儲存 (type=${result.candidateType}, conf=${result.confidence}` +
+      `✅ [公告歸納] 已儲存 (type=${result.candidateType}, status=${status}, conf=${result.confidence}` +
       (isVip ? `, ⭐VIP=${vipName}` : '') + `)`
     );
   } catch (err: any) {
