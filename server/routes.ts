@@ -1236,11 +1236,11 @@ async function processWebhookEvent(event: any) {
       const source = event.source;
       console.log(`📝 處理文字訊息: "${text}" 來自 ${source.type} ${source.groupId || source.userId}`);
       
-      // 打卡 — 暫時停用，待上線再啟用
-      // if (text === '打卡') {
-      //   await lineService.replyRawMessages(event.replyToken, [buildClockInFlexCard()]);
-      //   return;
-      // }
+      // 打卡 — 觸發打卡 Flex 卡片（LIFF 內部瀏覽器開啟）
+      if (text === '打卡') {
+        await lineService.replyRawMessages(event.replyToken, [buildClockInFlexCard()]);
+        return;
+      }
 
       // @小幫手 入職流程 — 固定模板 + 入職系統連結（不走 AI）
       if (text === '@小幫手 入職流程' || text === '@小幫手入職流程') {
@@ -1697,7 +1697,7 @@ async function handleIdCommand(event: any) {
       
       if (!employeeDetails) {
         // 查無資料
-        resultMessage = `❌ 查詢完成\n\n系統識別碼: ${source.userId}\n查詢結果: 查無資料`;
+        resultMessage = `❌ 查詢完成\n\nLINE USER ID: ${source.userId}\n查詢結果: 查無資料`;
       } else if (!employeeDetails.isActive) {
         // 帳號已關閉（非在職狀態）- 附上完整員工資訊
         resultMessage = `🚫 帳號已關閉，暫停服務，若有問題，請洽直屬主管\n\n` +
@@ -1722,7 +1722,7 @@ async function handleIdCommand(event: any) {
         });
       } else {
         // 在職狀態，正常顯示資料
-        resultMessage = `✅ 查詢完成\n\n系統識別碼: ${source.userId}\n員工編號: ${employeeDetails.employeeId}\n姓名: ${employeeDetails.employeeName || '未提供'}\n狀態: ${employeeDetails.employmentStatus}`;
+        resultMessage = `✅ 查詢完成\n\nLINE USER ID: ${source.userId}\n員工編號: ${employeeDetails.employeeId}\n姓名: ${employeeDetails.employeeName || '未提供'}\n狀態: ${employeeDetails.employmentStatus}`;
         
         // 記錄成功存取
         await storage.insertAuditLog({
@@ -1748,7 +1748,7 @@ async function handleIdCommand(event: any) {
       // 停止進度更新
       clearEnhancedQueryProgress(source.userId);
       // 推送錯誤結果
-      const errorMessage = `❌ 查詢失敗\n\n系統識別碼: ${source.userId}\n員工編號: 查無資料\n\n請稍後再試或聯繫系統管理員`;
+      const errorMessage = `❌ 查詢失敗\n\nLINE USER ID: ${source.userId}\n員工編號: 查無資料\n\n請稍後再試或聯繫系統管理員`;
       await lineService.pushMessage(source.userId, errorMessage);
     }
   } else if (source.type === 'group') {
@@ -2158,7 +2158,7 @@ async function handleQueryMyId(event: any): Promise<void> {
   try {
     await lineService.replyRawMessages(event.replyToken, [
       { type: 'text', text: '🆕 首次加入請提供以下資訊：' },
-      { type: 'text', text: `💡 系統識別碼（請截圖保存）\nUSERID：${userId}\n群組ID：` },
+      { type: 'text', text: `💡 LINE USER ID（請截圖保存）\nLINE USER ID：${userId}\n群組ID：` },
       { type: 'text', text: groupId },
       { type: 'text', text: '請回填至入職系統' },
     ]);
