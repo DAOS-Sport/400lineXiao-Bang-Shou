@@ -1242,6 +1242,12 @@ async function processWebhookEvent(event: any) {
         return;
       }
 
+      // 打卡問題 — 回傳 GPS 打卡常見問題說明（由打卡卡片按鈕觸發）
+      if (text === '打卡問題') {
+        await sendClockInHelp(event.replyToken);
+        return;
+      }
+
       // @小幫手 入職流程 — 固定模板 + 入職系統連結（不走 AI）
       if (text === '@小幫手 入職流程' || text === '@小幫手入職流程') {
         await handleOnboardingQuery(event);
@@ -2428,17 +2434,16 @@ function buildClockInFlexCard(): object {
               label: '「點我進行上下班打卡」👆',
               uri: 'https://liff.line.me/2009202105-UZQm1Soa',
             },
-            style: 'link',
-            color: '#1a6fba',
+            style: 'primary',
+            color: '#1a3a5c',
             height: 'sm',
           },
           {
             type: 'button',
             action: {
-              type: 'postback',
+              type: 'message',
               label: '常見問題 🔍',
-              data: 'action=clockin_help',
-              displayText: '常見問題 🔍',
+              text: '打卡問題',
             },
             style: 'link',
             color: '#1a6fba',
@@ -2450,6 +2455,151 @@ function buildClockInFlexCard(): object {
   };
 }
 
+// ========== 打卡問題說明 — 可複用函式 ==========
+
+async function sendClockInHelp(replyToken: string): Promise<void> {
+  const methods = [
+    {
+      num: '1',
+      title: 'LINE 的背景定位權限',
+      steps: [
+        '系統設定',
+        '點擊搜尋框，輸入並選擇「LINE」',
+        '點擊「位置」',
+        '勾選「永遠」✅',
+        '開啟「準確位置」✅',
+      ],
+    },
+    {
+      num: '2',
+      title: '設定瀏覽器位置權限',
+      steps: [
+        '系統設定',
+        '滑至底部，「App」',
+        '選擇您常用的瀏覽器',
+        '點擊「位置」',
+        '選擇「詢問」✅',
+      ],
+    },
+    {
+      num: '3',
+      title: '從隱私權中心設定瀏覽器權限',
+      steps: [
+        '系統設定',
+        '「隱私權與安全性」',
+        '「定位服務」',
+        '選擇常用的瀏覽器',
+        '「使用 App 期間」✅',
+        '「準確位置」✅',
+      ],
+    },
+  ];
+
+  const stepNums = ['①', '②', '③', '④', '⑤', '⑥'];
+
+  const bubbles = methods.map(m => ({
+    type: 'bubble',
+    size: 'kilo',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#1e4976',
+      paddingAll: '16px',
+      contents: [
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'text',
+              text: '方法',
+              color: '#ffffff',
+              size: 'xl',
+              weight: 'bold',
+              gravity: 'bottom',
+              flex: 0,
+            },
+            {
+              type: 'text',
+              text: m.num,
+              color: '#f5a623',
+              size: '3xl',
+              weight: 'bold',
+              gravity: 'bottom',
+              paddingStart: '8px',
+              flex: 0,
+            },
+          ],
+        },
+      ],
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: '14px',
+      spacing: 'sm',
+      contents: [
+        {
+          type: 'text',
+          text: m.title,
+          weight: 'bold',
+          size: 'sm',
+          wrap: true,
+          color: '#1e4976',
+        },
+        {
+          type: 'separator',
+          margin: 'sm',
+          color: '#d0dce9',
+        },
+        ...m.steps.map((step, i) => ({
+          type: 'box',
+          layout: 'horizontal',
+          spacing: 'sm',
+          margin: 'sm',
+          contents: [
+            {
+              type: 'text',
+              text: stepNums[i],
+              size: 'xs',
+              color: '#1e4976',
+              flex: 0,
+              gravity: 'top',
+            },
+            {
+              type: 'text',
+              text: step,
+              size: 'xs',
+              wrap: true,
+              color: '#374151',
+              flex: 1,
+            },
+          ],
+        })),
+      ],
+    },
+  }));
+
+  const clockInHelpFlex = {
+    type: 'flex',
+    altText: '📋 GPS 打卡問題說明 — 三種設定方式',
+    contents: {
+      type: 'carousel',
+      contents: bubbles,
+    },
+  };
+
+  try {
+    await lineService.replyRawMessages(replyToken, [
+      { type: 'text', text: '📋 GPS 打卡問題說明\n以下為三種常見設定方式，請依序嘗試 👉' },
+      clockInHelpFlex,
+    ]);
+    console.log('✅ 打卡問題說明 Flex 已發送');
+  } catch (error: any) {
+    console.error('❌ 打卡問題說明發送失敗:', error.message || error);
+  }
+}
+
 // ========== Postback 事件 Handler ==========
 
 async function handlePostbackEvent(event: any): Promise<void> {
@@ -2457,146 +2607,7 @@ async function handlePostbackEvent(event: any): Promise<void> {
   console.log(`📲 Postback 事件: "${data}" 來自 ${event.source?.userId}`);
 
   if (data === 'action=clockin_help') {
-    const methods = [
-      {
-        num: '1',
-        title: 'LINE 的背景定位權限',
-        steps: [
-          '系統設定',
-          '點擊搜尋框，輸入並選擇「LINE」',
-          '點擊「位置」',
-          '勾選「永遠」✅',
-          '開啟「準確位置」✅',
-        ],
-      },
-      {
-        num: '2',
-        title: '設定瀏覽器位置權限',
-        steps: [
-          '系統設定',
-          '滑至底部，「App」',
-          '選擇您常用的瀏覽器',
-          '點擊「位置」',
-          '選擇「詢問」✅',
-        ],
-      },
-      {
-        num: '3',
-        title: '從隱私權中心設定瀏覽器權限',
-        steps: [
-          '系統設定',
-          '「隱私權與安全性」',
-          '「定位服務」',
-          '選擇常用的瀏覽器',
-          '「使用 App 期間」✅',
-          '「準確位置」✅',
-        ],
-      },
-    ];
-
-    const stepNums = ['①', '②', '③', '④', '⑤', '⑥'];
-
-    const bubbles = methods.map(m => ({
-      type: 'bubble',
-      size: 'kilo',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        backgroundColor: '#1e4976',
-        paddingAll: '16px',
-        contents: [
-          {
-            type: 'box',
-            layout: 'horizontal',
-            contents: [
-              {
-                type: 'text',
-                text: '方法',
-                color: '#ffffff',
-                size: 'xl',
-                weight: 'bold',
-                gravity: 'bottom',
-                flex: 0,
-              },
-              {
-                type: 'text',
-                text: m.num,
-                color: '#f5a623',
-                size: '3xl',
-                weight: 'bold',
-                gravity: 'bottom',
-                paddingStart: '8px',
-                flex: 0,
-              },
-            ],
-          },
-        ],
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        paddingAll: '14px',
-        spacing: 'sm',
-        contents: [
-          {
-            type: 'text',
-            text: m.title,
-            weight: 'bold',
-            size: 'sm',
-            wrap: true,
-            color: '#1e4976',
-          },
-          {
-            type: 'separator',
-            margin: 'sm',
-            color: '#d0dce9',
-          },
-          ...m.steps.map((step, i) => ({
-            type: 'box',
-            layout: 'horizontal',
-            spacing: 'sm',
-            margin: 'sm',
-            contents: [
-              {
-                type: 'text',
-                text: stepNums[i],
-                size: 'xs',
-                color: '#1e4976',
-                flex: 0,
-                gravity: 'top',
-              },
-              {
-                type: 'text',
-                text: step,
-                size: 'xs',
-                wrap: true,
-                color: '#374151',
-                flex: 1,
-              },
-            ],
-          })),
-        ],
-      },
-    }));
-
-    const clockInHelpFlex = {
-      type: 'flex',
-      altText: '📋 GPS 打卡問題說明 — 三種設定方式',
-      contents: {
-        type: 'carousel',
-        contents: bubbles,
-      },
-    };
-
-    try {
-      await lineService.replyRawMessages(event.replyToken, [
-        { type: 'text', text: '📋 GPS 打卡問題說明\n以下為三種常見設定方式，請依序嘗試 👉' },
-        clockInHelpFlex,
-      ]);
-      console.log('✅ 打卡問題說明 Flex 已發送');
-    } catch (error: any) {
-      console.error('❌ 打卡問題說明發送失敗:', error.message || error);
-    }
+    await sendClockInHelp(event.replyToken);
     return;
   }
 
