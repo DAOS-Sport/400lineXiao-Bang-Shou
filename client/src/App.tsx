@@ -8,11 +8,14 @@ import NotFound from "@/pages/not-found";
 import AdminPage from "@/pages/admin";
 import AnnouncementsPage from "@/pages/announcements";
 import AnnouncementsSummaryPage from "@/pages/announcements-summary";
+import DashboardPage from "@/pages/dashboard";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={AdminPage} />
+      <Route path="/" component={DashboardPage} />
+      <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route path="/admin-dashboard" component={AdminPage} />
       <Route path="/announcements" component={AnnouncementsPage} />
       <Route path="/announcements/summary" component={AnnouncementsSummaryPage} />
