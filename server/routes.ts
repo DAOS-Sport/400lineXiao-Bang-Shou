@@ -122,6 +122,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /health - 健康檢查
   console.log('🔗 註冊 /health 路由');
+  // ── Webhook 延遲追蹤（in-memory，重啟後重置）────────────────────────────
+  const webhookEvents: Array<{ ts: string; type: string; latencyMs: number; status: string }> = [];
+  function recordWebhookEvent(type: string, latencyMs: number, status: 'ok' | 'error') {
+    webhookEvents.unshift({ ts: new Date().toISOString(), type, latencyMs, status });
+    if (webhookEvents.length > 50) webhookEvents.pop();
+  }
+  (global as any).__recordWebhookEvent = recordWebhookEvent;
+
+  // Ping 端點：前端用來量測 API round-trip 延遲
+  app.get('/api/admin/webhook-ping', (_req, res) => {
+    res.json({ pong: true, serverTime: new Date().toISOString() });
+  });
+
+  // Webhook 統計
+  app.get('/api/admin/webhook-stats', (_req, res) => {
+    const recent = webhookEvents.slice(0, 50);
+    const avgLatency = recent.length
+      ? Math.round(recent.reduce((s, e) => s + e.latencyMs, 0) / recent.length)
+      : 0;
+    const errorCount = recent.filter(e => e.status === 'error').length;
+    const successRate = recent.length
+      ? `${(((recent.length - errorCount) / recent.length) * 100).toFixed(1)}%`
+      : 'N/A';
+    res.json({ recent, avgLatency, errorCount, successRate, total: webhookEvents.length });
+  });
+
   app.get("/health", async (req, res) => {
     console.log('❤️ /health 被請求');
     try {
@@ -509,6 +535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   console.log('🔗 註冊 /webhook 路由');
   app.post("/webhook", webhookLimiter, validateLineSignature, async (req, res) => {
     console.log('🎯 Webhook 請求到達!');
+    const webhookStart = Date.now();
     try {
       // 立即回應 200 - 加速回應時間
       res.status(200).send("OK");
@@ -523,6 +550,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
         );
         await Promise.allSettled(eventPromises);
+        const latencyMs = Date.now() - webhookStart;
+        const eventType = events[0]?.type ?? 'unknown';
+        if ((global as any).__recordWebhookEvent) {
+          (global as any).__recordWebhookEvent(eventType, latencyMs, 'ok');
+        }
       }
     } catch (error) {
       console.error("Webhook 處理錯誤:", error);
