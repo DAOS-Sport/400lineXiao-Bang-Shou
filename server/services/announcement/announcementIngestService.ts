@@ -1,59 +1,36 @@
+/**
+ * 公告歸納進入點 — 5 層商用管線
+ *
+ * Layer 0  hardExclude         → 丟棄
+ * Layer 1  scoreMessage        → 規則評分
+ * Layer 2  makeDecision        → drop / rule_matched / needs_ai_review
+ * Layer 3  classifyAnnouncement → 僅灰區訊息才送 AI
+ * Layer 4  persist             → 寫入 DB
+ */
+
 import { db } from '../../db';
 import { announcementCandidates } from '@shared/schema';
-import { preFilterMessage } from './announcementPreFilterService';
+import { hardExclude, scoreMessage, makeDecision, type SpeakerType } from './announcementRuleEngine';
 import { classifyAnnouncement } from './announcementClassifierService';
 import { storage } from '../../storage';
-import { inc } from './pipelineStats';
+import {
+  incReceived, incHardExcluded, incRuleEngine,
+  incDecision, incAiCall, incStored,
+} from './pipelineStats';
+import {
+  FOCUS_GROUP_IDS, GROUP_FACILITY_MAP, GROUP_TIER_MAP,
+  VIP_USERS, SUPERVISOR_KEYWORDS, NEEDS_ACK_TYPES,
+} from './announcementConfig';
 
-// ── 場館對照表 ────────────────────────────────────────────
-const GROUP_FACILITY_MAP: Record<string, string> = {
-  C66a4b3bb3fbc3dcf52d42626ec512484: '新北高中游泳池&運動中心',
-  C6f6f163895d5b528a6ab044015e1a37b: '三重商工游泳池&籃球場',
-  C2dc6991e51074dd47d5d275d568318f7: '三民高中游泳池',
-  C9b3c5dfe2e005adafd2ed914714a1930: '松山國小室內溫水游泳池',
-  C50c2a9623a78cc5f5e9f39557e3abfe6: '竹科戶外游泳池',
-  C360be1fe6ea876a4df3ca0497bca4e3b: '竹科高爾夫/網球&籃球',
-  C2dd9a5fce7c276f2cbfdd02c2342661c: '三民排班群',
-  Ce936c6bebb59b8b5683ffbcf97bf20de: '原授權群組',
-  Cf7ab973766c258e5b4b4f040d35b2175: '駿斯IT技術群',
-  Cc2100498c7c5627c1e86e93f7c4eb817: '駿斯-三蘆區櫃台', // ⭐ 新增
-};
-
-/**
- * 重點群組（前台/服務台，門檻降至 ≥15 字即送 GPT）
- */
-export const FOCUS_GROUP_IDS = new Set([
-  'C66a4b3bb3fbc3dcf52d42626ec512484', // 新北高中游泳池&運動中心
-  'C6f6f163895d5b528a6ab044015e1a37b', // 三重商工游泳池&籃球場
-  'C2dc6991e51074dd47d5d275d568318f7', // 三民高中游泳池
-  'C9b3c5dfe2e005adafd2ed914714a1930', // 松山國小室內溫水游泳池
-  'C50c2a9623a78cc5f5e9f39557e3abfe6', // 竹科戶外游泳池
-  'C360be1fe6ea876a4df3ca0497bca4e3b', // 竹科高爾夫/網球&籃球
-  'Cf7ab973766c258e5b4b4f040d35b2175', // 駿斯IT技術群
-  'Cc2100498c7c5627c1e86e93f7c4eb817', // ⭐ 駿斯-三蘆區櫃台
-]);
-
-/**
- * VIP 特別關注人員
- * ─ 所有訊息（含閒聊）全部抓取儲存，供人工判讀
- * ─ 不受預篩、信心分數、類型限制
- * ─ 新增人員：'LINE_USER_ID': '姓名'
- */
-const VIP_USERS: Record<string, string> = {
-  'U8fd0e4be4e44a1304f9fa2e9855f4559': '陳柏榮', // ⭐ 特別關注（全抓）
-};
-
-// 主管職稱關鍵字（displayName 含以下字樣視為主管）
-const SUPERVISOR_KEYWORDS = [
-  '主任', '主管', '館長', '組長', '督導', '總監', '經理', '副理', '主席', '前台主管', '服務台',
-];
-
-function isSupervisorByDisplayName(displayName: string | null | undefined): boolean {
+function isSupervisorByName(displayName: string | null | undefined): boolean {
   if (!displayName) return false;
   return SUPERVISOR_KEYWORDS.some(kw => displayName.includes(kw));
 }
 
-// ── 主要進入點 ────────────────────────────────────────────
+export { FOCUS_GROUP_IDS };
+
+// ── 主進入點 ────────────────────────────────────────────────────────────────
+
 export async function ingestMessageForAnnouncement(params: {
   messageId: string;
   groupId: string;
@@ -63,119 +40,205 @@ export async function ingestMessageForAnnouncement(params: {
 }): Promise<void> {
   const { messageId, groupId, userId, displayName, text } = params;
 
-  if (!text || text.trim().length < 4) return;
-  if (text.startsWith('@小幫手')) return;
-  if (text.startsWith('交辦')) return;
+  incReceived();
 
-  inc('totalChecked');
+  // Layer 0: 硬排除
+  const excl = hardExclude(text);
+  if (excl.excluded) {
+    incHardExcluded();
+    return;
+  }
+
+  // 身份判斷
+  const vipName = VIP_USERS[userId] ?? null;
+  const isVip = vipName !== null;
+  const isAdminInDb = await storage.isAdmin(userId);
+  const isAdminByName = isSupervisorByName(displayName);
+  const isSupervisor = isAdminInDb || isAdminByName;
+
+  const speakerType: SpeakerType = isVip ? 'vip' : isSupervisor ? 'supervisor' : 'member';
+
+  // 只處理重點群組（含各 tier）
+  const tier = GROUP_TIER_MAP[groupId] ?? null;
+  if (!tier) return; // 不在重點群組，靜默略過
+
+  incRuleEngine();
+
+  // Layer 1 + 2: 規則評分 + 決策
+  const score = scoreMessage(text);
+  const decisionResult = makeDecision({ text, score, speakerType, tier });
+
+  incDecision(decisionResult.decision, {
+    groupId,
+    speakerType,
+    matchedRules: decisionResult.matchedRules,
+  });
+
+  if (decisionResult.decision === 'drop') {
+    console.log(`⏭️ [公告] drop (${decisionResult.reason}) score=${score.total} "${text.substring(0, 40)}"`);
+    return;
+  }
+
+  const facilityName = GROUP_FACILITY_MAP[groupId] ?? '未知場館';
+  const isRuleMatched = decisionResult.decision === 'rule_matched';
+  const decisionSource: 'rule_engine' | 'ai' = isRuleMatched ? 'rule_engine' : 'ai';
+
+  // ── rule_matched：不送 AI，直接寫入待審 ───────────────────────────
+  if (isRuleMatched) {
+    console.log(`✅ [公告] rule_matched (${decisionResult.reason}) "${text.substring(0, 50)}"`);
+
+    const candidateType = inferTypeFromRules(decisionResult.matchedRules, score);
+    const needsAck = NEEDS_ACK_TYPES.has(candidateType) || score.scopeType !== 'group';
+
+    await persistCandidate({
+      messageId, groupId, facilityName, userId, displayName,
+      text, speakerType, isSupervisor, tier,
+      candidateType,
+      scopeType: score.scopeType,
+      title: null,
+      summary: null,
+      confidence: '0.85',
+      reasoningTags: decisionResult.matchedRules,
+      status: 'rule_matched_pending_review',
+      decisionSource: 'rule_engine',
+      preFilterScore: score.total,
+      matchedRules: decisionResult.matchedRules,
+      needsAck,
+      isTimeSensitive: score.hasTimeSensitivity,
+      isCustomerFacing: score.hasExplicitAudience,
+      isOperationallyRelevant: score.strongHits.length > 0,
+    });
+    return;
+  }
+
+  // ── needs_ai_review：送 GPT 分類 ─────────────────────────────────
+  console.log(`🔍 [公告] AI 分類中 (${decisionResult.reason}) "${text.substring(0, 40)}"`);
+  const t0 = Date.now();
+  let aiResult: Awaited<ReturnType<typeof classifyAnnouncement>> = null;
+  let isTimeout = false;
 
   try {
-    // ── 身份判斷 ──────────────────────────────────────────
-    const isAdminInDb      = await storage.isAdmin(userId);
-    const isAdminByName    = isSupervisorByDisplayName(displayName);
-    const isFromSupervisor = isAdminInDb || isAdminByName;
-    const isFocusGroup     = FOCUS_GROUP_IDS.has(groupId);
-
-    const vipName = VIP_USERS[userId] ?? null;
-    const isVip   = vipName !== null;
-
-    if (isFromSupervisor) inc('supervisorChecked');
-    if (isFocusGroup)     inc('focusGroupChecked');
-
-    // ── 預篩（VIP 全跳過） ─────────────────────────────────
-    let passReason: string;
-    if (!isVip) {
-      const preFilter = preFilterMessage(text, isFromSupervisor, isFocusGroup);
-      if (!preFilter.pass) return;
-      passReason = preFilter.passReason;
-    } else {
-      passReason = `vip_bypass:${vipName}`;
-      console.log(`⭐ [公告歸納] VIP「${vipName}」訊息全抓: "${text.substring(0, 50)}"`);
-    }
-
-    inc('preFilterPass');
-
-    const facilityName = GROUP_FACILITY_MAP[groupId] ?? '未知場館';
-    const groupName    = `${facilityName}（${groupId.substring(0, 8)}…）`;
-
-    console.log(
-      `🔍 [公告歸納] GPT 分類中: "${text.substring(0, 40)}…" ` +
-      `${facilityName} | ${passReason}` +
-      (isVip ? ` | ⭐VIP:${vipName}` : '') +
-      (isFromSupervisor ? ' | 主管' : '') +
-      (isFocusGroup ? ' | 重點群組' : '')
-    );
-
-    const result = await classifyAnnouncement(text, groupName, isFromSupervisor || isVip, {
+    aiResult = await classifyAnnouncement(text, `${facilityName}（${groupId.substring(0, 8)}…）`, isSupervisor || isVip, {
       pass: true,
-      detectedKeywords: [],
+      detectedKeywords: score.strongHits,
       hintType: 'unknown',
       scopeHint: 'group',
-      passReason: passReason as any,
+      passReason: decisionResult.reason as any,
     });
-    if (!result) return;
-    inc('gptClassified');
+  } catch (err: any) {
+    if (err?.name === 'AbortError' || err?.message?.includes('abort')) isTimeout = true;
+    console.error('❌ [公告] AI 分類失敗:', err?.message);
+  }
 
-    // ── 信心過濾（VIP 全跳過，閒聊也保留） ──────────────────
-    if (!isVip) {
-      if (result.candidateType === 'ignore' && result.confidence < 0.4) {
-        inc('skippedLowConf');
-        console.log(`⏭️ [公告歸納] 信心不足，跳過 (confidence=${result.confidence})`);
-        return;
-      }
-    }
+  const latencyMs = Date.now() - t0;
+  const isIgnore = !aiResult || aiResult.candidateType === 'ignore';
+  incAiCall({ latencyMs, isIgnore, isTimeout });
 
-    // ── VIP 特別標注 ──────────────────────────────────────
-    const finalReasoningTags: string[] = [...(result.reasoningTags ?? [])];
-    if (isVip) {
-      finalReasoningTags.unshift(`⭐特別關注:${vipName}`);
-      // 標注 GPT 研判結果（公告 or 閒聊）
-      const chatLabel = result.candidateType === 'ignore' ? '閒聊/一般對話' : `公告(${result.candidateType})`;
-      finalReasoningTags.splice(1, 0, `GPT研判:${chatLabel}`);
-    }
+  // AI 判斷為 ignore 且信心足夠 → drop（不寫入）
+  if (!aiResult || (aiResult.candidateType === 'ignore' && aiResult.confidence < 0.5)) {
+    console.log(`⏭️ [公告] AI ignore (conf=${aiResult?.confidence}) "${text.substring(0, 40)}"`);
+    return;
+  }
 
-    // ── 狀態決定 ─────────────────────────────────────────
-    // VIP 的 ignore 類訊息存為 vip_chat（儀表板可特別篩選）
-    // 其他一般 ignore 存為 ignored
-    let status: string;
-    if (isVip && result.candidateType === 'ignore') {
-      status = 'vip_chat';
-    } else if (result.candidateType === 'ignore') {
-      status = 'ignored';
-    } else {
-      status = 'pending_review';
-    }
+  const needsAck = NEEDS_ACK_TYPES.has(aiResult.candidateType) || aiResult.scopeType !== 'group' || !!aiResult.needsAck;
+
+  await persistCandidate({
+    messageId, groupId, facilityName, userId, displayName,
+    text, speakerType, isSupervisor, tier,
+    candidateType: aiResult.candidateType,
+    scopeType: aiResult.scopeType,
+    title: aiResult.title,
+    summary: aiResult.summary,
+    confidence: String(aiResult.confidence),
+    reasoningTags: aiResult.reasoningTags ?? [],
+    status: 'ai_pending_review',
+    decisionSource: 'ai',
+    preFilterScore: score.total,
+    matchedRules: decisionResult.matchedRules,
+    needsAck,
+    isTimeSensitive: score.hasTimeSensitivity,
+    isCustomerFacing: score.hasExplicitAudience,
+    isOperationallyRelevant: aiResult.candidateType !== 'ignore',
+  });
+}
+
+// ── 輔助：從規則推斷公告類型 ──────────────────────────────────────────────
+
+function inferTypeFromRules(rules: string[], score: ReturnType<typeof scoreMessage>): string {
+  const r = rules.join(' ');
+  if (r.includes('SOP') || r.includes('禁止') || r.includes('不得') || r.includes('一律') || r.includes('務必')) return 'rule';
+  if (r.includes('統一說法') || r.includes('禁止說詞')) return 'script';
+  if (r.includes('休館') || r.includes('暫停開放') || r.includes('課程取消') || r.includes('時段調整')) return 'notice';
+  if (r.includes('價格調整') || r.includes('優惠') || r.includes('折扣')) return 'discount';
+  if (r.includes('活動') || r.includes('招生') || r.includes('報名')) return 'campaign';
+  if (score.scopeType === 'multi_facility') return 'notice';
+  return 'notice';
+}
+
+// ── 寫入 DB ─────────────────────────────────────────────────────────────────
+
+async function persistCandidate(params: {
+  messageId: string;
+  groupId: string;
+  facilityName: string;
+  userId: string;
+  displayName: string | null;
+  text: string;
+  speakerType: SpeakerType;
+  isSupervisor: boolean;
+  tier: string;
+  candidateType: string;
+  scopeType: string;
+  title: string | null;
+  summary: string | null;
+  confidence: string;
+  reasoningTags: string[];
+  status: string;
+  decisionSource: 'rule_engine' | 'ai';
+  preFilterScore: number;
+  matchedRules: string[];
+  needsAck: boolean;
+  isTimeSensitive: boolean;
+  isCustomerFacing: boolean;
+  isOperationallyRelevant: boolean;
+}): Promise<void> {
+  try {
+    const vipName = VIP_USERS[params.userId] ?? null;
+    const tags = [...params.reasoningTags];
+    if (vipName) tags.unshift(`⭐VIP:${vipName}`);
+    if (params.isSupervisor) tags.unshift('主管');
 
     await db.insert(announcementCandidates).values({
-      sourceMessageId:   messageId,
-      groupId,
-      facilityName,
-      userId,
-      displayName:       isVip ? `⭐ ${vipName}（特別關注）` : displayName,
-      originalText:      text,
-      isFromSupervisor:  (isFromSupervisor || isVip) ? 'true' : 'false',
-      candidateType:     result.candidateType,
-      scopeType:         result.scopeType,
-      title:             result.title,
-      summary:           result.summary,
-      recommendedAction: result.recommendedAction,
-      badExample:        result.badExample,
-      recommendedReply:  result.recommendedReply,
-      appliesToRoles:    result.appliesToRoles ?? [],
-      startAt:           result.startAt ? new Date(result.startAt) : null,
-      endAt:             result.endAt   ? new Date(result.endAt)   : null,
-      confidence:        String(result.confidence),
-      reasoningTags:     finalReasoningTags,
-      extractedJson:     { ...result, passReason, isVip, vipName } as any,
-      status,
+      sourceMessageId: params.messageId,
+      groupId: params.groupId,
+      facilityName: params.facilityName,
+      userId: params.userId,
+      displayName: vipName ? `⭐ ${vipName}（特別關注）` : params.displayName,
+      originalText: params.text,
+      isFromSupervisor: (params.isSupervisor || params.speakerType === 'vip') ? 'true' : 'false',
+      candidateType: params.candidateType,
+      scopeType: params.scopeType,
+      title: params.title,
+      summary: params.summary,
+      confidence: params.confidence,
+      reasoningTags: tags,
+      status: params.status,
+      extractedJson: {
+        decisionSource: params.decisionSource,
+        preFilterScore: params.preFilterScore,
+        matchedRules: params.matchedRules,
+        groupTier: params.tier,
+        speakerType: params.speakerType,
+        needsAck: params.needsAck,
+        isTimeSensitive: params.isTimeSensitive,
+        isCustomerFacing: params.isCustomerFacing,
+        isOperationallyRelevant: params.isOperationallyRelevant,
+      } as any,
     });
 
-    inc('stored');
-    console.log(
-      `✅ [公告歸納] 已儲存 (type=${result.candidateType}, status=${status}, conf=${result.confidence}` +
-      (isVip ? `, ⭐VIP=${vipName}` : '') + `)`
-    );
+    incStored(params.groupId);
+    console.log(`💾 [公告] 已儲存 type=${params.candidateType} status=${params.status} src=${params.decisionSource}`);
   } catch (err: any) {
-    console.error('❌ [公告歸納] ingest 失敗:', err.message || err);
+    console.error('❌ [公告] DB 寫入失敗:', err?.message);
   }
 }

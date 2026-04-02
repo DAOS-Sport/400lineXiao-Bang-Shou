@@ -1,3 +1,8 @@
+/**
+ * GPT 分類器 — 僅用於灰區訊息，最小輸出模式
+ * max_tokens: 220（大幅降低費用）
+ */
+
 import OpenAI from 'openai';
 import { announcementClassifierSystemPrompt } from '../../prompts/announcementClassifier';
 import { type PreFilterResult } from './announcementPreFilterService';
@@ -9,36 +14,31 @@ export interface ClassificationResult {
   scopeType: string;
   title: string;
   summary: string;
-  recommendedAction: string | null;
-  badExample: string | null;
-  recommendedReply: string | null;
-  appliesToRoles: string[];
-  startAt: string | null;
-  endAt: string | null;
   confidence: number;
   reasoningTags: string[];
+  needsAck?: boolean;
 }
 
-const CLASSIFICATION_TIMEOUT_MS = 20000;
+const TIMEOUT_MS = 18_000;
 
 export async function classifyAnnouncement(
   text: string,
   groupName: string,
   isFromSupervisor: boolean,
-  preFilter: PreFilterResult,
+  preFilter: Pick<PreFilterResult, 'detectedKeywords' | 'passReason'>,
 ): Promise<ClassificationResult | null> {
-  const userContent = `
-來源群組：${groupName}
-發話者是否為主管：${isFromSupervisor ? '是' : '否'}
-預篩偵測到的關鍵詞：${preFilter.detectedKeywords.join('、') || '（無）'}
-訊息內容：
-${text}
-`.trim();
+  const userContent = [
+    `來源群組：${groupName}`,
+    `發話者是否為主管：${isFromSupervisor ? '是' : '否'}`,
+    `預篩命中詞：${preFilter.detectedKeywords.join('、') || '（無）'}`,
+    `訊息：`,
+    text,
+  ].join('\n');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), CLASSIFICATION_TIMEOUT_MS);
-
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -46,7 +46,7 @@ ${text}
         { role: 'user', content: userContent },
       ],
       temperature: 0.1,
-      max_tokens: 800,
+      max_tokens: 220,
       response_format: { type: 'json_object' },
     }, { signal: controller.signal as any });
 
@@ -55,10 +55,10 @@ ${text}
     const raw = response.choices[0]?.message?.content;
     if (!raw) return null;
 
-    const parsed = JSON.parse(raw) as ClassificationResult;
-    return parsed;
+    return JSON.parse(raw) as ClassificationResult;
   } catch (err: any) {
-    console.error('❌ 公告分類 GPT 呼叫失敗:', err.message || err);
+    clearTimeout(timer);
+    console.error('❌ [公告分類] GPT 失敗:', err?.message);
     return null;
   }
 }

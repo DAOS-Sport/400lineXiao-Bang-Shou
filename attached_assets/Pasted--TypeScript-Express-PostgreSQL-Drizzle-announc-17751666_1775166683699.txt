@@ -1,0 +1,595 @@
+# 你現在是資深後端架構師 + 資訊治理產品經理 + TypeScript/Express/PostgreSQL/Drizzle 資深工程師
+
+請直接修改我現有專案中的「公告歸納器 / announcement pipeline」，把它升級成 **商用等級、高精準、低 token 成本、可審核、可觀測** 的版本。
+
+## 一、目標
+
+我要的不是訓練模型，也不是抓很多訊息。
+我要的是：
+
+1. **大幅降低 GPT token 成本**
+2. **只讓真正重要、可進值班首頁、可影響前線值班行為的訊息進入審核池**
+3. **把公告流和任務流切乾淨**
+4. **保留人工審核，不做全自動正式發布**
+5. **讓未來可直接接員工值班首頁 / facility home / 已讀確認**
+
+請把這套邏輯做成 production-ready，不要只改 prompt，要真的改成完整可維護的 pipeline。
+
+---
+
+## 二、現況問題（請直接修掉）
+
+目前系統問題如下：
+
+- VIP 使用者目前全抓、全跳過預篩、直接送 GPT，太浪費 token
+- 重點群組一般成員 15 字就能進入公告流程，太寬
+- 主管 30 字門檻仍太容易放進很多雜訊
+- 關鍵字現在太泛，例如「通知 / 更新 / 調整 / 活動 / 優惠」會放進很多非公告內容
+- GPT 分類輸出太肥，max_tokens 太高
+- 公告流與任務提醒流目前概念容易混
+- 缺少商用級統計：不知道哪些群組、哪些規則、哪些來源最浪費 GPT
+- 缺少「規則直判」層，導致太多本可不送 GPT 的訊息仍送去分類
+
+我要你直接重構。
+
+---
+
+## 三、這次修改的總原則
+
+### 核心原則
+- **Precision > Recall**
+- **規則先行，AI 最後**
+- **先過濾再分類，不是先分類再過濾**
+- **只有灰區訊息才送 GPT**
+- **能用 deterministic rule 決定的，就不要花 token**
+- **預設不腦補**
+- **不確定就不要進 pending_review**
+- **scope 預設是 group，只有明確跨館語意才升級**
+- **公告必須能回答：這會不會影響今天值班、回覆客人、場館作業、交接或活動執行？**
+
+### 商用標準
+- 可配置
+- 可統計
+- 可測試
+- 可擴充
+- 可查錯
+- 可審核
+- 不阻塞 webhook 主流程
+- AI 失敗不影響主流程
+
+---
+
+## 四、請修改的檔案（若檔名存在就直接改，若不存在就補）
+
+請以目前專案為基礎優先修改這些檔案：
+
+- `server/services/announcement/announcementIngestService.ts`
+- `server/services/announcement/announcementPreFilterService.ts`
+- `server/services/announcement/announcementClassifierService.ts`
+- `server/prompts/announcementClassifier.ts`
+- `server/services/announcement/pipelineStats.ts`
+- `server/routes/announcementRoutes.ts`
+- `shared/schema.ts`
+- `client/src/pages/announcements.tsx`
+
+若需要，新增：
+- `server/services/announcement/announcementRuleEngine.ts`
+- `server/services/announcement/announcementScoring.ts`
+- `server/services/announcement/announcementConfig.ts`
+- `server/services/announcement/announcementDecision.ts`
+- `server/services/announcement/__tests__/...`
+
+---
+
+## 五、請重構成新的 5 層管線
+
+---
+
+### Layer 0：硬排除（Hard Exclusion）
+以下直接排除，不進公告流程：
+
+- 非 `text`
+- 非 `group`
+- 文字長度 < 4
+- 以 `@小幫手` 開頭
+- 以 `交辦` 開頭
+- 純貼圖感嘆語、純 emoji、純回覆語氣詞
+- 只有「收到 / 好 / ok / 已知悉 / 哈哈 / 好的 / 恩 / 👍」之類的短回覆
+- 僅為點名、打招呼、簽到、情緒抱怨但無具體行動資訊
+
+請把這層做成獨立可測試函式。
+
+---
+
+### Layer 1：規則預篩 + 訊息評分（Rule Scoring）
+建立一個 **announcement rule engine**，不要只靠單一關鍵字命中。
+
+請把訊息轉成以下評分維度：
+
+#### A. 強關鍵字（strong keywords）
+命中以下任一，即可大幅加分，甚至可直接進規則直判：
+- 即日起
+- 一律
+- 禁止
+- 不得
+- 務必
+- SOP
+- 請統一
+- 統一說法
+- 禁止說詞
+- 請各館配合
+- 全體員工
+- 休館
+- 暫停開放
+- 恢復營運
+- 課程取消
+- 時段調整
+- 價格調整
+- 請轉知
+- 請知悉
+- 異動如下
+- 公告如下
+
+#### B. 弱關鍵字（weak keywords）
+這些不能單獨放行，至少要組合命中：
+- 活動
+- 優惠
+- 折扣
+- 通知
+- 調整
+- 更新
+- 修正
+- 報名
+- 開放
+- 推廣
+- 招生
+- 體驗
+- 限時
+- 限量
+
+#### C. 時間詞（time words）
+- 今天
+- 明天
+- 本週
+- 即日起
+- 起
+- 至
+- 截止
+- 開始
+- 結束
+- 延後
+- 提前
+- 暫停
+- 恢復
+
+#### D. 對象詞（audience words）
+- 櫃台
+- 救生員
+- 同仁
+- 員工
+- 各館
+- 全體員工
+- 客人
+- 會員
+- 主管
+- 前台
+- 行政
+
+#### E. 行動詞（action words）
+- 請
+- 需
+- 務必
+- 記得
+- 統一
+- 改為
+- 停止
+- 恢復
+- 配合
+- 確認
+- 轉知
+- 回覆
+- 說明
+- 不可
+- 不要
+
+#### F. 排除詞（noise words）
+- 哈哈
+- 笑死
+- 辛苦了
+- 收到
+- 好的
+- ok
+- 了解
+- 已知悉
+- 晚安
+- 早安
+- 午安
+- 謝謝
+- 已
+
+#### G. 結構訊號
+請偵測：
+- 是否有明確時間
+- 是否有明確對象
+- 是否有明確行動
+- 是否有明確異動內容
+- 是否有場館/課程/價格/規則實體
+- 是否疑似只是聊天延伸句
+
+---
+
+### Layer 2：三段式決策（不進 AI / 直進待審 / 才送 AI）
+
+請把訊息分成三類：
+
+#### 1. `drop`
+直接丟棄，不寫入公告候選
+適用於：
+- 純雜訊
+- 純聊天
+- 純情緒
+- 單一弱關鍵字但沒有時間/對象/行動
+- 太短且無公告結構
+
+#### 2. `rule_matched`
+規則足夠明確，不送 GPT，直接寫入待審核池
+適用於：
+- 強關鍵字命中
+- 或「時間 + 對象 + 行動」三元素至少命中兩項且內容明確
+- 或明確屬於 rule / script / notice / discount / campaign 其中一種
+- 或主管明確下達統一規範 / 異動 / 對客說法
+- 或包含休館、課程取消、價格調整、標準回覆等高價值公告
+
+#### 3. `needs_ai_review`
+規則無法完全判定，但疑似重要，才送 GPT
+適用於：
+- 主管長文但不夠明確
+- 重點群組較長內容
+- 疑似通知但語意模糊
+- 跨句描述的異動資訊
+- 可能有價值，但 rule engine 不夠確定
+
+---
+
+## 六、群組與身分分級
+
+### 1. 重點群組不要再全部同級
+請建立 group tier config：
+
+- `A`：高營運相關群組（值班、櫃台、場館營運）
+- `B`：中度相關群組
+- `C`：低優先或觀察群組（例如 IT 討論群）
+
+預設策略：
+- A：可較寬鬆
+- B：中等
+- C：非常保守，原則上只有強規則命中或主管明確公告才進
+
+### 2. 任務群與公告群分離
+任務提醒白名單群組不等於公告重點群組。
+請不要共用同一套判斷規則。
+請保留未來可拆出 task pipeline 的結構。
+
+### 3. VIP 改成「半白名單」
+VIP 不可再全抓全送 GPT。
+
+#### VIP 規則改為：
+VIP 訊息只有在以下任一條件成立才進公告流程：
+- 長度 >= 25
+- 命中強關鍵字
+- 命中「時間 + 對象」
+- 命中「對象 + 行動」
+- 含明確公告結構（例如規定、異動、價格、課程、休館、統一說法）
+
+否則：
+- 不送 GPT
+- 可選擇存成 `vip_raw`
+- 或直接略過，不進 announcement_candidates
+
+---
+
+## 七、字數門檻請直接調整
+
+請改成以下門檻：
+
+- 主管：`>= 40`
+- A 級重點群組一般成員：`>= 25`
+- B 級重點群組一般成員：`>= 35`
+- C 級群組一般成員：原則上不靠字數放行，只接受強規則命中
+- VIP 長文門檻：`>= 25`
+
+但注意：
+**字數只是輔助，不是主要條件。**
+如果有強規則結構，短句也可以進 `rule_matched`。
+
+---
+
+## 八、GPT 分類器要改成最小輸出模式
+
+請把 AI 用途收斂成：
+**只做灰區訊息的最小結構化判斷，不做豪華摘要生成。**
+
+### 模型建議
+- 仍可先用 `gpt-4o-mini`
+- `temperature = 0.1`
+- `max_tokens = 220`（最多 280，不要再 800）
+- `response_format = json_object`
+- timeout 保留或略降
+
+### GPT 輸出請縮成：
+```json
+{
+  "candidateType": "rule | notice | campaign | discount | script | ignore",
+  "scopeType": "group | facility | multi_facility | global",
+  "title": "簡短標題",
+  "summary": "一句摘要",
+  "confidence": 0.0,
+  "reasoningTags": ["time_sensitive", "customer_facing", "policy_change"],
+  "needsAck": true
+}
+不要先輸出以下內容
+
+這些先不要由 AI 生成，改成人工審核後或第二階段再補：
+
+recommendedAction
+badExample
+recommendedReply
+appliesToRoles
+startAt
+endAt
+九、GPT 判斷標準要改寫
+
+請重寫 server/prompts/announcementClassifier.ts，讓模型嚴格遵守：
+
+AI 只在以下情況判定為重要公告
+
+若訊息會直接影響以下任一項，才傾向非 ignore：
+
+員工今天的值班作業
+對客統一說法
+課程/活動/價格/時段/休館異動
+交接與現場執行
+多館/全公司統一規定
+安全、風險、合規、服務品質
+AI 必須傾向 ignore 的情況
+閒聊
+抱怨
+內部討論未定案
+模糊提議
+零碎回應
+沒有明確時效、對象、行動
+看完也不影響值班作法
+AI 禁止行為
+不可腦補
+不可自動放大全域 scope
+預設 scope = group
+只有訊息中明確出現全館 / 各館 / 全公司 / 全體員工 才能升級
+十、資料庫與狀態流程請改
+
+請在 schema 與資料流中改成更清楚的商用狀態。
+
+建議 status
+rule_matched_pending_review
+ai_pending_review
+approved
+rejected
+vip_raw
+archived_noise
+
+若要兼容舊資料，可保留 mapping：
+
+舊 pending_review → 新 pending 類型之一
+舊 vip_chat → vip_raw
+舊 ignored → archived_noise
+建議欄位補充
+
+在 announcement_candidates 增加或整理：
+
+decisionSource: rule_engine | ai
+preFilterScore: number
+matchedRules: json/text
+groupTier: A | B | C
+speakerType: vip | supervisor | member
+needsAck: boolean
+isCustomerFacing: boolean
+isTimeSensitive: boolean
+isOperationallyRelevant: boolean
+
+若不方便大改 schema，至少把這些資訊放在 extractedJson。
+
+十一、審核頁也要一起補強
+
+請修改 client/src/pages/announcements.tsx：
+
+審核頁要能看到
+來源群組
+場館
+發話者
+speakerType
+groupTier
+decisionSource
+preFilterScore
+matchedRules
+原始文字
+AI 摘要
+AI confidence
+是否 needsAck
+狀態
+審核頁篩選器
+只看 rule_engine
+只看 ai
+只看某館
+只看某群組
+只看某類型
+只看高分候選
+只看 needsAck
+審核 UX
+一鍵核准
+一鍵駁回
+顯示「為何被送進來」
+顯示「若是 rule_matched，是哪條規則命中」
+顯示「若是 ai_pending_review，AI 為何判定重要」
+十二、pipelineStats 必須升級成可商用統計
+
+請補足 pipelineStats.ts，至少要統計：
+
+Intake
+收到總訊息數
+被硬排除數
+進入預篩數
+Rule Engine
+drop 數量
+rule_matched 數量
+needs_ai_review 數量
+各規則命中次數
+各群組命中次數
+各群組送 AI 次數
+各發話者類型送 AI 次數
+AI
+AI 呼叫次數
+AI timeout 次數
+AI ignore 次數
+AI 非 ignore 次數
+AI 平均 latency
+估算 token cost
+Review
+rule_matched 核准率
+ai_pending_review 核准率
+各群組核准率
+各類型核准率
+最常被駁回規則來源
+請再加兩個實用指標
+approval_precision_by_source
+top_token_waste_sources
+
+讓我知道哪個群、哪類訊息最浪費錢。
+
+十三、值班首頁可用性對齊
+
+請你在設計這套公告管線時，永遠記得輸出最後是要進 員工值班首頁 的。
+所以只有以下資訊優先保留：
+
+今日必看公告
+進行中異動
+活動 / 折扣
+課程 / 報名相關
+交接影響事項
+注意事項 / 休館提醒
+對客標準說法
+
+對首頁沒有實際價值的聊天與討論，不應該進公告池。
+
+needsAck 規則
+
+請加一個簡單實用規則：
+以下類型預設 needsAck = true
+
+rule
+script
+休館 / 時段異動 / 價格異動 / 課程取消類 notice
+全館 / 多館適用公告
+
+其餘預設 false，但可人工改。
+
+十四、API 修改
+
+請維持現有 API 盡量不破壞，但新增或擴充：
+
+後台審核 / 統計 API
+GET /api/announcement-candidates
+支援 filters: status, facilityId, groupId, candidateType, decisionSource, needsAck, minScore
+GET /api/announcement-candidates/:id
+POST /api/announcement-candidates/:id/approve
+POST /api/announcement-candidates/:id/reject
+GET /api/announcement-dashboard/summary
+GET /api/announcement-dashboard/pipeline-stats
+值班首頁預備 API
+
+請先預留或補強：
+
+GET /api/facility-home/:facilityId/announcements
+僅回傳已核准且適用於該館 / 該角色的公告
+支援 needsAck 與 priority 排序
+十五、scope 判斷規則請保守
+預設
+scopeType = group
+升級 facility
+
+只有明確表達該館全面適用時才升級
+
+升級 multi_facility
+
+需明確出現：
+
+全館
+各館
+所有館別
+全體員工
+全公司
+統一規定
+全員
+global
+
+只在極少數真正全公司層級時使用
+
+請不要因為語氣像公告就亂升 scope。
+
+十六、請加入測試案例
+
+請補單元測試 / 規則測試，至少覆蓋：
+
+應該被 drop
+哈哈 今天好忙
+收到
+好的謝謝
+明天應該會下雨吧
+客人很多欸
+應該 rule_matched
+即日起櫃台不得口頭承諾延長會籍，請統一依 SOP 回覆
+明日起松山國小泳池 14:00-16:00 暫停開放，請櫃台協助告知會員
+請各館統一使用新版報名說法，舊版話術停止使用
+本週三課程取消，請前台主動通知已報名學員
+應該 needs_ai_review
+這件事後續處理方式我晚點統一整理給大家
+關於這次活動的接待方式，可能要再調整一下
+這週現場的應對方式可能跟之前不一樣
+VIP 應該不送 AI
+哈哈哈
+收到
+晚點聊
+好我知道了
+VIP 應該進公告流程
+即日起各館救生員巡場紀錄改為每 30 分鐘填寫一次
+松山國小明天下午課程調整，請櫃台統一說明
+十七、實作方式要求
+你要直接做這些事
+分析現有程式碼
+直接修改實作
+保持現有功能可運作
+若有 schema 變更，補 migration
+若有型別變更，補 TypeScript types
+補基本測試
+補簡短註解
+不要只給我建議，要直接改程式
+交付格式
+
+請最後輸出：
+
+你改了哪些檔案
+新增了哪些規則
+新的決策流程摘要
+哪些訊息不再送 GPT
+預估能降低哪些 token 浪費來源
+還有哪些地方我未來可以再接值班首頁 / 已讀確認
+十八、最重要的一句話
+
+這不是聊天備份系統，也不是 AI 摘要玩具。
+這是一套要把 LINE 群組雜訊，轉成 前線值班真的會用的公告治理系統。
+請你用 production mindset 直接重構。
+
+
+你先拿這份去改，這版核心是把你現在「關鍵字過寬 + VIP 全抓 + AI 先上」的流程改成「硬排除 → 規則評分 → 規則直判 / 才送 AI → 審核 → 值班首頁可用資料」，比較貼近你要的商用邏輯。:contentReference[oaicite:5]{index=5} :contentReference[oaicite:6]{index=6}
+
+你要的最終結果，其實不是「AI 很會摘要」，而是「員工打開值班首頁時，看到的都是今天真的有用的東西」；這也正符合你架構書裡把公告整理、值班入口、館別差異化、必讀/已讀確認串在一起的方向。:contentReference[oaicite:7]{index=7} :contentReference[oaicite:8]{index=8}
+
+我也可以下一則直接再補你一份 **更狠的 system prompt 版公告分類詞**，專門給 `announcementClassifier.ts` 用。
