@@ -109,6 +109,7 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
       facilityName: facilityQ,
       groupId,
       decisionSource,
+      speakerType,
       needsAck,
       minScore,
       dateFrom,
@@ -131,6 +132,7 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
       r.originalText?.includes(keyword) || r.title?.includes(keyword) || r.summary?.includes(keyword)
     );
     if (decisionSource) rows = rows.filter(r => getMeta(r).decisionSource === decisionSource);
+    if (speakerType)    rows = rows.filter(r => getMeta(r).speakerType === speakerType);
     if (needsAck === 'true') rows = rows.filter(r => getMeta(r).needsAck === true);
     if (minScore) {
       const min = parseInt(minScore);

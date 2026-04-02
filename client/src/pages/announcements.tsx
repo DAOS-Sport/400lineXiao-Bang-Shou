@@ -76,7 +76,7 @@ const STATUS_LABEL: Record<string, string> = {
   vip_chat: '⭐ VIP閒聊', vip_raw: '⭐ VIP原始',
 };
 const SPEAKER_BADGE: Record<string, string> = {
-  vip: '⭐ VIP', supervisor: '主管', member: '一般',
+  vip: '⭐ VIP', supervisor: '👤 主管', member: '👥 一般成員',
 };
 const TIER_COLOR: Record<string, string> = {
   A: 'bg-red-50 text-red-600', B: 'bg-orange-50 text-orange-600', C: 'bg-gray-50 text-gray-500',
@@ -89,6 +89,7 @@ export default function AnnouncementsPage() {
   const [status, setStatus] = useState<string>('');
   const [candidateType, setCandidateType] = useState<string>('');
   const [decisionSource, setDecisionSource] = useState<string>('');
+  const [speakerType, setSpeakerType] = useState<string>('');
   const [needsAck, setNeedsAck] = useState<boolean>(false);
   const [vipOnly, setVipOnly] = useState<boolean>(false);
   const [keyword, setKeyword] = useState<string>('');
@@ -99,12 +100,13 @@ export default function AnnouncementsPage() {
   if (status) params.set('status', status);
   if (candidateType) params.set('candidateType', candidateType);
   if (decisionSource) params.set('decisionSource', decisionSource);
+  if (speakerType) params.set('speakerType', speakerType);
   if (needsAck) params.set('needsAck', 'true');
   if (vipOnly) params.set('vipOnly', 'true');
   if (keyword) params.set('keyword', keyword);
 
   const { data, isLoading } = useQuery<CandidatesResponse>({
-    queryKey: ['/api/announcement-candidates', status, candidateType, decisionSource, needsAck, vipOnly, keyword, page],
+    queryKey: ['/api/announcement-candidates', status, candidateType, decisionSource, speakerType, needsAck, vipOnly, keyword, page],
     queryFn: () => fetch(`/api/announcement-candidates?${params}`).then(r => r.json()),
   });
 
@@ -186,6 +188,15 @@ export default function AnnouncementsPage() {
                 <SelectItem value="ai">AI 分析</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={speakerType || 'all'} onValueChange={v => { setSpeakerType(v === 'all' ? '' : v); setPage(1); }}>
+              <SelectTrigger className="w-32"><SelectValue placeholder="發話者" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部人員</SelectItem>
+                <SelectItem value="vip">⭐ VIP</SelectItem>
+                <SelectItem value="supervisor">👤 主管</SelectItem>
+                <SelectItem value="member">一般成員</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               variant={needsAck ? 'default' : 'outline'}
               size="sm"
@@ -239,10 +250,16 @@ export default function AnnouncementsPage() {
                             Tier {meta.groupTier}
                           </span>
                         )}
-                        {/* 發話者類型 */}
-                        {meta.speakerType && meta.speakerType !== 'member' && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">
-                            {SPEAKER_BADGE[meta.speakerType]}
+                        {/* 發話者類型（全部顯示） */}
+                        {meta.speakerType && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            meta.speakerType === 'vip'
+                              ? 'bg-amber-100 text-amber-700'
+                              : meta.speakerType === 'supervisor'
+                              ? 'bg-indigo-100 text-indigo-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {SPEAKER_BADGE[meta.speakerType] ?? meta.speakerType}
                           </span>
                         )}
                         {/* 須確認 */}
@@ -330,8 +347,14 @@ export default function AnnouncementsPage() {
                     <Badge variant="outline" className={`text-xs ${TIER_COLOR[selected._meta?.groupTier] ?? ''}`}>
                       Tier {selected._meta?.groupTier ?? '?'}
                     </Badge>
-                    <Badge variant="outline" className="text-xs">
-                      {SPEAKER_BADGE[selected._meta?.speakerType ?? 'member'] ?? '一般'} 發話
+                    <Badge variant="outline" className={`text-xs ${
+                      selected._meta?.speakerType === 'vip'
+                        ? 'bg-amber-50 text-amber-700 border-amber-300'
+                        : selected._meta?.speakerType === 'supervisor'
+                        ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                        : 'bg-gray-50 text-gray-500'
+                    }`}>
+                      {SPEAKER_BADGE[selected._meta?.speakerType ?? 'member'] ?? '一般成員'} 發話
                     </Badge>
                   </div>
                   <p className="text-xs text-gray-500">
