@@ -6,3 +6,9 @@ id = "zB-Vm3UHnK7tb1eTzqhXu"
 uri = "file://docs/關注訊息邏輯整理.md"
 type = "text"
 title = "關注訊息邏輯整理.md"
+
+[[outputs]]
+id = "KYXqd7t2DcCi23RyWxKxj"
+uri = "file://docs/資料庫訊息總覽.md"
+type = "text"
+title = "資料庫訊息總覽.md"
