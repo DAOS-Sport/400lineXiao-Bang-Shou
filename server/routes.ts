@@ -115,9 +115,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET / - 只回 "ok"
   console.log('🔗 註冊根路由 /');
-  app.get("/", (req, res, next) => {
-    console.log('🏠 根路由被請求，轉由 Vite 處理');
-    next();
+  app.get("/", (req, res) => {
+    console.log('🏠 根路由被請求');
+    res.send("ok");
   });
 
   // GET /health - 健康檢查
