@@ -19,6 +19,8 @@ import { surveyService } from "./services/surveyService";
 import { getOneMonthRange } from "./utils/time";
 import dayjs from "dayjs";
 import { announcementRouter } from "./routes/announcementRoutes";
+import { facilityHomeRouter } from "./routes/facilityHomeRoutes";
+import { ensureFacilitiesSeeded } from "./services/facilitySeeder";
 import { ingestMessageForAnnouncement } from "./services/announcement/announcementIngestService";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
 import helmet from "helmet";
@@ -921,6 +923,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========== 重要事項公告歸納器 API ==========
   app.use('/api', announcementRouter);
 
+  // ========== 館別首頁 API ==========
+  app.use('/api/facility-home', facilityHomeRouter);
+
   // 面試授權用戶列表
   app.get('/api/admin/interview-users', async (req, res) => {
     try {
@@ -1133,6 +1138,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // 啟動排程服務
   schedulerService.start();
+
+  // 確認館別種子資料
+  ensureFacilitiesSeeded().catch(err => console.error('❌ facilitySeeder 啟動失敗:', err?.message));
 
   const httpServer = createServer(app);
   console.log('✅ 路由註冊完成，所有路由已就緒');

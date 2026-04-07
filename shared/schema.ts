@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, timestamp, jsonb, serial, integer, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, text, timestamp, jsonb, serial, integer, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
 import { z } from 'zod';
@@ -272,6 +272,120 @@ export type InsertAuthorizedGroup = z.infer<typeof insertAuthorizedGroupSchema>;
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+// ========== 身份分層設計 ==========
+
+// Users Table - 系統內部用戶主表（與外部 ID 解耦）
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),                               // 系統內部主鍵
+  employeeId: text('employee_id').unique(),                    // 員工系統編號（可空）
+  lineUserId: text('line_user_id').unique(),                   // LINE user ID（可空）
+  displayName: text('display_name'),                          // 顯示名稱
+  role: text('role').notNull().default('staff'),               // admin | supervisor | staff
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  employeeIdIdx: uniqueIndex('users_employee_id_idx').on(table.employeeId),
+  lineUserIdIdx: uniqueIndex('users_line_user_id_idx').on(table.lineUserId),
+  roleIdx: index('users_role_idx').on(table.role),
+}));
+
+// User Identity Mappings Table - 外部 ID 對應表（LINE / 員工系統 / Portal 等）
+export const userIdentityMappings = pgTable('user_identity_mappings', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),                        // 對應 users.id
+  provider: text('provider').notNull(),                        // 'line' | 'employee_system' | 'portal'
+  externalId: text('external_id').notNull(),                   // 外部系統 ID（LINE UID / 員工編號 / 其他）
+  isPrimary: boolean('is_primary').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index('uim_user_id_idx').on(table.userId),
+  providerExternalIdx: uniqueIndex('uim_provider_external_idx').on(table.provider, table.externalId),
+}));
+
+// ========== 場館登錄 ==========
+
+// Facilities Table - 館別主表
+export const facilities = pgTable('facilities', {
+  id: serial('id').primaryKey(),
+  lineGroupId: text('line_group_id').unique(),                 // 對應 LINE 工作群 ID
+  name: text('name').notNull(),                                // 完整名稱
+  shortName: text('short_name'),                               // 縮寫
+  tier: text('tier').notNull().default('A'),                   // 'A' | 'B' | 'C'
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  lineGroupIdIdx: uniqueIndex('facilities_line_group_id_idx').on(table.lineGroupId),
+  tierIdx: index('facilities_tier_idx').on(table.tier),
+}));
+
+// ========== 已發布公告池（Step 2：審核通過後轉入） ==========
+
+// Published Announcements Table - 已發布重要公告
+export const publishedAnnouncements = pgTable('published_announcements', {
+  id: serial('id').primaryKey(),
+  sourceCandidateId: integer('source_candidate_id').notNull(), // 關聯 announcement_candidates.id
+  sourcePrimaryLineGroupId: text('source_primary_line_group_id'), // 原始 LINE 群組 ID
+  sourceGroupIdsJson: jsonb('source_group_ids_json').default([]), // 合併多來源群組
+
+  facilityId: integer('facility_id'),                          // 關聯 facilities.id
+  facilityLineGroupId: text('facility_line_group_id'),         // 冗餘欄：方便不 JOIN 直接查
+
+  candidateType: text('candidate_type').notNull(),             // rule | notice | campaign | discount | script
+  scopeType: text('scope_type').notNull(),                     // group | facility | multi_facility | global
+
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  body: text('body'),
+  recommendedAction: text('recommended_action'),
+  recommendedReply: text('recommended_reply'),
+  badExample: text('bad_example'),
+
+  appliesToRolesJson: jsonb('applies_to_roles_json').default([]),       // string[]
+  appliesToFacilityIdsJson: jsonb('applies_to_facility_ids_json').default([]), // number[]
+
+  priority: text('priority').notNull().default('normal'),              // critical | high | normal | low
+  homeVisibility: text('home_visibility').notNull().default('normal'), // pinned | normal | hidden
+  needsAck: boolean('needs_ack').notNull().default(false),
+
+  effectiveStartAt: timestamp('effective_start_at', { withTimezone: true }),
+  effectiveEndAt: timestamp('effective_end_at', { withTimezone: true }),
+  isAllDay: boolean('is_all_day').notNull().default(true),
+
+  publishedByUserId: integer('published_by_user_id'),                  // 關聯 users.id
+  publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
+  status: text('status').notNull().default('published'),               // published | archived | expired | hidden
+
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  facilityLineGroupIdx: index('pub_ann_facility_line_group_idx').on(table.facilityLineGroupId),
+  statusIdx: index('pub_ann_status_idx').on(table.status),
+  priorityIdx: index('pub_ann_priority_idx').on(table.priority),
+  homeVisibilityIdx: index('pub_ann_home_visibility_idx').on(table.homeVisibility),
+  publishedAtIdx: index('pub_ann_published_at_idx').on(table.publishedAt.desc()),
+  effectiveEndAtIdx: index('pub_ann_effective_end_at_idx').on(table.effectiveEndAt),
+  sourceCandidateIdx: index('pub_ann_source_candidate_idx').on(table.sourceCandidateId),
+}));
+
+// Insert Schemas
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertUserIdentityMappingSchema = createInsertSchema(userIdentityMappings).omit({ id: true, createdAt: true });
+export const insertFacilitySchema = createInsertSchema(facilities).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPublishedAnnouncementSchema = createInsertSchema(publishedAnnouncements).omit({
+  id: true, publishedAt: true, createdAt: true, updatedAt: true,
+});
+
+// Types
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UserIdentityMapping = typeof userIdentityMappings.$inferSelect;
+export type Facility = typeof facilities.$inferSelect;
+export type InsertFacility = z.infer<typeof insertFacilitySchema>;
+export type PublishedAnnouncement = typeof publishedAnnouncements.$inferSelect;
+export type InsertPublishedAnnouncement = z.infer<typeof insertPublishedAnnouncementSchema>;
 
 // Interface compatibility for existing code
 export interface IMessage {

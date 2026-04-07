@@ -103,15 +103,28 @@ Preferred communication style: Simple, everyday language.
 - **Service File**: `server/services/surveyService.ts`
 - **Google Apps Script**: `docs/google-apps-script.js` (uses `onSheetChange` trigger, sheet name `工作表1`)
 
-### Group ID Reference
-| Group ID | Facility |
-|----------|----------|
-| C66a4b3bb3fbc3dcf52d42626ec512484 | 新北高中游泳池 & 運動中心 |
-| C6f6f163895d5b528a6ab044015e1a37b | 三重商工游泳池 & 籃球場 |
-| C2dc6991e51074dd47d5d275d568318f7 | 三民高中游泳池 |
-| C9b3c5dfe2e005adafd2ed914714a1930 | 松山國小室內溫水游泳池 |
-| C50c2a9623a78cc5f5e9f39557e3abfe6 | 竹科戶外游泳池 |
-| C360be1fe6ea876a4df3ca0497bca4e3b | 竹科高爾夫球練習場 / 竹科網球場&籃球場 |
+### Group ID Reference（已同步至 `facilities` DB 表）
+| Group ID | Facility | Tier |
+|----------|----------|------|
+| C66a4b3bb3fbc3dcf52d42626ec512484 | DAOS-新北高中（工作群） | A |
+| C6f6f163895d5b528a6ab044015e1a37b | DAOS-三重商工館（工作群） | A |
+| C2dc6991e51074dd47d5d275d568318f7 | DAOS-三民館（工作群） | A |
+| C9b3c5dfe2e005adafd2ed914714a1930 | 駿斯-松山國小館 | A |
+| C50c2a9623a78cc5f5e9f39557e3abfe6 | 駿斯-竹科戶外游泳池 | A |
+| C360be1fe6ea876a4df3ca0497bca4e3b | 駿斯-戶外運動園區 | A |
+| C2dd9a5fce7c276f2cbfdd02c2342661c | 駿斯-社區&勞務業務群 | B |
+| Ce936c6bebb59b8b5683ffbcf97bf20de | 駿斯總部辦公室群 | B |
+
+### Identity & User Architecture（身份分層設計）
+- **`users`**：系統內部主鍵（serial id），對應 `employeeId`（員工編號）+ `lineUserId`（LINE UID），角色欄位 `role: admin | supervisor | staff`
+- **`user_identity_mappings`**：外部 ID 對應表（provider: line | employee_system | portal），`externalId` 為外部系統實際 ID
+- **`facilities`**：館別主表，`lineGroupId` 對應 LINE 工作群，自動 seeded at startup（`server/services/facilitySeeder.ts`）
+- **`published_announcements`**：Step 2 已發布公告池，`publishedByUserId` 關聯 `users.id`（非 LINE UID 直連），支援 priority / homeVisibility / effectiveEndAt / needsAck
+
+### Facility Home API
+- `GET /api/facility-home/:groupId/home` — 館別今日首頁（mustRead 置頂包 + 一般公告包）
+- `GET /api/facility-home/:groupId/announcements` — 公告列表（?q= 關鍵字, ?type=, ?page=, ?limit=）
+- `GET /api/facility-home/:groupId/announcements/:id` — 單筆詳情（含話術建議、壞範例）
 
 ### Interview Check Module (面試檢核)
 - **Service File**: `server/services/interviewCheckService.ts`, `server/services/lifeguardLicenseService.ts`, `server/services/cautionListService.ts`
