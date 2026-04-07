@@ -1,0 +1,66 @@
+後端 API 與資料庫開發指南 (Backend Repo)
+這份指南請放在你的 Node.js 後端專案中使用。
+1. Drizzle ORM Schema 實作
+請在資料庫定義檔中（例如 src/db/schema.ts）新增以下資料表。這是 STEP 2 核心，將 AI 整理好的內容轉為正式發布池。
+code
+TypeScript
+import { pgTable, serial, integer, text, jsonb, boolean, timestamp } from "drizzle-orm/pg-core";
+
+// 已發布的重要公告/事項表 (提供給前台首頁查詢的主表)
+export const publishedAnnouncements = pgTable("published_announcements", {
+  id: serial("id").primaryKey(),
+  sourceCandidateId: integer("source_candidate_id").notNull(), // 關聯 STEP1 的候選 ID
+  sourcePrimaryGroupId: integer("source_primary_group_id"), 
+  sourcePrimaryLineGroupId: text("source_primary_line_group_id"),
+  sourceGroupIdsJson: jsonb("source_group_ids_json").default([]), // 合併多個來源群組
+
+  facilityId: integer("facility_id"), // 主要關聯館別
+  candidateType: text("candidate_type").notNull(), // rule | notice | campaign | discount | script
+  scopeType: text("scope_type").notNull(),         // group | facility | multi_facility | global
+
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  body: text("body"),
+  recommendedAction: text("recommended_action"),
+  recommendedReply: text("recommended_reply"),
+  badExample: text("bad_example"),
+
+  appliesToRolesJson: jsonb("applies_to_roles_json").default([]), // 適用角色陣列
+  appliesToFacilityIdsJson: jsonb("applies_to_facility_ids_json").default([]), // 適用多館別陣列
+
+  priority: text("priority").default("normal"),     // critical | high | normal | low
+  homeVisibility: text("home_visibility").default("normal"), // pinned (置頂) | normal | hidden
+  needsAck: boolean("needs_ack").default(false), // 是否需要已讀
+
+  effectiveStartAt: timestamp("effective_start_at"),
+  effectiveEndAt: timestamp("effective_end_at"),
+  isAllDay: boolean("is_all_day").default(true),
+
+  publishedByUserId: integer("published_by_user_id"),
+  publishedAt: timestamp("published_at").defaultNow().notNull(),
+  status: text("status").default("published"), // published | archived | expired | hidden
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+2. 核心 API 路由實作 (Express Routers)
+請實作以下三支 API 提供給前端 Portal 呼叫：
+A. 取得當日員工總合首頁資料
+Route: GET /api/me/facility-home
+Logic:
+從 Token/Session 取得登入員工 ID。
+查詢該員工「今日班表」與「當班館別 (facilityId)」與「角色 (role)」。
+查詢 published_announcements，過濾條件：
+status = 'published'
+尚未過期 (effectiveEndAt >= now)
+館別符合或 scopeType 為 global
+角色符合 appliesToRolesJson
+將撈出的公告分為兩包：mustRead (priority=critical/high 或 pinned) 與 groupAnnouncements (其他)。
+回傳 JSON 組裝結構。
+B. 公告列表/搜尋
+Route: GET /api/facility-home/:facilityId/announcements
+Query Params: ?q=關鍵字&type=rule&page=1
+Logic: 使用 Drizzle 的 ilike 針對 title, summary 進行模糊搜尋。支援分頁。
+C. 單筆公告詳情
+Route: GET /api/facility-home/:facilityId/announcements/:id
+Logic: 回傳該 ID 完整欄位，包含話術建議 (recommendedReply) 與對應群組標籤。
