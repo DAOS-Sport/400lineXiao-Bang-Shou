@@ -134,9 +134,9 @@ export async function ingestMessageForAnnouncement(params: {
   const isIgnore = !aiResult || aiResult.candidateType === 'ignore';
   incAiCall({ latencyMs, isIgnore, isTimeout });
 
-  // AI 判斷為 ignore 且信心足夠 → drop（不寫入）
-  if (!aiResult || (aiResult.candidateType === 'ignore' && aiResult.confidence < 0.5)) {
-    console.log(`⏭️ [公告] AI ignore (conf=${aiResult?.confidence}) "${text.substring(0, 40)}"`);
+  // AI 判斷為 ignore → 一律 drop（不寫入）
+  if (!aiResult || aiResult.candidateType === 'ignore') {
+    console.log(`⏭️ [公告] AI ignore (conf=${aiResult?.confidence ?? 'N/A'}) "${text.substring(0, 40)}"`);
     return;
   }
 

@@ -184,10 +184,8 @@ export function makeDecision(params: {
   }
 
   // ── 分數足夠高 → rule_matched（依 tier 不同門檻）────────────────────
+  // 需有強關鍵字或至少一項元素命中，純弱詞堆分不放行
   const ruleThreshold = tier === 'A' ? 14 : tier === 'B' ? 18 : 25;
-  if (score.total >= ruleThreshold && score.weakHits.length === 0 && score.strongHits.length === 0) {
-    // 只靠弱詞撐高分不算 rule_matched
-  }
   if (score.total >= ruleThreshold && (score.strongHits.length > 0 || triCount >= 1)) {
     matched.push(`score_threshold:${score.total}`);
     return { decision: 'rule_matched', reason: 'score_threshold', score, matchedRules: matched };
@@ -195,7 +193,7 @@ export function makeDecision(params: {
 
   // ── 主管長文 → needs_ai_review ──────────────────────────────────────
   if (speakerType === 'supervisor') {
-    if (len >= 40 && score.total >= 5) {
+    if (len >= 40 && score.total >= 8) {
       matched.push('supervisor_long');
       return { decision: 'needs_ai_review', reason: 'supervisor_long', score, matchedRules: matched };
     }
@@ -220,7 +218,7 @@ export function makeDecision(params: {
 
   // ── 字數門檻（各 tier 成員）→ needs_ai_review ───────────────────────
   const lenThreshold = tier === 'A' ? 25 : tier === 'B' ? 35 : Infinity;
-  if (len >= lenThreshold && score.total >= 4) {
+  if (len >= lenThreshold && score.total >= 6) {
     matched.push(`length_threshold:${len}`);
     return { decision: 'needs_ai_review', reason: 'length_threshold', score, matchedRules: matched };
   }
