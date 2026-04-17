@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, ChevronDown, ChevronUp,
@@ -54,6 +55,19 @@ interface CandidatesResponse {
   items: Candidate[];
 }
 
+interface FacilityItem {
+  id: number;
+  lineGroupId: string;
+  name: string;
+  shortName: string | null;
+  tier: string | null;
+}
+
+interface FacilitiesListResponse {
+  success: boolean;
+  facilities: FacilityItem[];
+}
+
 const PRIORITY_COLORS: Record<string, string> = {
   must_read: 'bg-red-100 text-red-700 border-red-200',
   high: 'bg-amber-100 text-amber-700 border-amber-200',
@@ -92,9 +106,10 @@ function ConfidenceBadge({ value }: { value: string }) {
   return <span className={`font-mono text-xs font-bold ${color}`}>{pct}%</span>;
 }
 
-function CandidateCard({ candidate, onAction }: {
+function CandidateCard({ candidate, onAction, facilities }: {
   candidate: Candidate;
   onAction: () => void;
+  facilities: FacilityItem[];
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -102,12 +117,26 @@ function CandidateCard({ candidate, onAction }: {
   const [priority, setPriority] = useState(candidate.priority ?? 'normal');
   const [scopeType, setScopeType] = useState(candidate.scopeType ?? 'single');
   const [showReject, setShowReject] = useState(false);
+  const [selectedFacilityIds, setSelectedFacilityIds] = useState<number[]>([]);
+  const initRef = useRef(false);
+
+  useEffect(() => {
+    if (!initRef.current && facilities.length > 0) {
+      initRef.current = true;
+      const myFacility = facilities.find(f => f.lineGroupId === candidate.groupId);
+      setSelectedFacilityIds(myFacility ? [myFacility.id] : []);
+    }
+  }, [facilities, candidate.groupId]);
 
   const approveMutation = useMutation({
     mutationFn: () =>
       apiRequest('POST', `/api/announcement-candidates/${candidate.id}/approve`, {
         comment: comment || null,
-        overrides: { priority, scopeType },
+        overrides: {
+          priority,
+          scopeType,
+          ...(scopeType !== 'global' ? { appliesToFacilityIds: selectedFacilityIds } : {}),
+        },
       }),
     onSuccess: () => {
       toast({ title: '✅ 已核准，公告已發布到值班首頁' });
@@ -253,7 +282,12 @@ function CandidateCard({ candidate, onAction }: {
 
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xs text-gray-500 font-medium shrink-0">適用範圍：</span>
-            <Select value={scopeType} onValueChange={setScopeType}>
+            <Select value={scopeType} onValueChange={(v) => {
+              setScopeType(v);
+              if (v === 'single') {
+                setSelectedFacilityIds(ids => ids.slice(0, 1));
+              }
+            }}>
               <SelectTrigger className="h-8 w-36 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -267,6 +301,51 @@ function CandidateCard({ candidate, onAction }: {
               {SCOPE_LABELS[scopeType]}
             </Badge>
           </div>
+
+          {/* 館別選擇器 — 單館用 Select，多館用 Checkbox 清單 */}
+          {scopeType !== 'global' && facilities.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-xs text-gray-500 font-medium">
+                {scopeType === 'single' ? '指定館別（單選）：' : '指定館別（可多選）：'}
+              </span>
+              {scopeType === 'single' ? (
+                <Select
+                  value={String(selectedFacilityIds[0] ?? '')}
+                  onValueChange={v => setSelectedFacilityIds(v ? [parseInt(v)] : [])}
+                >
+                  <SelectTrigger className="h-8 w-52 text-xs">
+                    <SelectValue placeholder="選擇館別…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {facilities.map(f => (
+                      <SelectItem key={f.id} value={String(f.id)}>
+                        {f.shortName || f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex flex-wrap gap-x-4 gap-y-2 pt-0.5">
+                  {facilities.map(f => (
+                    <label key={f.id} className="flex items-center gap-1.5 cursor-pointer">
+                      <Checkbox
+                        id={`fac-${candidate.id}-${f.id}`}
+                        checked={selectedFacilityIds.includes(f.id)}
+                        onCheckedChange={checked => {
+                          setSelectedFacilityIds(ids =>
+                            checked ? [...ids, f.id] : ids.filter(id => id !== f.id)
+                          );
+                        }}
+                      />
+                      <span className="text-xs text-gray-600 select-none">
+                        {f.shortName || f.name}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* comment + action buttons */}
           {showReject ? (
@@ -619,6 +698,12 @@ export default function AdminAnnouncementsPage() {
   const [page, setPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const { data: facilitiesData } = useQuery<FacilitiesListResponse>({
+    queryKey: ['/api/facility-home/list'],
+    staleTime: 5 * 60 * 1000,
+  });
+  const facilities = facilitiesData?.facilities ?? [];
+
   const { data, isLoading, isFetching, refetch } = useQuery<CandidatesResponse>({
     queryKey: ['/api/announcement-candidates', 'pending', page, refreshKey],
     queryFn: async () => {
@@ -733,6 +818,7 @@ export default function AdminAnnouncementsPage() {
                 key={candidate.id}
                 candidate={candidate}
                 onAction={handleAction}
+                facilities={facilities}
               />
             ))}
           </div>

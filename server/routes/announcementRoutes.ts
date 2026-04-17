@@ -65,12 +65,18 @@ async function publishToAnnouncements(params: {
   const homeVisibility = (priority === 'must_read' || priority === 'high') ? 'pinned' : 'normal';
   const needsAck = priority === 'must_read';
 
-  // 查 facilityId（by lineGroupId）
+  // 查 facilityId（by lineGroupId）—— 用於設定 facilityId / facilityLineGroupId
   let facilityId: number | null = null;
   try {
     const fac = await db.select().from(facilities).where(eq(facilities.lineGroupId, c.groupId));
     if (fac.length > 0) facilityId = fac[0].id;
   } catch (_) {}
+
+  // 適用館別 ID：overrides 若有指定則使用，否則預設為候選的來源館別
+  const appliesToFacilityIds: number[] =
+    Array.isArray(overrides.appliesToFacilityIds) && overrides.appliesToFacilityIds.length > 0
+      ? (overrides.appliesToFacilityIds as number[])
+      : (facilityId ? [facilityId] : []);
 
   try {
     const [inserted] = await db.insert(publishedAnnouncements).values({
@@ -88,7 +94,7 @@ async function publishToAnnouncements(params: {
       recommendedReply: c.recommendedReply ?? null,
       badExample: c.badExample ?? null,
       appliesToRolesJson: appliesToRoles,
-      appliesToFacilityIdsJson: facilityId ? [facilityId] : [],
+      appliesToFacilityIdsJson: appliesToFacilityIds,
       priority,
       homeVisibility,
       needsAck,
