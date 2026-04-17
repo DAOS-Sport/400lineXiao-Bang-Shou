@@ -55,6 +55,10 @@ app.use((req, res, next) => {
     // 初始化面試檢核授權用戶（確保生產環境有資料）
     const { initializeAuthorizedUsers } = await import('./services/initializeAuthorizedUsers');
     await initializeAuthorizedUsers();
+
+    // 同步主管身份（SUPERVISOR_USER_IDS → users.role = 'supervisor'）
+    const { initializeSupervisors } = await import('./services/supervisorResolver');
+    await initializeSupervisors();
     
     // 啟動系統保活服務
     const { keepAliveService } = await import('./services/keepAliveService');

@@ -170,7 +170,9 @@ export const announcementCandidates = pgTable('announcement_candidates', {
   endAt: timestamp('end_at', { withTimezone: true }),
   confidence: text('confidence').notNull().default('0'),
   reasoningTags: jsonb('reasoning_tags'), // string[]
-  extractedJson: jsonb('extracted_json'), // 完整 GPT 輸出
+  extractedJson: jsonb('extracted_json'), // 完整 GPT 輸出（含 5W1H）
+  priority: text('priority'), // must_read | high | normal | low（由 AI 輸出）
+  contentHash: text('content_hash'), // sha256(title+summary+groupId+date) 用於去重
   status: text('status').notNull().default('pending_review'), // pending_review | approved | rejected | ignored
   detectedAt: timestamp('detected_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
@@ -178,6 +180,7 @@ export const announcementCandidates = pgTable('announcement_candidates', {
   statusIdx: index('ann_candidates_status_idx').on(table.status),
   candidateTypeIdx: index('ann_candidates_type_idx').on(table.candidateType),
   detectedAtIdx: index('ann_candidates_detected_at_idx').on(table.detectedAt.desc()),
+  contentHashIdx: index('ann_candidates_content_hash_idx').on(table.groupId, table.contentHash, table.detectedAt),
 }));
 
 // Announcement Reviews Table - 公告審核記錄
@@ -354,6 +357,7 @@ export const publishedAnnouncements = pgTable('published_announcements', {
   effectiveEndAt: timestamp('effective_end_at', { withTimezone: true }),
   isAllDay: boolean('is_all_day').notNull().default(true),
 
+  extractedJson: jsonb('extracted_json'),                              // 5W1H + AI 輸出
   publishedByUserId: integer('published_by_user_id'),                  // 關聯 users.id
   publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
   status: text('status').notNull().default('published'),               // published | archived | expired | hidden

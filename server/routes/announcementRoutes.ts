@@ -1,9 +1,14 @@
 import { Router } from 'express';
 import { db } from '../db';
-import { announcementCandidates, announcementReviews } from '@shared/schema';
-import { eq, gte, desc } from 'drizzle-orm';
+import {
+  announcementCandidates, announcementReviews,
+  publishedAnnouncements, facilities,
+} from '@shared/schema';
+import { eq, gte, desc, and, inArray } from 'drizzle-orm';
 import { getPipelineStats, incApproval } from '../services/announcement/pipelineStats';
 import { FOCUS_GROUP_IDS, GROUP_FACILITY_MAP } from '../services/announcement/announcementConfig';
+import { classifyAnnouncement } from '../services/announcement/announcementClassifierService';
+import { computeContentHash } from '../services/candidateDedup';
 
 export const announcementRouter = Router();
 
@@ -28,6 +33,76 @@ function getMeta(row: any) {
     isCustomerFacing: ej.isCustomerFacing ?? false,
     isOperationallyRelevant: ej.isOperationallyRelevant ?? false,
   };
+}
+
+/** 計算候選的 priority（approve 時使用） */
+function computePriority(row: any): string {
+  if (row.priority) return row.priority;
+  const isSup = row.isFromSupervisor === 'true';
+  const type = row.candidateType;
+  const scope = row.scopeType;
+  if (type === 'rule' && isSup && scope !== 'group') return 'must_read';
+  if (type === 'script') return 'high';
+  if (row.endAt) {
+    const daysLeft = (new Date(row.endAt).getTime() - Date.now()) / 86400000;
+    if (daysLeft >= 0 && daysLeft <= 7) return 'high';
+  }
+  return 'normal';
+}
+
+/** 寫入 published_announcements */
+async function publishToAnnouncements(params: {
+  candidate: any;
+  reviewerUserId: string | null;
+  overrides?: Record<string, any>;
+}): Promise<number | null> {
+  const { candidate: c, reviewerUserId, overrides = {} } = params;
+
+  const priority = overrides.priority ?? computePriority(c);
+  const scopeType = overrides.scopeType ?? c.scopeType;
+  const appliesToRoles = overrides.appliesToRoles ?? (Array.isArray(c.appliesToRoles) ? c.appliesToRoles : []);
+
+  const homeVisibility = (priority === 'must_read' || priority === 'high') ? 'pinned' : 'normal';
+  const needsAck = priority === 'must_read';
+
+  // 查 facilityId（by lineGroupId）
+  let facilityId: number | null = null;
+  try {
+    const fac = await db.select().from(facilities).where(eq(facilities.lineGroupId, c.groupId));
+    if (fac.length > 0) facilityId = fac[0].id;
+  } catch (_) {}
+
+  try {
+    const [inserted] = await db.insert(publishedAnnouncements).values({
+      sourceCandidateId: c.id,
+      sourcePrimaryLineGroupId: c.groupId,
+      sourceGroupIdsJson: [c.groupId],
+      facilityId: facilityId,
+      facilityLineGroupId: c.groupId,
+      candidateType: c.candidateType,
+      scopeType,
+      title: c.title ?? '（未命名公告）',
+      summary: c.summary ?? c.originalText?.substring(0, 80) ?? '',
+      body: c.originalText ?? null,
+      recommendedAction: c.recommendedAction ?? null,
+      recommendedReply: c.recommendedReply ?? null,
+      badExample: c.badExample ?? null,
+      appliesToRolesJson: appliesToRoles,
+      appliesToFacilityIdsJson: facilityId ? [facilityId] : [],
+      priority,
+      homeVisibility,
+      needsAck,
+      effectiveStartAt: c.startAt ?? new Date(),
+      effectiveEndAt: c.endAt ?? null,
+      extractedJson: c.extractedJson ?? null,
+      publishedByUserId: null, // reviewerUserId is LINE UID, not users.id; skip for now
+      status: 'published',
+    }).returning({ id: publishedAnnouncements.id });
+    return inserted?.id ?? null;
+  } catch (err: any) {
+    console.error('❌ [公告發布] 寫入 published_announcements 失敗:', err?.message);
+    return null;
+  }
 }
 
 // ── GET /api/announcement-dashboard/summary ──────────────────────────────────
@@ -101,6 +176,7 @@ announcementRouter.get('/announcement-dashboard/pipeline-stats', (_req, res) => 
 });
 
 // ── GET /api/announcement-candidates ─────────────────────────────────────────
+// 排序：confidence DESC, detectedAt DESC
 announcementRouter.get('/announcement-candidates', async (req, res) => {
   try {
     const {
@@ -145,6 +221,13 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
       ))
     );
 
+    // 二次排序：confidence DESC（主要）then detectedAt DESC（次要）
+    rows.sort((a, b) => {
+      const confDiff = parseFloat(b.confidence) - parseFloat(a.confidence);
+      if (Math.abs(confDiff) > 0.001) return confDiff;
+      return b.detectedAt.getTime() - a.detectedAt.getTime();
+    });
+
     const total = rows.length;
     const pg  = Math.max(1, parseInt(page));
     const ps  = Math.min(100, Math.max(1, parseInt(pageSize)));
@@ -166,7 +249,20 @@ announcementRouter.get('/announcement-candidates/:id', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ success: false, error: 'not found' });
 
     const reviews = await db.select().from(announcementReviews).where(eq(announcementReviews.candidateId, id));
-    res.json({ success: true, candidate: { ...rows[0], _meta: getMeta(rows[0]) }, reviews });
+    const row = rows[0];
+
+    res.json({
+      success: true,
+      candidate: {
+        ...row,
+        _meta: getMeta(row),
+        // 便利展開（前端可直接使用）
+        extractedJsonParsed: row.extractedJson,
+        appliesToRolesList: Array.isArray(row.appliesToRoles) ? row.appliesToRoles : [],
+        priorityDisplay: row.priority ?? computePriority(row),
+      },
+      reviews,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -179,14 +275,34 @@ announcementRouter.post('/announcement-candidates/:id/approve', async (req, res)
     if (isNaN(id)) return res.status(400).json({ success: false, error: 'invalid id' });
 
     const rows = await db.select().from(announcementCandidates).where(eq(announcementCandidates.id, id));
-    const src = rows[0] ? (getMeta(rows[0]).decisionSource as 'rule_engine' | 'ai') : 'ai';
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'candidate not found' });
 
-    const { reviewerUserId, comment } = req.body ?? {};
-    await db.update(announcementCandidates).set({ status: 'approved' }).where(eq(announcementCandidates.id, id));
-    await db.insert(announcementReviews).values({ candidateId: id, reviewerUserId: reviewerUserId ?? null, action: 'approve', comment: comment ?? null });
+    const candidate = rows[0];
+    const { reviewerUserId, comment, overrides } = req.body ?? {};
+    const src = getMeta(candidate).decisionSource as 'rule_engine' | 'ai';
+
+    // 1. 更新候選狀態
+    await db.update(announcementCandidates)
+      .set({ status: 'approved' })
+      .where(eq(announcementCandidates.id, id));
+
+    // 2. 寫審核記錄
+    await db.insert(announcementReviews).values({
+      candidateId: id,
+      reviewerUserId: reviewerUserId ?? null,
+      action: 'approve',
+      comment: comment ?? null,
+    });
+
+    // 3. 寫入 published_announcements
+    const publishedId = await publishToAnnouncements({
+      candidate,
+      reviewerUserId: reviewerUserId ?? null,
+      overrides: overrides ?? {},
+    });
 
     incApproval(src, 'approved');
-    res.json({ success: true, message: '已核准' });
+    res.json({ success: true, message: '已核准', publishedAnnouncementId: publishedId });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -203,10 +319,95 @@ announcementRouter.post('/announcement-candidates/:id/reject', async (req, res) 
 
     const { reviewerUserId, comment } = req.body ?? {};
     await db.update(announcementCandidates).set({ status: 'rejected' }).where(eq(announcementCandidates.id, id));
-    await db.insert(announcementReviews).values({ candidateId: id, reviewerUserId: reviewerUserId ?? null, action: 'reject', comment: comment ?? null });
+    await db.insert(announcementReviews).values({
+      candidateId: id,
+      reviewerUserId: reviewerUserId ?? null,
+      action: 'reject',
+      comment: comment ?? null,
+    });
 
     incApproval(src, 'rejected');
     res.json({ success: true, message: '已退回' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── POST /api/announcement-candidates/batch/reclassify ───────────────────────
+announcementRouter.post('/announcement-candidates/batch/reclassify', async (req, res) => {
+  try {
+    const { ids } = req.body ?? {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'ids 必須為非空陣列' });
+    }
+
+    const numIds = ids.map(Number).filter(n => !isNaN(n));
+    if (numIds.length === 0) {
+      return res.status(400).json({ success: false, error: '無有效 id' });
+    }
+
+    const rows = await db.select()
+      .from(announcementCandidates)
+      .where(inArray(announcementCandidates.id, numIds));
+
+    let success = 0;
+    let failed = 0;
+    const results: any[] = [];
+
+    for (const row of rows) {
+      try {
+        const isSup = row.isFromSupervisor === 'true';
+        const aiResult = await classifyAnnouncement(
+          row.originalText,
+          row.facilityName ?? '未知場館',
+          isSup,
+          { detectedKeywords: [], passReason: 'reclassify' as any },
+        );
+
+        if (!aiResult || aiResult.candidateType === 'ignore') {
+          results.push({ id: row.id, result: 'skip_ignore' });
+          continue;
+        }
+
+        const contentHash = computeContentHash({
+          title: aiResult.title,
+          summary: aiResult.summary,
+          groupId: row.groupId,
+        });
+
+        await db.update(announcementCandidates)
+          .set({
+            candidateType: aiResult.candidateType,
+            scopeType: aiResult.scopeType,
+            title: aiResult.title,
+            summary: aiResult.summary,
+            confidence: String(aiResult.confidence),
+            recommendedAction: aiResult.recommendedAction ?? null,
+            recommendedReply: aiResult.recommendedReply ?? null,
+            badExample: aiResult.badExample ?? null,
+            appliesToRoles: aiResult.appliesToRoles ?? [],
+            startAt: aiResult.startAt ? new Date(aiResult.startAt) : null,
+            endAt: aiResult.endAt ? new Date(aiResult.endAt) : null,
+            priority: aiResult.priority ?? 'normal',
+            contentHash,
+            extractedJson: {
+              ...((row.extractedJson as any) ?? {}),
+              ...(aiResult.extractedJson ?? {}),
+              reclassifiedAt: new Date().toISOString(),
+            } as any,
+          })
+          .where(eq(announcementCandidates.id, row.id));
+
+        results.push({ id: row.id, result: 'updated', candidateType: aiResult.candidateType });
+        success++;
+      } catch (err: any) {
+        console.error(`❌ [重跑] id=${row.id} 失敗:`, err?.message);
+        results.push({ id: row.id, result: 'error', error: err?.message });
+        failed++;
+      }
+    }
+
+    res.json({ success: true, processed: rows.length, success, failed, results });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -224,10 +425,7 @@ announcementRouter.get('/facility-home/:facilityId/announcements', async (req, r
       .orderBy(desc(announcementCandidates.detectedAt));
 
     const relevant = rows.filter(r => {
-      const meta = getMeta(r);
-      // 全館/多館公告所有人都看
       if (r.scopeType === 'multi_facility' || r.scopeType === 'global') return true;
-      // 本館公告
       if (r.facilityName === facilityName) return true;
       if (r.groupId === facilityId) return true;
       return false;
@@ -252,6 +450,12 @@ announcementRouter.get('/facility-home/:facilityId/announcements', async (req, r
         scopeType: r.scopeType,
         title: r.title,
         summary: r.summary,
+        recommendedReply: r.recommendedReply,
+        badExample: r.badExample,
+        appliesToRoles: r.appliesToRoles,
+        priority: r.priority ?? computePriority(r),
+        startAt: r.startAt,
+        endAt: r.endAt,
         originalText: r.originalText,
         detectedAt: r.detectedAt,
         ...getMeta(r),

@@ -72,6 +72,10 @@ Preferred communication style: Simple, everyday language.
 ### AI Services
 - **OpenAI API**: GPT-4o-mini for task extraction and conversation analysis.
 - **Prompt Engineering**: Structured prompts for consistent output.
+- **Classifier Upgrade**: Two-pass design — Pass 1 (pure programmatic gate), Pass 2 (GPT-4o-mini with extended output: 5W1H, appliesToRoles, startAt/endAt, recommendedReply, badExample, priority).
+- **Supervisor Resolver**: `server/services/supervisorResolver.ts` — queries `users` table with 5-min in-memory cache; falls back to `SUPERVISOR_USER_IDS` env var. `initializeSupervisors()` syncs env var to DB on startup.
+- **Candidate Dedup**: `server/services/candidateDedup.ts` — sha256 contentHash (title+summary+groupId+date) prevents duplicate entries within 24h; upgrades confidence on merge.
+- **Tests**: `server/__tests__/classifier.test.ts` (Vitest, 13 tests). Run: `npx vitest run server/__tests__/classifier.test.ts`
 
 ### Database Services
 - **Neon Database**: Serverless PostgreSQL.

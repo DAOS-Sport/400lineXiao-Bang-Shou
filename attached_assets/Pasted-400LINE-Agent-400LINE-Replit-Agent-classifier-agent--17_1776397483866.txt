@@ -1,0 +1,185 @@
+400LINE小幫手（主管對話 Agent 升級）
+
+把下面這整塊複製到 400LINE小幫手 這個 Replit 的 Agent
+
+# 目標
+升級既有的公告候選 classifier agent，讓它針對「主管在 LINE 群組的正式發言」
+做更精準的擷取與結構化，產出足以直接驅動前端值班首頁（話術建議 / 壞範例 /
+角色適用 / 必讀優先級 / 起迄時間）的 announcement_candidates。
+
+# 背景（不要動到這些既有能力，只能擴充）
+- 這個專案是「駿斯小助理」LINE Bot，Express + TypeScript + Drizzle + PG。
+- 既有欄位都還在：
+  * messages.isFromSupervisor (bool)
+  * announcement_candidates: candidateType, scopeType, title, summary,
+    recommendedAction, recommendedReply, badExample, confidence, extractedJson,
+    appliesToRoles, startAt, endAt, status, facilityName, groupId,
+    sourceMessageId, detectedAt
+  * facilities (已 seeded, 8 館)
+  * users, user_identity_mappings
+- 任務抓取（交辦關鍵字）、水質、風力、簽到異常等服務都不要動。
+- LINE webhook 主流程 SLA 不能被 AI 拖慢，分析仍走 async job。
+
+# 要做的事
+
+## 1. 新增 server/services/supervisorResolver.ts
+- 提供 isSupervisor(lineUserId): Promise<{ isSupervisor: boolean;
+  displayName?: string; facilityScope?: string[]; priority?: 'high'|'normal' }>
+- 來源：先查 users 表 role = 'supervisor' 或 isSupervisor = true；
+  查不到再回退到環境變數 SUPERVISOR_USER_IDS 的清單。
+- 同時在 message 落庫階段把 isFromSupervisor 正確寫入（目前可能沒寫對）。
+- 在 initializeAuthorizedUsers 之後接一個 initializeSupervisors()，把
+  SUPERVISOR_USER_IDS 同步成 users.role = 'supervisor'。
+
+## 2. 重寫 classifier 的 prompt（位置在原本 classifier agent 檔案裡，
+找 callOpenAI / 類似的 GPT 呼叫），採用兩段式
+
+### Pass 1 — 門檻判斷（不用 GPT，純程式）
+只要任一為真就進入 Pass 2，否則 skip：
+- isFromSupervisor === true
+- 出現關鍵字：公告、規定、統一、提醒、注意、請各位、從今天起、即日起、
+  暫停、恢復、異動、報名、活動、優惠、折扣、不可、禁止、必須、一律、
+  請改成、請不要、請改說、SOP、流程、新規定
+- 訊息長度 >= 20 字
+- Reply/Quote 了主管訊息
+
+### Pass 2 — GPT-4o-mini 結構化抽取
+使用下方「升級版 System Prompt」。
+
+## 3. 升級版 System Prompt（整段塞入 classifier）
+
+你是駿斯運動事業群的「群組重要事項分類助理」。你的工作是把主管在 LINE
+工作群的正式發言，結構化成可審核的公告候選。非主管的閒聊、情緒性回應、
+個人聊天、打招呼、表情符號、貼圖描述，一律回 ignore，不要腦補。
+
+## 判定邏輯
+1. candidateType 必須是下列之一：
+   rule | notice | campaign | discount | script | ignore
+   - rule：統一做法、禁止事項、SOP、「以後遇到 X 要 Y」
+   - notice：單純通知、異動提醒、臨時公告、休館、設備狀態
+   - campaign：活動資訊、招生、推廣方案、課程開班
+   - discount：具體折扣、價格方案、期間特價
+   - script：對客統一說詞、禁止用語、應對話術（「不要跟客人說 X」、
+     「請改說 Y」）
+   - ignore：閒聊、無明確指令
+
+2. scopeType 預設為 "group"。除非文字出現下列任一明確升級語：
+   「全館」「所有館別」「全公司」「統一規定」「一體適用」「各館請」
+   才可輸出 "facility" 以上範圍。不得腦補升級。
+
+3. appliesToRoles：從下列挑 0..N 個 ["frontdesk","lifeguard",
+   "admin","supervisor","new_staff"]。沒有明確對象時回 []（代表全體）。
+
+4. confidence 範圍 0~1：
+   - 主管直接下指令 + 句意完整：>= 0.8
+   - 主管發言但句意模糊：0.5 ~ 0.7
+   - 非主管但內容像正式公告：<= 0.5
+   - 看起來是閒聊：直接 ignore 不回這題
+
+5. 時間抽取：
+   - startAt：若文中出現「即日起」「從今天」「明天起」「12/25 開始」等
+     具體時間，轉成 ISO8601（台灣時區 +08:00）
+   - endAt：有截止日才填，沒有就 null
+   - 沒把握就 null，不要猜
+
+6. 5W1H 寫進 extractedJson：
+   {
+     "who": "誰說的 / 涉及誰",
+     "what": "事件核心一句話",
+     "when": "何時生效 / 何時發生",
+     "where": "哪個館 / 哪個群 / 全體",
+     "thing": "涉及的課程 / 活動 / 設備 / 業務項目",
+     "originalQuote": "原文關鍵片段（<= 60 字）"
+   }
+
+7. recommendedAction：櫃台 / 救生員該做什麼，一句話，祈使語氣。
+8. recommendedReply：遇客人問時可以直接照念的話術（<= 60 字，口語）。
+   沒把握就 null，不要硬擠。
+9. badExample：一句話點出「不要這樣說 / 不要這樣做」。沒把握就 null。
+10. title：<= 20 字，像報紙標題。
+11. summary：<= 80 字，白話摘要，給值班人員 3 秒看懂。
+
+## 輸出格式（JSON，no markdown fence）
+{
+  "candidateType": "...",
+  "scopeType": "group | facility | multi_facility | global",
+  "title": "...",
+  "summary": "...",
+  "confidence": 0.xx,
+  "appliesToRoles": ["..."],
+  "startAt": "ISO8601 or null",
+  "endAt": "ISO8601 or null",
+  "recommendedAction": "...",
+  "recommendedReply": "... or null",
+  "badExample": "... or null",
+  "extractedJson": { ...5W1H... },
+  "priority": "must_read | high | normal | low"
+}
+
+priority 規則：
+- rule + isFromSupervisor + scope >= facility → must_read
+- notice + 有 endAt 且 endAt 在 7 天內 → high
+- script 類 → 永遠 >= high
+- 其他 → normal
+
+(Prompt 結束)
+
+## 4. 去重層（dedup）
+新增 server/services/candidateDedup.ts，邏輯：
+- 在寫入 announcement_candidates 前，計算
+  contentHash = sha256(normalize(title + summary + groupId + DATE(detectedAt)))
+- 新欄位 announcement_candidates.contentHash (text, index)
+- 若同 groupId + contentHash 過去 24 小時內已存在 status != 'rejected' 的候選，
+  直接升級該筆的 confidence 為 max(old, new)、把 sourceMessageId 加進
+  extractedJson.relatedMessageIds[]，不另建新筆。
+- 寫 drizzle migration 新增 contentHash 欄位 + 複合 index
+  (groupId, contentHash, detectedAt)。
+
+## 5. 核准流轉到 published_announcements
+目前 approve 後可能只改 status，沒寫到 published_announcements。要確保：
+- POST /api/announcement-candidates/:id/approve 時，
+  除了寫 announcement_reviews，還把候選的完整欄位寫入 published_announcements：
+  id / title / summary / candidateType (存成 type) / scopeType / facilityName /
+  groupId / priority / homeVisibility (= true 如果 priority >= high) /
+  effectiveStartAt (= startAt || now) / effectiveEndAt (= endAt) /
+  needsAck (= true 如果 priority === must_read) /
+  appliesToRoles / recommendedReply / badExample / extractedJson /
+  publishedByUserId (= reviewerUserId) / publishedAt (= now)
+- 如果 published_announcements 缺任何上述欄位，寫 migration 補。
+
+## 6. 新增 admin 回補 API（給前端儀表板公告審核中心用）
+- GET /api/announcement-candidates?status=pending&groupId=...&candidateType=...
+  &facilityName=...&page=&limit= （既有，確認排序是 confidence DESC, detectedAt DESC）
+- GET /api/announcement-candidates/:id  → 多回傳 extractedJson、priority、
+  appliesToRoles、startAt、endAt、recommendedReply、badExample
+- POST /api/announcement-candidates/:id/approve 接收 { comment?, overrides? }，
+  overrides 可覆寫 priority / scopeType / appliesToRoles 再發布
+- POST /api/announcement-candidates/batch/reclassify 傳 { ids: [...] }
+  → 用新 prompt 重跑一次（給舊資料補料用）
+
+## 7. 測試與驗收
+- 在 server/services/classifierAgent.ts 或同級位置加 __tests__/classifier.test.ts
+  用 8 條手造訊息做 snapshot：
+  1. 主管「即日起游泳池溫度調到 29 度」→ rule, group, must_read, 有 startAt
+  2. 主管「全館統一：禁止退費超過 30 天的課程」→ rule, facility, must_read
+  3. 主管「下週六 11/8 三民館社區日，早上 9 點」→ campaign, group, 有 startAt
+  4. 主管「不要跟客人說月費含毛巾，請改說現場租用」→ script, group, high
+  5. 員工「好的 收到」→ ignore
+  6. 主管「(貼圖)」→ ignore
+  7. 主管「12/1~12/31 冬季入會折 500」→ discount, group, 有 startAt/endAt
+  8. 救生員「今天水看起來有點濁」→ notice, group, normal（不是 ignore）
+
+- snapshot 用 Vitest，npm run test:classifier 要過。
+
+## 8. 不要做的事
+- 不要動 LINE webhook 的簽章驗證、rate limit、helmet、audit log
+- 不要動水質、風力、任務、簽到異常、滿意度這些既有 service
+- 不要動 isports.sa.gov.tw 的救生員查詢（SSL bypass 維持）
+- 不要用 pushMessage 推送公告（延續 reply-trigger 策略）
+- 不要把 userMemories / 聊天紀錄匯出，保留現有隔離策略
+
+# 完成後請回報
+1. 新增 / 修改了哪些檔案（路徑）
+2. classifier snapshot test 的通過情況
+3. 有多少舊候選被 batch reclassify 重跑
+4. 提醒我要在 Secrets 設什麼新環境變數（如果有新增）
