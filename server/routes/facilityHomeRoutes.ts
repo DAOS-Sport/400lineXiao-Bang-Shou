@@ -49,9 +49,16 @@ async function resolveFacility(groupId: string) {
 }
 
 // ── 輔助：基本可見過濾條件 ───────────────────────────────────────────────────
+// 可見規則：
+//   global          → 所有館別皆可見
+//   single / multi_facility → 必須在 appliesToFacilityIdsJson 中包含本館 id，
+//                             或來源館別的 facilityLineGroupId 相符（向後相容）
 
-function buildActiveFilter(groupId: string) {
+function buildActiveFilter(facility: { id: number; lineGroupId: string | null }) {
   const now = new Date();
+  // JSONB containment: appliesToFacilityIdsJson @> '[id]'
+  const inFacilityList = sql`${publishedAnnouncements.appliesToFacilityIdsJson} @> ${JSON.stringify([facility.id])}::jsonb`;
+
   return and(
     eq(publishedAnnouncements.status, 'published'),
     // 未過期（effectiveEndAt 為 null 或 >= now）
@@ -59,11 +66,16 @@ function buildActiveFilter(groupId: string) {
       isNull(publishedAnnouncements.effectiveEndAt),
       gte(publishedAnnouncements.effectiveEndAt, now),
     ),
-    // 館別符合（自身 groupId）或 scope 為 multi_facility / global
+    // 館別可見性判斷
     or(
-      eq(publishedAnnouncements.facilityLineGroupId, groupId),
-      eq(publishedAnnouncements.scopeType, 'multi_facility'),
+      // global：全館可見
       eq(publishedAnnouncements.scopeType, 'global'),
+      // single / multi_facility：facilityId 明確在適用清單中
+      inFacilityList,
+      // 向後相容：來源館別（facilityLineGroupId）永遠可見自己的公告
+      ...(facility.lineGroupId
+        ? [eq(publishedAnnouncements.facilityLineGroupId, facility.lineGroupId)]
+        : []),
     ),
   );
 }
@@ -87,7 +99,7 @@ facilityHomeRouter.get('/:groupId/home', async (req, res) => {
     const rows = await db
       .select()
       .from(publishedAnnouncements)
-      .where(buildActiveFilter(groupId))
+      .where(buildActiveFilter(facility))
       .orderBy(
         // pinned 優先，再依 priority 排序，再依發布時間
         desc(sql`CASE home_visibility WHEN 'pinned' THEN 0 ELSE 1 END`),
@@ -142,7 +154,7 @@ facilityHomeRouter.get('/:groupId/announcements', async (req, res) => {
   }
 
   try {
-    const conditions = [buildActiveFilter(groupId)];
+    const conditions = [buildActiveFilter(facility)];
 
     // 關鍵字模糊搜尋（title + summary）
     if (q) {
@@ -218,11 +230,7 @@ facilityHomeRouter.get('/:groupId/announcements/:id', async (req, res) => {
       .where(
         and(
           eq(publishedAnnouncements.id, annId),
-          or(
-            eq(publishedAnnouncements.facilityLineGroupId, groupId),
-            eq(publishedAnnouncements.scopeType, 'multi_facility'),
-            eq(publishedAnnouncements.scopeType, 'global'),
-          ),
+          buildActiveFilter(facility),
         ),
       )
       .limit(1);
