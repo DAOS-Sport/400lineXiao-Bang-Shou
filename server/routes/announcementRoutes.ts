@@ -4,7 +4,7 @@ import {
   announcementCandidates, announcementReviews,
   publishedAnnouncements, facilities,
 } from '@shared/schema';
-import { eq, gte, desc, and, inArray } from 'drizzle-orm';
+import { eq, gte, desc, and, inArray, sql, or, isNull } from 'drizzle-orm';
 import { getPipelineStats, incApproval } from '../services/announcement/pipelineStats';
 import { FOCUS_GROUP_IDS, GROUP_FACILITY_MAP } from '../services/announcement/announcementConfig';
 import { classifyAnnouncement } from '../services/announcement/announcementClassifierService';
@@ -527,6 +527,78 @@ announcementRouter.get('/announcement-reports/weekly', async (_req, res) => {
       errorRate,
       totalInPeriod: rows.length,
     });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── GET /api/published-announcements ─────────────────────────────────────────
+// 列出已發布公告（含館別名稱，按發布時間倒序）
+announcementRouter.get('/published-announcements', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize as string) || 20));
+    const offset = (page - 1) * pageSize;
+
+    const [rows, countRows] = await Promise.all([
+      db
+        .select({
+          id: publishedAnnouncements.id,
+          title: publishedAnnouncements.title,
+          summary: publishedAnnouncements.summary,
+          candidateType: publishedAnnouncements.candidateType,
+          scopeType: publishedAnnouncements.scopeType,
+          priority: publishedAnnouncements.priority,
+          homeVisibility: publishedAnnouncements.homeVisibility,
+          needsAck: publishedAnnouncements.needsAck,
+          status: publishedAnnouncements.status,
+          publishedAt: publishedAnnouncements.publishedAt,
+          effectiveEndAt: publishedAnnouncements.effectiveEndAt,
+          facilityLineGroupId: publishedAnnouncements.facilityLineGroupId,
+          facilityName: facilities.name,
+          facilityShortName: facilities.shortName,
+        })
+        .from(publishedAnnouncements)
+        .leftJoin(facilities, eq(publishedAnnouncements.facilityId, facilities.id))
+        .where(eq(publishedAnnouncements.status, 'published'))
+        .orderBy(desc(publishedAnnouncements.publishedAt))
+        .limit(pageSize)
+        .offset(offset),
+      db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(publishedAnnouncements)
+        .where(eq(publishedAnnouncements.status, 'published')),
+    ]);
+
+    const total = Number(countRows[0]?.count ?? 0);
+    res.json({ success: true, total, page, pageSize, items: rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── POST /api/published-announcements/:id/unpublish ───────────────────────────
+// 將已發布公告下架（status → 'archived'），值班首頁即刻隱藏
+announcementRouter.post('/published-announcements/:id/unpublish', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ success: false, error: 'invalid id' });
+
+    const [updated] = await db
+      .update(publishedAnnouncements)
+      .set({ status: 'archived' })
+      .where(
+        and(
+          eq(publishedAnnouncements.id, id),
+          eq(publishedAnnouncements.status, 'published'),
+        ),
+      )
+      .returning({ id: publishedAnnouncements.id });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: '公告不存在或已下架' });
+    }
+    res.json({ success: true, message: '公告已下架', id: updated.id });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

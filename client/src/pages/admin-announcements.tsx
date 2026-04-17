@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, ChevronDown, ChevronUp,
   Megaphone, MessageSquare, AlertTriangle, Users, RefreshCw,
-  Shield, Clock, Star, Zap, Loader2,
+  Shield, Clock, Star, Zap, Loader2, ArchiveX,
 } from "lucide-react";
 
 interface CandidateMeta {
@@ -66,6 +66,31 @@ interface FacilityItem {
 interface FacilitiesListResponse {
   success: boolean;
   facilities: FacilityItem[];
+}
+
+interface PublishedAnnouncement {
+  id: number;
+  title: string | null;
+  summary: string | null;
+  candidateType: string;
+  scopeType: string;
+  priority: string | null;
+  homeVisibility: string | null;
+  needsAck: boolean | null;
+  status: string;
+  publishedAt: string | null;
+  effectiveEndAt: string | null;
+  facilityLineGroupId: string | null;
+  facilityName: string | null;
+  facilityShortName: string | null;
+}
+
+interface PublishedAnnouncementsResponse {
+  success: boolean;
+  total: number;
+  page: number;
+  pageSize: number;
+  items: PublishedAnnouncement[];
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -423,6 +448,105 @@ function CandidateCard({ candidate, onAction, facilities }: {
   );
 }
 
+// ── PublishedAnnouncementCard ─────────────────────────────────────────────────
+
+function PublishedAnnouncementCard({ item, onAction }: {
+  item: PublishedAnnouncement;
+  onAction: () => void;
+}) {
+  const { toast } = useToast();
+  const [confirmUnpublish, setConfirmUnpublish] = useState(false);
+
+  const unpublishMutation = useMutation({
+    mutationFn: () =>
+      apiRequest('POST', `/api/published-announcements/${item.id}/unpublish`, {}),
+    onSuccess: () => {
+      toast({ title: '✅ 公告已下架，值班首頁即刻生效' });
+      queryClient.invalidateQueries({ queryKey: ['/api/published-announcements'] });
+      onAction();
+    },
+    onError: () => toast({ title: '❌ 下架失敗', variant: 'destructive' }),
+  });
+
+  const publishedDate = item.publishedAt
+    ? new Date(item.publishedAt).toLocaleString('zh-TW', {
+        month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      })
+    : '—';
+
+  const facilityLabel = item.facilityShortName || item.facilityName || '—';
+
+  return (
+    <Card className="border border-gray-100 shadow-sm bg-white">
+      <CardContent className="px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className={`text-xs border ${PRIORITY_COLORS[item.priority ?? 'normal'] ?? 'bg-gray-100 text-gray-500'}`}>
+                {item.priority === 'must_read' ? '必讀' : item.priority === 'high' ? '高' : '一般'}
+              </Badge>
+              <Badge className={`text-xs ${SCOPE_COLORS[item.scopeType] ?? 'bg-gray-100 text-gray-500'}`}>
+                {SCOPE_LABELS[item.scopeType] ?? item.scopeType}
+              </Badge>
+              <Badge className={`text-xs border ${TYPE_COLOR[item.candidateType] ?? 'bg-gray-100 text-gray-500'}`}>
+                {TYPE_LABEL[item.candidateType] ?? item.candidateType}
+              </Badge>
+              {item.needsAck && (
+                <Badge className="text-xs bg-red-100 text-red-700 border-red-200 border">需簽收</Badge>
+              )}
+            </div>
+            <p className="font-semibold text-sm text-gray-800 leading-snug">
+              {item.title ?? '（無標題）'}
+            </p>
+            {item.summary && (
+              <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{item.summary}</p>
+            )}
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span>{facilityLabel}</span>
+              <span>•</span>
+              <span>發布於 {publishedDate}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {confirmUnpublish ? (
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="bg-red-600 hover:bg-red-700 text-white text-xs h-8 px-3"
+                  onClick={() => unpublishMutation.mutate()}
+                  disabled={unpublishMutation.isPending}
+                >
+                  <ArchiveX className="w-3.5 h-3.5 mr-1" />
+                  {unpublishMutation.isPending ? '下架中…' : '確認下架'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs h-8 text-gray-400"
+                  onClick={() => setConfirmUnpublish(false)}
+                >
+                  取消
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs border-red-200 text-red-500 hover:bg-red-50 h-8 px-3"
+                onClick={() => setConfirmUnpublish(true)}
+              >
+                <ArchiveX className="w-3.5 h-3.5 mr-1.5" />撤回下架
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Batch Reclassify Modal ────────────────────────────────────────────────────
 
 type ReclassifyStatus = 'idle' | 'fetching' | 'running' | 'done' | 'error';
@@ -706,7 +830,9 @@ function ReclassifyModal({ onDone }: { onDone: () => void }) {
 const PAGE_SIZE = 20;
 
 export default function AdminAnnouncementsPage() {
+  const [activeTab, setActiveTab] = useState<'pending' | 'published'>('pending');
   const [page, setPage] = useState(1);
+  const [publishedPage, setPublishedPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { data: facilitiesData } = useQuery<FacilitiesListResponse>({
@@ -727,14 +853,41 @@ export default function AdminAnnouncementsPage() {
       return res.json();
     },
     refetchInterval: 30_000,
+    enabled: activeTab === 'pending',
+  });
+
+  const {
+    data: publishedData,
+    isLoading: publishedLoading,
+    isFetching: publishedFetching,
+    refetch: publishedRefetch,
+  } = useQuery<PublishedAnnouncementsResponse>({
+    queryKey: ['/api/published-announcements', publishedPage],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: String(publishedPage),
+        pageSize: String(PAGE_SIZE),
+      });
+      const res = await fetch(`/api/published-announcements?${params}`);
+      return res.json();
+    },
+    enabled: activeTab === 'published',
   });
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const publishedItems = publishedData?.items ?? [];
+  const publishedTotal = publishedData?.total ?? 0;
+  const publishedTotalPages = Math.max(1, Math.ceil(publishedTotal / PAGE_SIZE));
+
   function handleAction() {
     setRefreshKey(k => k + 1);
+  }
+
+  function handlePublishedAction() {
+    queryClient.invalidateQueries({ queryKey: ['/api/published-announcements'] });
   }
 
   return (
@@ -760,10 +913,10 @@ export default function AdminAnnouncementsPage() {
             )}
             <ReclassifyModal onDone={handleAction} />
             <button
-              onClick={() => refetch()}
+              onClick={() => activeTab === 'pending' ? refetch() : publishedRefetch()}
               className="flex items-center gap-1.5 text-blue-200 hover:text-white transition-colors text-xs"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${(isFetching || publishedFetching) ? 'animate-spin' : ''}`} />
               刷新
             </button>
           </div>
@@ -771,6 +924,42 @@ export default function AdminAnnouncementsPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-5 py-6 space-y-6">
+        {/* Tab switcher */}
+        <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'pending'
+                ? 'bg-[#1a3a5c] text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            待審核
+            {total > 0 && (
+              <span className="ml-2 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                {total}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('published')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'published'
+                ? 'bg-[#1a3a5c] text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            已核准（已發布）
+            {publishedTotal > 0 && (
+              <span className="ml-2 bg-emerald-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                {publishedTotal}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {activeTab === 'pending' && (
+          <>
         {/* Stats bar */}
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -860,6 +1049,71 @@ export default function AdminAnnouncementsPage() {
               下一頁
             </Button>
           </div>
+        )}
+          </>
+        )}
+
+        {/* ── 已核准 tab 內容 ─────────────────────────────────────────────── */}
+        {activeTab === 'published' && (
+          <>
+            {/* Loading */}
+            {publishedLoading && (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white rounded-xl border border-gray-100 h-24 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!publishedLoading && publishedItems.length === 0 && (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
+                <ArchiveX className="w-12 h-12 text-gray-200 mx-auto mb-4" />
+                <p className="text-gray-500 font-medium">目前沒有已發布的公告</p>
+                <p className="text-xs text-gray-300 mt-1">審核通過的公告會出現在此</p>
+              </div>
+            )}
+
+            {/* Published list */}
+            {!publishedLoading && publishedItems.length > 0 && (
+              <div className="space-y-3">
+                {publishedItems.map(item => (
+                  <PublishedAnnouncementCard
+                    key={item.id}
+                    item={item}
+                    onAction={handlePublishedAction}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {publishedTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-4 pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={publishedPage <= 1}
+                  onClick={() => setPublishedPage(p => Math.max(1, p - 1))}
+                  className="text-xs h-8"
+                >
+                  上一頁
+                </Button>
+                <span className="text-xs text-gray-400">
+                  第 {publishedPage} 頁 / 共 {publishedTotalPages} 頁（{publishedTotal} 筆）
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={publishedPage >= publishedTotalPages}
+                  onClick={() => setPublishedPage(p => p + 1)}
+                  className="text-xs h-8"
+                >
+                  下一頁
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
