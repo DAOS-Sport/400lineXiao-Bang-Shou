@@ -337,6 +337,27 @@ function CandidateCard({ candidate, onAction }: {
 
 type ReclassifyStatus = 'idle' | 'fetching' | 'running' | 'done' | 'error';
 
+interface BatchReclassifyItemResult {
+  id: number;
+  result: 'updated' | 'skip_ignore' | 'error';
+  error?: string;
+  candidateType?: string;
+}
+
+interface BatchReclassifyResponse {
+  success: boolean;
+  processed: number;
+  updated: number;
+  failed: number;
+  results: BatchReclassifyItemResult[];
+}
+
+interface IdsOnlyResponse {
+  success: boolean;
+  ids: number[];
+  total: number;
+}
+
 interface ReclassifyState {
   total: number;
   processed: number;
@@ -369,7 +390,7 @@ function ReclassifyModal({ onDone }: { onDone: () => void }) {
       const params = new URLSearchParams({ idsOnly: 'true' });
       if (scope === 'pending') params.set('pendingOnly', 'true');
       const r = await fetch(`/api/announcement-candidates?${params}`);
-      const data = await r.json();
+      const data = await r.json() as IdsOnlyResponse;
       const ids: number[] = data.ids ?? [];
 
       if (ids.length === 0) {
@@ -396,14 +417,16 @@ function ReclassifyModal({ onDone }: { onDone: () => void }) {
         const chunk = chunks[ci];
         try {
           const resp = await apiRequest('POST', '/api/announcement-candidates/batch/reclassify', { ids: chunk });
-          const batchData = await resp.json();
-          const bSuccess = batchData.success ?? 0;
+          const batchData = await resp.json() as BatchReclassifyResponse;
+          const bUpdated = batchData.updated ?? 0;
           const bFailed = batchData.failed ?? 0;
-          const bSkipped = (batchData.results ?? []).filter((x: any) => x.result === 'skip_ignore').length;
-          totalSuccess += bSuccess;
+          const bSkipped = (batchData.results ?? []).filter(
+            (x: BatchReclassifyItemResult) => x.result === 'skip_ignore',
+          ).length;
+          totalSuccess += bUpdated;
           totalFailed += bFailed;
           totalSkipped += bSkipped;
-          log.push(`批次 ${ci + 1}/${chunks.length}（${chunk.length} 筆）：✅ ${bSuccess} 更新 / ❌ ${bFailed} 失敗 / ⏭ ${bSkipped} 略過`);
+          log.push(`批次 ${ci + 1}/${chunks.length}（${chunk.length} 筆）：✅ ${bUpdated} 更新 / ❌ ${bFailed} 失敗 / ⏭ ${bSkipped} 略過`);
         } catch (err: any) {
           totalFailed += chunk.length;
           log.push(`批次 ${ci + 1}/${chunks.length}：❌ 連線失敗`);
@@ -478,16 +501,16 @@ function ReclassifyModal({ onDone }: { onDone: () => void }) {
                     </Select>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1.5">每批筆數（Concurrency）</p>
+                    <p className="text-xs font-medium text-gray-500 mb-1.5">每批大小（批次依序處理）</p>
                     <Select value={String(chunkSize)} onValueChange={v => setChunkSize(parseInt(v))}>
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">1 筆（最保守，減少超時）</SelectItem>
+                        <SelectItem value="1">1 筆（最保守，避免後端超時）</SelectItem>
                         <SelectItem value="3">3 筆</SelectItem>
                         <SelectItem value="5">5 筆（建議）</SelectItem>
-                        <SelectItem value="10">10 筆（較快，但耗資源）</SelectItem>
+                        <SelectItem value="10">10 筆（每批次耗時較長）</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

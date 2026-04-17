@@ -417,7 +417,7 @@ announcementRouter.post('/announcement-candidates/batch/reclassify', async (req,
       }
     }
 
-    res.json({ success: true, processed: rows.length, success, failed, results });
+    res.json({ success: true, processed: rows.length, updated: success, failed, results });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
