@@ -10,6 +10,7 @@ import AdminAnnouncementsPage from "@/pages/admin-announcements";
 import AnnouncementsPage from "@/pages/announcements";
 import AnnouncementsSummaryPage from "@/pages/announcements-summary";
 import DashboardPage from "@/pages/dashboard";
+import DutyPage from "@/pages/duty";
 
 function Router() {
   return (
@@ -21,6 +22,8 @@ function Router() {
       <Route path="/admin/announcements" component={AdminAnnouncementsPage} />
       <Route path="/announcements" component={AnnouncementsPage} />
       <Route path="/announcements/summary" component={AnnouncementsSummaryPage} />
+      <Route path="/duty" component={DutyPage} />
+      <Route path="/duty/:groupId" component={DutyPage} />
       <Route component={NotFound} />
     </Switch>
   );

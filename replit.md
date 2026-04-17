@@ -126,9 +126,20 @@ Preferred communication style: Simple, everyday language.
 - **`published_announcements`**：Step 2 已發布公告池，`publishedByUserId` 關聯 `users.id`（非 LINE UID 直連），支援 priority / homeVisibility / effectiveEndAt / needsAck
 
 ### Facility Home API
+- `GET /api/facility-home/list` — 取得所有啟用中的館別清單（供值班首頁選館用）
 - `GET /api/facility-home/:groupId/home` — 館別今日首頁（mustRead 置頂包 + 一般公告包）
 - `GET /api/facility-home/:groupId/announcements` — 公告列表（?q= 關鍵字, ?type=, ?page=, ?limit=）
 - `GET /api/facility-home/:groupId/announcements/:id` — 單筆詳情（含話術建議、壞範例）
+
+### Duty Page（值班首頁）
+- **Route**: `/duty` — 館別選擇頁（列出所有 Tier A/B 館別，點擊進入值班首頁）
+- **Route**: `/duty/:groupId` — 館別值班首頁（已核准公告展示）
+- **Frontend File**: `client/src/pages/duty.tsx`（館別選擇器 + 值班公告板合一）
+- **Layout**: 手機/平板優先，sticky header 顯示館名與更新時間，底部固定導覽列
+- **mustRead 區塊**: 紅色邊框卡片，預設展開，顯示話術建議（綠色）與壞範例（紅色）
+- **一般公告**: 可摺疊卡片，展開後顯示補充資訊
+- **自動刷新**: 每 60 秒背景重新查詢
+- **連結**: 管理後台側邊欄底部有「值班首頁」快捷連結
 
 ### Interview Check Module (面試檢核)
 - **Service File**: `server/services/interviewCheckService.ts`, `server/services/lifeguardLicenseService.ts`, `server/services/cautionListService.ts`

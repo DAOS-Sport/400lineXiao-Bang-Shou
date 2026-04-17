@@ -704,6 +704,8 @@ export default function AdminPage() {
             <Link href="/admin/announcements" className="text-blue-300 hover:text-white transition-colors font-semibold">審核中心</Link>
             <span className="text-blue-400">·</span>
             <Link href="/announcements" className="text-blue-300 hover:text-white transition-colors">公告列表</Link>
+            <span className="text-blue-400">·</span>
+            <Link href="/duty" className="text-blue-300 hover:text-white transition-colors">值班首頁</Link>
           </div>
         </div>
       </aside>

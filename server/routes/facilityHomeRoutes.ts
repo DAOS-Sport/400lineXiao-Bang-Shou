@@ -13,6 +13,30 @@ import { eq, and, or, gte, ilike, isNull, desc, sql } from 'drizzle-orm';
 
 export const facilityHomeRouter = Router();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// GET /api/facility-home/list — 取得所有館別清單（供值班首頁選館）
+// ═══════════════════════════════════════════════════════════════════════════
+facilityHomeRouter.get('/list', async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: facilities.id,
+        lineGroupId: facilities.lineGroupId,
+        name: facilities.name,
+        shortName: facilities.shortName,
+        tier: facilities.tier,
+        isActive: facilities.isActive,
+      })
+      .from(facilities)
+      .where(eq(facilities.isActive, true))
+      .orderBy(facilities.tier, facilities.name);
+    return res.json({ success: true, facilities: rows });
+  } catch (err: any) {
+    console.error('❌ [facility-home] list 查詢失敗:', err?.message);
+    return res.status(500).json({ success: false, error: '伺服器錯誤' });
+  }
+});
+
 // ── 輔助：取得 facility row（驗證 groupId 存在）─────────────────────────────
 
 async function resolveFacility(groupId: string) {
