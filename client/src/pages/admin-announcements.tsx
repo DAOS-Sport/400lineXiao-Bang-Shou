@@ -124,9 +124,15 @@ function CandidateCard({ candidate, onAction, facilities }: {
     if (!initRef.current && facilities.length > 0) {
       initRef.current = true;
       const myFacility = facilities.find(f => f.lineGroupId === candidate.groupId);
-      setSelectedFacilityIds(myFacility ? [myFacility.id] : []);
+      // single scope: pre-select source facility as sensible default
+      // multi_facility scope: start empty to force explicit multi-館 selection
+      if (candidate.scopeType !== 'multi_facility' && myFacility) {
+        setSelectedFacilityIds([myFacility.id]);
+      } else {
+        setSelectedFacilityIds([]);
+      }
     }
-  }, [facilities, candidate.groupId]);
+  }, [facilities, candidate.groupId, candidate.scopeType]);
 
   const approveMutation = useMutation({
     mutationFn: () =>
@@ -305,9 +311,14 @@ function CandidateCard({ candidate, onAction, facilities }: {
           {/* 館別選擇器 — 單館用 Select，多館用 Checkbox 清單 */}
           {scopeType !== 'global' && facilities.length > 0 && (
             <div className="space-y-1.5">
-              <span className="text-xs text-gray-500 font-medium">
-                {scopeType === 'single' ? '指定館別（單選）：' : '指定館別（可多選）：'}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-gray-500 font-medium">
+                  {scopeType === 'single' ? '指定館別（單選）：' : '指定館別（可多選）：'}
+                </span>
+                {selectedFacilityIds.length === 0 && (
+                  <span className="text-xs text-amber-600">⚠ 請至少選擇一個館別，否則將以來源館別為準</span>
+                )}
+              </div>
               {scopeType === 'single' ? (
                 <Select
                   value={String(selectedFacilityIds[0] ?? '')}
