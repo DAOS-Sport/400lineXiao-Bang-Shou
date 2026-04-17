@@ -181,6 +181,7 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
   try {
     const {
       status,
+      pendingOnly,
       candidateType,
       facilityName: facilityQ,
       groupId,
@@ -196,9 +197,12 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
       pageSize = '20',
     } = req.query as Record<string, string>;
 
+    const PENDING_STATUSES_LIST = ['pending_review', 'rule_matched_pending_review', 'ai_pending_review'];
+
     let rows = await db.select().from(announcementCandidates).orderBy(desc(announcementCandidates.detectedAt));
 
-    if (status)        rows = rows.filter(r => r.status === status);
+    if (pendingOnly === 'true') rows = rows.filter(r => PENDING_STATUSES_LIST.includes(r.status));
+    else if (status)            rows = rows.filter(r => r.status === status);
     if (candidateType) rows = rows.filter(r => r.candidateType === candidateType);
     if (facilityQ)     rows = rows.filter(r => r.facilityName?.includes(facilityQ));
     if (groupId)       rows = rows.filter(r => r.groupId === groupId);

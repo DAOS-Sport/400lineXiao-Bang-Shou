@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { KeepAlive } from "@/components/KeepAlive";
 import NotFound from "@/pages/not-found";
 import AdminPage from "@/pages/admin";
+import AdminAnnouncementsPage from "@/pages/admin-announcements";
 import AnnouncementsPage from "@/pages/announcements";
 import AnnouncementsSummaryPage from "@/pages/announcements-summary";
 import DashboardPage from "@/pages/dashboard";
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/admin-dashboard" component={AdminPage} />
+      <Route path="/admin/announcements" component={AdminAnnouncementsPage} />
       <Route path="/announcements" component={AnnouncementsPage} />
       <Route path="/announcements/summary" component={AnnouncementsSummaryPage} />
       <Route component={NotFound} />

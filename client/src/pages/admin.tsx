@@ -182,9 +182,9 @@ function OverviewSection() {
               <Activity className="w-3.5 h-3.5 mr-1.5" />
               {triggerForecast.isPending ? '發送中…' : '觸發天氣預報'}
             </Button>
-            <Link href="/announcements">
+            <Link href="/admin/announcements">
               <Button size="sm" variant="outline" className="border-violet-300 text-violet-600 hover:bg-violet-50 h-9 px-4 text-xs">
-                <Megaphone className="w-3.5 h-3.5 mr-1.5" />前往公告審核
+                <Megaphone className="w-3.5 h-3.5 mr-1.5" />公告審核中心
               </Button>
             </Link>
           </div>
@@ -504,14 +504,19 @@ function AnnouncementsSection() {
         </Card>
       )}
 
-      <div className="flex gap-3">
-        <Link href="/announcements">
+      <div className="flex gap-3 flex-wrap">
+        <Link href="/admin/announcements">
           <Button size="sm" className="bg-[#1a3a5c] hover:bg-[#15304d] text-white h-9 text-xs">
-            <Megaphone className="w-3.5 h-3.5 mr-1.5" />前往審核頁面<ChevronRight className="w-3.5 h-3.5 ml-1" />
+            <Megaphone className="w-3.5 h-3.5 mr-1.5" />公告審核中心<ChevronRight className="w-3.5 h-3.5 ml-1" />
+          </Button>
+        </Link>
+        <Link href="/announcements">
+          <Button size="sm" variant="outline" className="border-[#1a3a5c] text-[#1a3a5c] hover:bg-blue-50 h-9 text-xs">
+            <BarChart3 className="w-3.5 h-3.5 mr-1.5" />候選列表（進階）
           </Button>
         </Link>
         <Link href="/announcements/summary">
-          <Button size="sm" variant="outline" className="border-[#1a3a5c] text-[#1a3a5c] hover:bg-blue-50 h-9 text-xs">
+          <Button size="sm" variant="outline" className="border-gray-300 text-gray-600 hover:bg-gray-50 h-9 text-xs">
             <BarChart3 className="w-3.5 h-3.5 mr-1.5" />統計總覽
           </Button>
         </Link>
@@ -693,10 +698,12 @@ export default function AdminPage() {
             {now.toLocaleTimeString('zh-TW', { hour12: false })}
             <span className="block text-blue-300 text-xs mt-0.5">{now.toLocaleDateString('zh-TW')}</span>
           </div>
-          <div className="flex gap-2 text-xs">
+          <div className="flex gap-2 text-xs flex-wrap">
             <Link href="/" className="text-blue-300 hover:text-white transition-colors">首頁</Link>
             <span className="text-blue-400">·</span>
-            <Link href="/announcements" className="text-blue-300 hover:text-white transition-colors">公告</Link>
+            <Link href="/admin/announcements" className="text-blue-300 hover:text-white transition-colors font-semibold">審核中心</Link>
+            <span className="text-blue-400">·</span>
+            <Link href="/announcements" className="text-blue-300 hover:text-white transition-colors">公告列表</Link>
           </div>
         </div>
       </aside>
