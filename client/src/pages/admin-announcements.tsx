@@ -390,7 +390,9 @@ function ReclassifyModal({ onDone }: { onDone: () => void }) {
       const params = new URLSearchParams({ idsOnly: 'true' });
       if (scope === 'pending') params.set('pendingOnly', 'true');
       const r = await fetch(`/api/announcement-candidates?${params}`);
+      if (!r.ok) throw new Error(`取得 ID 清單失敗（HTTP ${r.status}）`);
       const data = await r.json() as IdsOnlyResponse;
+      if (!data.success) throw new Error('伺服器回傳失敗');
       const ids: number[] = data.ids ?? [];
 
       if (ids.length === 0) {
