@@ -4,7 +4,7 @@ import {
   announcementCandidates, announcementReviews,
   publishedAnnouncements, facilities,
 } from '@shared/schema';
-import { eq, gte, desc, and, inArray, sql, or, isNull } from 'drizzle-orm';
+import { eq, gte, desc, and, inArray, sql } from 'drizzle-orm';
 import { getPipelineStats, incApproval } from '../services/announcement/pipelineStats';
 import { FOCUS_GROUP_IDS, GROUP_FACILITY_MAP } from '../services/announcement/announcementConfig';
 import { classifyAnnouncement } from '../services/announcement/announcementClassifierService';
