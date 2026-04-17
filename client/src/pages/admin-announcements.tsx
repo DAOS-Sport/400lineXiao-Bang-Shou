@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, XCircle, ChevronDown, ChevronUp,
   Megaphone, MessageSquare, AlertTriangle, Users, RefreshCw,
-  Shield, Clock, Star,
+  Shield, Clock, Star, Zap, Loader2,
 } from "lucide-react";
 
 interface CandidateMeta {
@@ -331,6 +333,261 @@ function CandidateCard({ candidate, onAction }: {
   );
 }
 
+// ── Batch Reclassify Modal ────────────────────────────────────────────────────
+
+type ReclassifyStatus = 'idle' | 'fetching' | 'running' | 'done' | 'error';
+
+interface ReclassifyState {
+  total: number;
+  processed: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  log: string[];
+}
+
+const EMPTY_RECLASSIFY: ReclassifyState = {
+  total: 0, processed: 0, successCount: 0, failedCount: 0, skippedCount: 0, log: [],
+};
+
+function ReclassifyModal({ onDone }: { onDone: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<ReclassifyStatus>('idle');
+  const [chunkSize, setChunkSize] = useState(5);
+  const [scope, setScope] = useState<'pending' | 'all'>('pending');
+  const [state, setState] = useState<ReclassifyState>(EMPTY_RECLASSIFY);
+  const abortRef = useRef(false);
+
+  async function startReclassify() {
+    abortRef.current = false;
+    setStatus('fetching');
+    setState(EMPTY_RECLASSIFY);
+
+    try {
+      // Step 1: get IDs
+      const params = new URLSearchParams({ idsOnly: 'true' });
+      if (scope === 'pending') params.set('pendingOnly', 'true');
+      const r = await fetch(`/api/announcement-candidates?${params}`);
+      const data = await r.json();
+      const ids: number[] = data.ids ?? [];
+
+      if (ids.length === 0) {
+        setState(s => ({ ...s, log: ['沒有符合條件的候選'], total: 0 }));
+        setStatus('done');
+        return;
+      }
+
+      // Step 2: chunk processing
+      const chunks: number[][] = [];
+      for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+
+      setState(s => ({ ...s, total: ids.length }));
+      setStatus('running');
+
+      let totalSuccess = 0, totalFailed = 0, totalSkipped = 0;
+      const log: string[] = [];
+
+      for (let ci = 0; ci < chunks.length; ci++) {
+        if (abortRef.current) {
+          log.push('⏹ 已中止');
+          break;
+        }
+        const chunk = chunks[ci];
+        try {
+          const resp = await apiRequest('POST', '/api/announcement-candidates/batch/reclassify', { ids: chunk });
+          const batchData = await resp.json();
+          const bSuccess = batchData.success ?? 0;
+          const bFailed = batchData.failed ?? 0;
+          const bSkipped = (batchData.results ?? []).filter((x: any) => x.result === 'skip_ignore').length;
+          totalSuccess += bSuccess;
+          totalFailed += bFailed;
+          totalSkipped += bSkipped;
+          log.push(`批次 ${ci + 1}/${chunks.length}（${chunk.length} 筆）：✅ ${bSuccess} 更新 / ❌ ${bFailed} 失敗 / ⏭ ${bSkipped} 略過`);
+        } catch (err: any) {
+          totalFailed += chunk.length;
+          log.push(`批次 ${ci + 1}/${chunks.length}：❌ 連線失敗`);
+        }
+
+        setState({
+          total: ids.length,
+          processed: Math.min(ids.length, (ci + 1) * chunkSize),
+          successCount: totalSuccess,
+          failedCount: totalFailed,
+          skippedCount: totalSkipped,
+          log: [...log],
+        });
+      }
+
+      setStatus('done');
+      queryClient.invalidateQueries({ queryKey: ['/api/announcement-candidates'] });
+      onDone();
+      toast({ title: `✅ 重跑完成：${totalSuccess} 筆更新` });
+    } catch (err: any) {
+      setStatus('error');
+      setState(s => ({ ...s, log: [...s.log, `❌ 發生錯誤：${err?.message ?? '未知錯誤'}`] }));
+    }
+  }
+
+  function handleClose() {
+    if (status === 'running' || status === 'fetching') return;
+    setOpen(false);
+    setStatus('idle');
+    setState(EMPTY_RECLASSIFY);
+  }
+
+  const pct = state.total > 0 ? Math.round((state.processed / state.total) * 100) : 0;
+  const isRunning = status === 'fetching' || status === 'running';
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 text-blue-200 hover:text-white transition-colors text-xs"
+      >
+        <Zap className="w-3.5 h-3.5" />重新分類
+      </button>
+
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Zap className="w-4 h-4 text-amber-500" />
+              批量重新分類
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            {status === 'idle' && (
+              <>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  對選定的公告候選重跑升級版 GPT Prompt，補全 5W1H、話術建議與壞範例。
+                  每筆需一次 GPT 呼叫，<strong>數十筆約需數分鐘</strong>，請耐心等待。
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1.5">重跑範圍</p>
+                    <Select value={scope} onValueChange={v => setScope(v as 'pending' | 'all')}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">僅限待審核（推薦）</SelectItem>
+                        <SelectItem value="all">全部候選（含已審核）</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1.5">每批筆數（Concurrency）</p>
+                    <Select value={String(chunkSize)} onValueChange={v => setChunkSize(parseInt(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 筆（最保守，減少超時）</SelectItem>
+                        <SelectItem value="3">3 筆</SelectItem>
+                        <SelectItem value="5">5 筆（建議）</SelectItem>
+                        <SelectItem value="10">10 筆（較快，但耗資源）</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {isRunning && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">
+                    {status === 'fetching'
+                      ? '正在取得候選清單…'
+                      : `已處理 ${state.processed} / ${state.total} 筆`}
+                  </span>
+                  <span className="font-mono text-xs text-gray-400">{pct}%</span>
+                </div>
+                <Progress value={pct} className="h-2.5" />
+                {status === 'running' && (
+                  <div className="text-xs text-gray-500 flex gap-3">
+                    <span>✅ 更新 {state.successCount}</span>
+                    <span>❌ 失敗 {state.failedCount}</span>
+                    <span>⏭ 略過 {state.skippedCount}</span>
+                  </div>
+                )}
+                {state.log.length > 0 && (
+                  <div className="bg-gray-50 border rounded-md p-2 max-h-32 overflow-y-auto space-y-0.5">
+                    {state.log.map((line, i) => (
+                      <p key={i} className="text-xs text-gray-500">{line}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {status === 'done' && (
+              <div className="space-y-3">
+                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3">
+                  <p className="text-sm font-semibold text-emerald-700 mb-1">✅ 重跑完成！</p>
+                  <p className="text-xs text-emerald-600">
+                    共更新 {state.successCount} 筆
+                    {state.failedCount > 0 && `，失敗 ${state.failedCount} 筆`}
+                    {state.skippedCount > 0 && `，略過 ${state.skippedCount} 筆（GPT 判定非公告）`}
+                  </p>
+                </div>
+                {state.log.length > 0 && (
+                  <div className="bg-gray-50 border rounded-md p-2 max-h-32 overflow-y-auto space-y-0.5">
+                    {state.log.map((line, i) => (
+                      <p key={i} className="text-xs text-gray-500">{line}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {status === 'error' && (
+              <div className="rounded-md bg-red-50 border border-red-200 p-3">
+                <p className="text-sm text-red-700">❌ 發生錯誤，請稍後重試</p>
+                {state.log.length > 0 && (
+                  <p className="text-xs text-red-600 mt-1">{state.log[state.log.length - 1]}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            {status === 'idle' && (
+              <>
+                <Button variant="ghost" size="sm" className="text-xs" onClick={handleClose}>
+                  取消
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs"
+                  onClick={startReclassify}
+                >
+                  <Zap className="w-3.5 h-3.5 mr-1.5" />開始重跑
+                </Button>
+              </>
+            )}
+            {isRunning && (
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                進行中，請勿關閉視窗…
+              </div>
+            )}
+            {(status === 'done' || status === 'error') && (
+              <Button size="sm" className="text-xs" onClick={handleClose}>
+                關閉
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 const PAGE_SIZE = 20;
 
 export default function AdminAnnouncementsPage() {
@@ -380,6 +637,7 @@ export default function AdminAnnouncementsPage() {
                 {total} 筆待審
               </Badge>
             )}
+            <ReclassifyModal onDone={handleAction} />
             <button
               onClick={() => refetch()}
               className="flex items-center gap-1.5 text-blue-200 hover:text-white transition-colors text-xs"

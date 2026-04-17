@@ -182,6 +182,7 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
     const {
       status,
       pendingOnly,
+      idsOnly,
       candidateType,
       facilityName: facilityQ,
       groupId,
@@ -231,6 +232,11 @@ announcementRouter.get('/announcement-candidates', async (req, res) => {
       if (Math.abs(confDiff) > 0.001) return confDiff;
       return b.detectedAt.getTime() - a.detectedAt.getTime();
     });
+
+    // idsOnly 模式：僅回傳 ID 清單，供批量重跑使用
+    if (idsOnly === 'true') {
+      return res.json({ success: true, ids: rows.map(r => r.id), total: rows.length });
+    }
 
     const total = rows.length;
     const pg  = Math.max(1, parseInt(page));
