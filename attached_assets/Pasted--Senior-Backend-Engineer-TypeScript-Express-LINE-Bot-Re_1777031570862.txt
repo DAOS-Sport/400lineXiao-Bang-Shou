@@ -1,0 +1,346 @@
+你現在是本專案的 Senior Backend Engineer（TypeScript / Express / LINE Bot / Replit）。
+
+請直接修改現有專案，但注意：這次不是要大重構成完整任務系統，也不是要新增一堆訊號資料表。目標只有一個：
+
+讓「群組重要公告」判斷更準，並開出穩定的 Internal API，給外部駿斯工作台渲染 `/employee` 員工端公告區塊使用。
+
+請不要偏離這個範圍。
+
+# 一、最終目標
+
+完成以下三件事：
+
+1. 修正 LINE 群組訊息判斷邏輯：
+   - 真正重要的公告才進公告候選池 / published announcements
+   - 任務、交接、異常、一般聊天不要混進公告
+
+2. 開出 server-to-server Internal API：
+   - 讓駿斯工作台用 `X-Internal-Token` 讀取公告資料
+   - 所有回應必須是 JSON
+   - 不可以回 HTML / SPA fallback
+
+3. 讓駿斯工作台可以吃到這些資料：
+   - 必讀公告 mustRead
+   - 一般公告 announcements
+   - 場館首頁 home 聚合資料
+
+# 二、不要做的事
+
+這次請不要做以下事情：
+
+- 不要新增完整 Signal Router 大架構
+- 不要新增 tasks / incidents / records 等大量資料表
+- 不要把所有群組訊息都丟進 announcement_candidates
+- 不要讓 GPT 決定是否發布公告
+- 不要改壞原本 LIFF / LINE App 內部使用流程
+- 不要讓 API 回 HTML
+- 不要把 task / handover / incident 當公告
+
+這次只做「重要公告判斷 + 公告資料 Internal API」。
+
+# 三、Internal API 認證
+
+請新增 middleware：`requireInternalToken`
+
+環境變數：
+
+```env
+INTERNAL_API_TOKEN=<至少 32 字元的隨機字串>
+呼叫端可能用以下任一 header：
+
+Authorization: Bearer <token>
+X-Internal-Token: <token>
+X-API-Key: <token>
+只要其中一個正確即可通過。
+
+要求：
+
+沒帶 token：HTTP 401 JSON
+token 錯誤：HTTP 403 JSON
+token 正確：繼續
+不可以回 HTML
+token 比對請用 constant-time compare
+錯誤格式：
+
+{ "message": "MISSING_INTERNAL_TOKEN" }
+{ "message": "INVALID_INTERNAL_TOKEN" }
+四、Group 白名單
+Internal API 只能讀取已知 LINE groupId。
+
+請建立或沿用 groupId 白名單：
+
+const FACILITY_GROUPS = {
+  xinbei_pool: {
+    facilityKey: "xinbei_pool",
+    facilityName: "新北高中游泳池&運動中心",
+    shortName: "新北",
+    groupId: "C66a4b3bb3fbc3dcf52d42626ec512484"
+  },
+  salu_counter: {
+    facilityKey: "salu_counter",
+    facilityName: "駿斯-三蘆區櫃台",
+    shortName: "三蘆",
+    groupId: "Cc2100498c7c5627c1e86e93f7c4eb817"
+  },
+  songshan_pool: {
+    facilityKey: "songshan_pool",
+    facilityName: "松山國小室內溫水游泳池",
+    shortName: "松山",
+    groupId: "C9b3c5dfe2e005adafd2ed914714a1930"
+  },
+  sanmin_pool: {
+    facilityKey: "sanmin_pool",
+    facilityName: "三民高中游泳池",
+    shortName: "三民",
+    groupId: "C2dc6991e51074dd47d5d275d568318f7"
+  }
+}
+若 groupId 不存在：
+
+{ "message": "FACILITY_GROUP_NOT_FOUND" }
+HTTP 404。
+
+五、公告判斷邏輯
+請把目前「重要公告」判斷整理成明確 function，不要散落在 webhook route 裡。
+
+建議新增：
+
+type AnnouncementImportance = "must_read" | "normal" | "not_announcement";
+
+type AnnouncementDecision = {
+  importance: AnnouncementImportance;
+  reasonCodes: string[];
+  confidence: number;
+};
+請實作：
+
+function classifyAnnouncementImportance(input: {
+  text: string;
+  groupId: string;
+  displayName?: string;
+  hasImage?: boolean;
+  hasFile?: boolean;
+  createdAt: Date;
+}): AnnouncementDecision
+must_read 判斷
+符合多個條件才算 must_read，不要單一關鍵字就判定。
+
+must_read 常見特徵：
+
+影響多數員工或整個場館
+有明確時間範圍或截止時間
+有營運流程變更
+有要求大家遵守、確認、回報
+有停課、施工、維修、封閉、改期、公告、通知、即日起、截止、統一、各館、全體、請大家
+範例應判 must_read：
+
+即日起各館櫃台統一使用新版報名表，請大家今天下班前確認。
+4/25 22:00 到 4/26 02:00 會員系統維護，櫃台請先確認報名資料。
+本週六新北高中更衣室施工，當日請引導會員改走側門。
+normal announcement 判斷
+normal announcement 是一般資訊通知，但不一定是必讀。
+
+範例：
+
+夏令營開始報名，現場可以協助家長填表。
+五月課程資訊已更新。
+not_announcement 排除
+以下不要進公告：
+
+任務 / 交辦
+幫我找偉德
+小美你等一下去確認水質
+明天早班記得補收據
+交接
+鑰匙放在抽屜第二層
+今天施工已完成
+晚班記得接著處理
+異常 / 事故
+虎頭蜂有人被叮
+馬達壞掉
+會員受傷
+這些可以先不新增資料表，但至少不要進公告候選池。可以用 log 或 ignored reason 保留。
+
+一般聊天
+收
+好
+OK
+收到
+貼圖
+不要進公告。
+
+六、LLM 使用限制
+如果目前有用 GPT / LLM，請限制用途：
+
+可以用：
+
+產生 title
+產生 summary
+補 recommendedReply
+補 appliesToRoles
+補 priority 建議
+不可以用：
+
+直接發布公告
+覆蓋 rule-based 的 not_announcement 排除
+把任務 / 交接 / 異常強行改成公告
+流程必須是：
+
+rule-based filter
+↓
+明顯不是公告 → 不進 announcement_candidates
+↓
+可能是公告 → 可用 LLM 補 title / summary / priority
+↓
+進 announcement_candidates，等待審核
+七、Internal API 要開出的路由
+請新增以下路由，全部走 requireInternalToken：
+
+1. GET /api/internal/facility-home/:groupId/home
+回傳：
+
+{
+  "facilityKey": "xinbei_pool",
+  "facilityName": "新北高中游泳池&運動中心",
+  "groupId": "C66a4b3bb3fbc3dcf52d42626ec512484",
+  "generatedAt": "2026-04-24T12:00:00+08:00",
+  "mustRead": [],
+  "announcements": [],
+  "handover": [],
+  "todayShift": [],
+  "campaigns": []
+}
+其中：
+
+mustRead 只放真正必讀公告
+announcements 放一般公告
+handover 如果目前沒有資料表，先回 []
+todayShift 如果本專案沒有班表來源，先回 []
+campaigns 沒資料先回 []
+注意：
+即使 handover / todayShift 尚未實作，也要回空陣列，不要 404，不要 500。
+
+2. GET /api/internal/facility-home/:groupId/announcements?page=1&pageSize=20
+回傳：
+
+{
+  "items": [],
+  "page": 1,
+  "pageSize": 20,
+  "total": 0
+}
+每筆公告 shape：
+
+{
+  "id": "ann_001",
+  "title": "會員系統維護通知",
+  "summary": "4/25 22:00 起會員系統維護",
+  "priority": "required",
+  "effectiveRange": "2026-04-25T22:00:00+08:00 - 2026-04-26T02:00:00+08:00",
+  "detectedAt": "2026-04-24T09:00:00+08:00",
+  "groupId": "C66a4b3bb3fbc3dcf52d42626ec512484",
+  "facilityName": "新北高中游泳池&運動中心"
+}
+3. GET /api/internal/facility-home/:groupId/announcements/:id
+回單筆公告 JSON。
+
+4. GET /api/internal/facility-home/:groupId/handover
+目前沒有資料就回：
+
+{ "items": [] }
+5. GET /api/internal/facility-home/:groupId/today-shift
+目前沒有資料就回：
+
+{ "items": [] }
+八、既有公開 API 不要弄壞
+以下目前已可 server-to-server 呼叫，請不要破壞：
+
+GET /api/announcement-dashboard/summary
+GET /api/announcement-candidates
+GET /api/announcement-candidates/:id
+GET /api/announcement-reports/weekly
+但請檢查它們是否都穩定回 JSON。
+
+如果錯誤，也要回 JSON：
+
+{ "message": "..." }
+不要回 HTML。
+
+九、分頁格式統一
+請把 /api/announcement-candidates 和 internal announcements API 的分頁格式文件化。
+
+如果可以改，建議統一成：
+
+{
+  "items": [],
+  "page": 1,
+  "pageSize": 20,
+  "total": 0
+}
+如果不能改既有公開 API，至少 internal API 要用這個格式。
+
+十、Smoke Test
+請最後跑以下測試：
+
+BASE="https://line-bot-assistant-ronchen2.replit.app"
+TOKEN="$INTERNAL_API_TOKEN"
+GROUP_ID="C66a4b3bb3fbc3dcf52d42626ec512484"
+
+# no token should be 401 JSON
+curl -i "$BASE/api/internal/facility-home/$GROUP_ID/home"
+
+# wrong token should be 403 JSON
+curl -i -H "X-Internal-Token: wrong" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/home"
+
+# correct token should be 200 JSON
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/home"
+
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/announcements?page=1&pageSize=20"
+
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/today-shift"
+
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/handover"
+每個成功回應都必須：
+
+HTTP 200
+Content-Type: application/json
+body 是 JSON
+不包含 <!doctype html>
+不需要 LINE user agent
+不需要 LIFF
+不需要 browser cookie
+十一、真實訊息分類測試
+請用下列訊息測分類 function：
+
+應為 must_read / announcement：
+
+即日起各館櫃台統一使用新版報名表，請大家今天下班前確認。
+4/25 22:00 到 4/26 02:00 會員系統維護，櫃台請先確認報名資料。
+本週六新北高中更衣室施工，當日請引導會員改走側門。
+應為 normal announcement：
+
+夏令營開始報名，現場可以協助家長填表。
+應為 not_announcement：
+
+幫我找偉德
+虎頭蜂有人被叮
+鑰匙放在抽屜第二層
+收
+十二、最後輸出
+請最後回報：
+
+修改過的檔案清單
+新增的 internal API routes
+classifyAnnouncementImportance 的規則摘要
+是否有動到既有公開 API
+smoke test 結果
+真實訊息分類測試結果
+給駿斯工作台要設定的值：
+LINE_BOT_BASE_URL
+LINE_BOT_INTERNAL_TOKEN
+internal API 實際 response shape

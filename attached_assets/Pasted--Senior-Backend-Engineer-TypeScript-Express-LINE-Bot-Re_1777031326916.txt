@@ -1,0 +1,268 @@
+你現在是本專案的 Senior Backend Engineer（TypeScript / Express / LINE Bot / Replit）。
+
+請直接修改現有專案：
+👉 https://github.com/DAOS-Sport/400lineXiao-Bang-Shou
+
+目標不是新增功能，而是「升級整個訊息判斷架構 + 開出可用 API」。
+
+---
+
+# 🎯 一、最終目標（不可偏離）
+
+你要完成兩件事：
+
+## 1️⃣ 重構 LINE 訊息處理邏輯（核心）
+
+把目前「交辦 trigger」升級為：
+
+👉 **Signal Router（訊號分類引擎）**
+
+## 2️⃣ 開出 Internal API（給儀表板用）
+
+讓前端可以吃：
+
+* 公告
+* 任務
+* 交接
+* 異常
+* 今日班務
+
+---
+
+# ⚠️ 二、現在架構問題（你要修）
+
+目前系統：
+
+```ts
+if (message.includes("交辦")) {
+  triggerTask()
+}
+```
+
+這是錯的。
+
+👉 現在缺的是：
+
+```ts
+message → 判斷這是什麼「訊號類型」 → 再決定要不要做事
+```
+
+---
+
+# 🧠 三、你必須新增：Signal Router（核心）
+
+請新增：
+
+```ts
+type SignalType =
+  | "announcement"
+  | "task"
+  | "handover"
+  | "incident"
+  | "record"
+  | "ignore"
+```
+
+---
+
+## 🔥 Router function（必實作）
+
+```ts
+function classifySignal(message: ParsedMessage): SignalType
+```
+
+---
+
+## 判斷規則（先 rule，後 AI）
+
+### announcement
+
+* 有「請大家」「各館」「統一」「即日起」「截止」
+* 有時間範圍
+* 有群體影響
+
+### task
+
+* 有動作詞（幫我、請、記得、去做）
+* 有 @人 或明確對象
+* 有立即性
+
+### handover
+
+* 有「已完成」「放在哪」「已處理」
+* 與班別/交接有關
+
+### incident
+
+* 危安 / 設備 / 異常
+* 關鍵詞：壞掉、受傷、問題、無法、故障
+
+### record
+
+* 圖片
+* 報表
+* PH / CL / 稅單 / 匯款
+
+### ignore
+
+* 收、好、👍、貼圖
+
+---
+
+# 🧩 四、必做：Message Stitching
+
+請實作：
+
+```ts
+function stitchMessages(messages: RawMessage[]): StitchedMessage[]
+```
+
+規則：
+
+* 同一 user
+* 同一 group
+* 180 秒內
+* 合併為一段
+
+---
+
+# 🧱 五、資料流（你要改成這樣）
+
+```text
+LINE webhook
+↓
+save raw message
+↓
+stitch messages
+↓
+classifySignal（🔥新增）
+↓
+switch(signalType)
+    ├── announcement → announcement_candidates
+    ├── task → task_queue
+    ├── handover → handover_queue
+    ├── incident → incident_queue
+    ├── record → record_archive
+    └── ignore → drop
+```
+
+---
+
+# 🗄️ 六、資料表（請新增）
+
+## announcement_candidates
+
+## tasks
+
+## handovers
+
+## incidents
+
+## records
+
+---
+
+# 🧠 七、LLM（只用在灰區）
+
+只能做：
+
+* 補 summary
+* 補 title
+* 補 priority
+* 補 roles
+
+不可：
+
+* 決定發布
+* 直接寫入公告
+
+---
+
+# 🔐 八、Internal API（一定要做）
+
+全部 JSON ONLY
+
+---
+
+## 1️⃣ GET /api/internal/home/:groupId
+
+```json
+{
+  "facilityName": "",
+  "mustRead": [],
+  "announcements": [],
+  "tasks": [],
+  "handover": [],
+  "incidents": [],
+  "todayShift": []
+}
+```
+
+---
+
+## 2️⃣ GET /api/internal/announcements
+
+## 3️⃣ GET /api/internal/tasks
+
+## 4️⃣ GET /api/internal/handover
+
+## 5️⃣ GET /api/internal/incidents
+
+---
+
+# 🚫 九、嚴格禁止
+
+不要做這些：
+
+* ❌ 把 task 當公告
+* ❌ 把 incident 當公告
+* ❌ 所有東西丟進 announcement_candidates
+* ❌ 不做 stitching
+* ❌ 用 keyword 越寫越多
+* ❌ 讓 GPT 決定一切
+* ❌ 回 HTML
+
+---
+
+# 📊 十、驗收標準（必須做到）
+
+## 功能驗證
+
+* 任務不會跑到公告
+* 異常不會被忽略
+* 交接不會消失
+* 公告只剩真正公告
+
+## API 驗證
+
+* 全部 JSON
+* 401 / 404 正確
+* groupId 正確對應
+
+## 真實對話測試
+
+用以下案例驗證：
+
+* 「今天要施工更衣室」→ handover
+* 「虎頭蜂有人被叮」→ incident
+* 「投票開始」→ announcement
+* 「幫我找偉德」→ task
+
+---
+
+# 🎯 十一、你最後要輸出
+
+1. 修改後的檔案清單
+2. 新增的 router / stitching code
+3. DB schema
+4. API route code
+5. 測試結果
+6. 邏輯說明
+
+---
+
+# ⚡ 最重要一句
+
+👉 這不是加功能，是把 bot 升級成「營運訊號系統」
+
+直接改 code，不要只給我設計。

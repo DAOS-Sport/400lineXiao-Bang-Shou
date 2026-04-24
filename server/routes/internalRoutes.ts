@@ -2,13 +2,18 @@
  * 駿斯工作台 BFF 內部 API
  *
  * 專供 server-to-server 呼叫，不需要 LINE session / LIFF。
- * 認證：INTERNAL_API_TOKEN（constant-time compare）
+ * 永遠只回 JSON，不回 HTML。
+ *
+ * 認證：INTERNAL_API_TOKEN 環境變數（constant-time compare）
  * 接受以下任一 header：
  *   Authorization: Bearer <token>
  *   X-Internal-Token: <token>
  *   X-API-Key: <token>
  *
- * 所有路由只回 JSON，永遠不會回 HTML。
+ * 錯誤格式：
+ *   無 token  → 401 { "message": "MISSING_INTERNAL_TOKEN" }
+ *   錯 token  → 403 { "message": "INVALID_INTERNAL_TOKEN" }
+ *   找不到館別 → 404 { "message": "FACILITY_GROUP_NOT_FOUND" }
  *
  * 路由清單：
  *   GET /api/internal/facility-home/:groupId/home
@@ -26,17 +31,31 @@ import { eq, and, or, gte, ilike, isNull, desc, sql } from 'drizzle-orm';
 
 export const internalRouter = Router();
 
+// ── facilityKey 對照表（groupId → facilityKey）────────────────────────────────
+
+const GROUP_FACILITY_KEYS: Record<string, string> = {
+  C66a4b3bb3fbc3dcf52d42626ec512484: 'xinbei_pool',
+  C6f6f163895d5b528a6ab044015e1a37b: 'sanchong_pool',
+  C2dc6991e51074dd47d5d275d568318f7: 'sanmin_pool',
+  C9b3c5dfe2e005adafd2ed914714a1930: 'songshan_pool',
+  C50c2a9623a78cc5f5e9f39557e3abfe6: 'zhuke_outdoor_pool',
+  C360be1fe6ea876a4df3ca0497bca4e3b: 'zhuke_sports',
+  C2dd9a5fce7c276f2cbfdd02c2342661c: 'sanmin_shift',
+  Ce936c6bebb59b8b5683ffbcf97bf20de: 'auth_group',
+  Cc2100498c7c5627c1e86e93f7c4eb817: 'salu_counter',
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 認證中介層
 // ═══════════════════════════════════════════════════════════════════════════
 
 function extractToken(req: Request): string | null {
   const authHeader = req.headers['authorization'];
-  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
+  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
   const xInternal = req.headers['x-internal-token'];
-  if (xInternal) return Array.isArray(xInternal) ? xInternal[0] : xInternal;
+  if (xInternal) return Array.isArray(xInternal) ? xInternal[0] : xInternal as string;
   const xApiKey = req.headers['x-api-key'];
-  if (xApiKey) return Array.isArray(xApiKey) ? xApiKey[0] : xApiKey;
+  if (xApiKey) return Array.isArray(xApiKey) ? xApiKey[0] : xApiKey as string;
   return null;
 }
 
@@ -45,7 +64,6 @@ function constantTimeEqual(a: string, b: string): boolean {
     const bufA = Buffer.from(a);
     const bufB = Buffer.from(b);
     if (bufA.length !== bufB.length) {
-      // still run timingSafeEqual to avoid timing leakage
       crypto.timingSafeEqual(Buffer.alloc(bufA.length), Buffer.alloc(bufA.length));
       return false;
     }
@@ -55,19 +73,22 @@ function constantTimeEqual(a: string, b: string): boolean {
   }
 }
 
-function internalAuth(req: Request, res: Response, next: NextFunction) {
+function requireInternalToken(req: Request, res: Response, next: NextFunction) {
   const expectedToken = process.env.INTERNAL_API_TOKEN;
   if (!expectedToken) {
-    return res.status(503).json({ message: 'internal token not configured' });
+    return res.status(503).json({ message: 'INTERNAL_TOKEN_NOT_CONFIGURED' });
   }
   const token = extractToken(req);
-  if (!token || !constantTimeEqual(token, expectedToken)) {
-    return res.status(401).json({ message: 'unauthorized' });
+  if (!token) {
+    return res.status(401).json({ message: 'MISSING_INTERNAL_TOKEN' });
+  }
+  if (!constantTimeEqual(token, expectedToken)) {
+    return res.status(403).json({ message: 'INVALID_INTERNAL_TOKEN' });
   }
   return next();
 }
 
-internalRouter.use(internalAuth);
+internalRouter.use(requireInternalToken);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 輔助函式
@@ -102,43 +123,45 @@ function buildActiveFilter(facility: { id: number; lineGroupId: string | null })
   );
 }
 
-/** 把 DB 行轉成 BFF 友好的扁平格式 */
-function formatAnnouncement(row: typeof publishedAnnouncements.$inferSelect) {
-  const isMustRead = row.priority === 'critical' || row.priority === 'high' || row.homeVisibility === 'pinned';
+/** 格式化公告為 BFF 友好的扁平結構 */
+function formatAnnouncement(row: typeof publishedAnnouncements.$inferSelect, facilityName?: string) {
+  const isMustRead =
+    row.priority === 'critical' || row.priority === 'high' || row.homeVisibility === 'pinned';
 
   let effectiveRange: string | null = null;
   if (row.effectiveStartAt || row.effectiveEndAt) {
     const start = row.effectiveStartAt ? new Date(row.effectiveStartAt).toISOString() : null;
-    const end = row.effectiveEndAt ? new Date(row.effectiveEndAt).toISOString() : null;
+    const end   = row.effectiveEndAt   ? new Date(row.effectiveEndAt).toISOString()   : null;
     effectiveRange = [start, end].filter(Boolean).join(' - ');
   }
 
   return {
-    id: row.id,
-    title: row.title,
-    summary: row.summary,
-    body: row.body ?? null,
-    priority: row.priority,
-    candidateType: row.candidateType,
-    scopeType: row.scopeType,
-    homeVisibility: row.homeVisibility,
-    needsAck: row.needsAck,
+    id:                 row.id,
+    title:              row.title,
+    summary:            row.summary,
+    body:               row.body ?? null,
+    priority:           row.priority,
+    candidateType:      row.candidateType,
+    scopeType:          row.scopeType,
+    homeVisibility:     row.homeVisibility,
+    needsAck:           row.needsAck,
     isMustRead,
-    recommendedAction: row.recommendedAction ?? null,
-    recommendedReply: row.recommendedReply ?? null,
-    badExample: row.badExample ?? null,
-    appliesToRoles: (row.appliesToRolesJson as string[]) ?? [],
+    recommendedAction:  row.recommendedAction  ?? null,
+    recommendedReply:   row.recommendedReply   ?? null,
+    badExample:         row.badExample         ?? null,
+    appliesToRoles:     (row.appliesToRolesJson as string[]) ?? [],
     effectiveRange,
-    effectiveStartAt: row.effectiveStartAt ? new Date(row.effectiveStartAt).toISOString() : null,
-    effectiveEndAt: row.effectiveEndAt ? new Date(row.effectiveEndAt).toISOString() : null,
-    publishedAt: new Date(row.publishedAt).toISOString(),
-    facilityLineGroupId: row.facilityLineGroupId ?? null,
+    effectiveStartAt:   row.effectiveStartAt ? new Date(row.effectiveStartAt).toISOString() : null,
+    effectiveEndAt:     row.effectiveEndAt   ? new Date(row.effectiveEndAt).toISOString()   : null,
+    detectedAt:         new Date(row.publishedAt).toISOString(),
+    publishedAt:        new Date(row.publishedAt).toISOString(),
+    groupId:            row.facilityLineGroupId ?? null,
+    facilityName:       facilityName ?? null,
   };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/internal/facility-home/:groupId/home
-// BFF 整合首頁：公告（mustRead/normal 分區）+ handover + todayShift + campaigns
 // ═══════════════════════════════════════════════════════════════════════════
 
 internalRouter.get('/facility-home/:groupId/home', async (req, res) => {
@@ -148,16 +171,18 @@ internalRouter.get('/facility-home/:groupId/home', async (req, res) => {
   try {
     facility = await resolveFacility(groupId);
   } catch (err: any) {
-    console.error('❌ [internal/home] resolveFacility 失敗:', err?.message);
-    return res.status(500).json({ message: '伺服器錯誤' });
+    console.error('❌ [internal/home] DB error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
-
   if (!facility) {
-    return res.status(404).json({ message: `找不到對應館別：${groupId}` });
+    return res.status(404).json({ message: 'FACILITY_GROUP_NOT_FOUND' });
   }
 
+  const facilityKey = GROUP_FACILITY_KEYS[groupId] ?? groupId.substring(0, 12).toLowerCase();
+
+  let rows: typeof publishedAnnouncements.$inferSelect[] = [];
   try {
-    const rows = await db
+    rows = await db
       .select()
       .from(publishedAnnouncements)
       .where(buildActiveFilter(facility))
@@ -166,28 +191,28 @@ internalRouter.get('/facility-home/:groupId/home', async (req, res) => {
         desc(sql`CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`),
         desc(publishedAnnouncements.publishedAt),
       );
-
-    const formatted = rows.map(formatAnnouncement);
-    const mustRead = formatted.filter(a => a.isMustRead);
-    const normal = formatted.filter(a => !a.isMustRead);
-    const campaigns = formatted.filter(a => a.candidateType === 'campaign');
-
-    return res.json({
-      facilityName: facility.name,
-      facilityShortName: facility.shortName,
-      groupId: facility.lineGroupId,
-      mustRead,
-      announcements: normal,
-      campaigns,
-      handover: [],
-      todayShift: [],
-      total: rows.length,
-      generatedAt: new Date().toISOString(),
-    });
   } catch (err: any) {
-    console.error('❌ [internal/home] 查詢失敗:', err?.message);
-    return res.status(500).json({ message: '伺服器錯誤' });
+    console.error('❌ [internal/home] query error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
+
+  const formatted   = rows.map(r => formatAnnouncement(r, facility!.name));
+  const mustRead    = formatted.filter(a => a.isMustRead);
+  const announcements = formatted.filter(a => !a.isMustRead && a.candidateType !== 'campaign');
+  const campaigns   = formatted.filter(a => a.candidateType === 'campaign');
+
+  return res.json({
+    facilityKey,
+    facilityName:      facility.name,
+    facilityShortName: facility.shortName,
+    groupId:           facility.lineGroupId,
+    generatedAt:       new Date().toISOString(),
+    mustRead,
+    announcements,
+    campaigns,
+    handover:   [],
+    todayShift: [],
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -197,53 +222,46 @@ internalRouter.get('/facility-home/:groupId/home', async (req, res) => {
 
 internalRouter.get('/facility-home/:groupId/announcements', async (req, res) => {
   const { groupId } = req.params;
-  const q = (req.query.q as string | undefined)?.trim() || '';
-  const type = req.query.type as string | undefined;
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  // BFF 用 pageSize；向後相容 limit
+  const q        = (req.query.q as string | undefined)?.trim() || '';
+  const type     = req.query.type as string | undefined;
+  const page     = Math.max(1, parseInt(req.query.page as string) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize ?? req.query.limit) as string) || 20));
-  const offset = (page - 1) * pageSize;
+  const offset   = (page - 1) * pageSize;
 
   let facility;
   try {
     facility = await resolveFacility(groupId);
-  } catch (err: any) {
-    console.error('❌ [internal/announcements] resolveFacility 失敗:', err?.message);
-    return res.status(500).json({ message: '伺服器錯誤' });
+  } catch {
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
-
   if (!facility) {
-    return res.status(404).json({ message: `找不到對應館別：${groupId}` });
+    return res.status(404).json({ message: 'FACILITY_GROUP_NOT_FOUND' });
   }
 
   try {
-    const conditions: ReturnType<typeof and>[] = [buildActiveFilter(facility) as any];
+    const conditions: any[] = [buildActiveFilter(facility)];
 
     if (q) {
       conditions.push(
         or(
-          ilike(publishedAnnouncements.title, `%${q}%`),
+          ilike(publishedAnnouncements.title,   `%${q}%`),
           ilike(publishedAnnouncements.summary, `%${q}%`),
-        ) as any,
+        ),
       );
     }
-
     if (type && ['rule', 'notice', 'campaign', 'discount', 'script'].includes(type)) {
-      conditions.push(eq(publishedAnnouncements.candidateType, type) as any);
+      conditions.push(eq(publishedAnnouncements.candidateType, type));
     }
 
     const where = and(...conditions);
 
     const [rows, countRows] = await Promise.all([
-      db
-        .select()
-        .from(publishedAnnouncements)
+      db.select().from(publishedAnnouncements)
         .where(where)
         .orderBy(desc(publishedAnnouncements.publishedAt))
         .limit(pageSize)
         .offset(offset),
-      db
-        .select({ count: sql<number>`COUNT(*)` })
+      db.select({ count: sql<number>`COUNT(*)` })
         .from(publishedAnnouncements)
         .where(where),
     ]);
@@ -251,18 +269,14 @@ internalRouter.get('/facility-home/:groupId/announcements', async (req, res) => 
     const total = Number(countRows[0]?.count ?? 0);
 
     return res.json({
-      items: rows.map(formatAnnouncement),
-      pagination: {
-        page,
-        pageSize,
-        total,
-        totalPages: Math.ceil(total / pageSize),
-        hasNext: page * pageSize < total,
-      },
+      items:    rows.map(r => formatAnnouncement(r, facility!.name)),
+      page,
+      pageSize,
+      total,
     });
   } catch (err: any) {
-    console.error('❌ [internal/announcements] 查詢失敗:', err?.message);
-    return res.status(500).json({ message: '伺服器錯誤' });
+    console.error('❌ [internal/announcements] query error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
 });
 
@@ -274,19 +288,17 @@ internalRouter.get('/facility-home/:groupId/announcements/:id', async (req, res)
   const { groupId, id } = req.params;
   const annId = parseInt(id);
   if (isNaN(annId)) {
-    return res.status(400).json({ message: 'id 格式錯誤，需為整數' });
+    return res.status(400).json({ message: 'INVALID_ANNOUNCEMENT_ID' });
   }
 
   let facility;
   try {
     facility = await resolveFacility(groupId);
-  } catch (err: any) {
-    console.error('❌ [internal/announcements/:id] resolveFacility 失敗:', err?.message);
-    return res.status(500).json({ message: '伺服器錯誤' });
+  } catch {
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
-
   if (!facility) {
-    return res.status(404).json({ message: `找不到對應館別：${groupId}` });
+    return res.status(404).json({ message: 'FACILITY_GROUP_NOT_FOUND' });
   }
 
   try {
@@ -297,19 +309,19 @@ internalRouter.get('/facility-home/:groupId/announcements/:id', async (req, res)
       .limit(1);
 
     if (!rows[0]) {
-      return res.status(404).json({ message: '公告不存在或不屬於此館別' });
+      return res.status(404).json({ message: 'ANNOUNCEMENT_NOT_FOUND' });
     }
 
-    return res.json({ data: formatAnnouncement(rows[0]) });
+    return res.json({ data: formatAnnouncement(rows[0], facility.name) });
   } catch (err: any) {
-    console.error('❌ [internal/announcements/:id] 查詢失敗:', err?.message);
-    return res.status(500).json({ message: '伺服器錯誤' });
+    console.error('❌ [internal/announcements/:id] query error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/internal/facility-home/:groupId/today-shift
-// 今日班表（目前尚未建表，回空陣列）
+// 班表尚未建置，回 { "items": [] }
 // ═══════════════════════════════════════════════════════════════════════════
 
 internalRouter.get('/facility-home/:groupId/today-shift', async (req, res) => {
@@ -318,26 +330,19 @@ internalRouter.get('/facility-home/:groupId/today-shift', async (req, res) => {
   let facility;
   try {
     facility = await resolveFacility(groupId);
-  } catch (err: any) {
-    return res.status(500).json({ message: '伺服器錯誤' });
+  } catch {
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
-
   if (!facility) {
-    return res.status(404).json({ message: `找不到對應館別：${groupId}` });
+    return res.status(404).json({ message: 'FACILITY_GROUP_NOT_FOUND' });
   }
 
-  return res.json({
-    groupId: facility.lineGroupId,
-    facilityName: facility.name,
-    todayShift: [],
-    note: 'today-shift 功能尚未建置，回傳空陣列',
-    generatedAt: new Date().toISOString(),
-  });
+  return res.json({ items: [] });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/internal/facility-home/:groupId/handover
-// 交接事項（目前尚未建表，回空陣列）
+// 交接尚未建置，回 { "items": [] }
 // ═══════════════════════════════════════════════════════════════════════════
 
 internalRouter.get('/facility-home/:groupId/handover', async (req, res) => {
@@ -346,19 +351,12 @@ internalRouter.get('/facility-home/:groupId/handover', async (req, res) => {
   let facility;
   try {
     facility = await resolveFacility(groupId);
-  } catch (err: any) {
-    return res.status(500).json({ message: '伺服器錯誤' });
+  } catch {
+    return res.status(500).json({ message: 'SERVER_ERROR' });
   }
-
   if (!facility) {
-    return res.status(404).json({ message: `找不到對應館別：${groupId}` });
+    return res.status(404).json({ message: 'FACILITY_GROUP_NOT_FOUND' });
   }
 
-  return res.json({
-    groupId: facility.lineGroupId,
-    facilityName: facility.name,
-    handover: [],
-    note: 'handover 功能尚未建置，回傳空陣列',
-    generatedAt: new Date().toISOString(),
-  });
+  return res.json({ items: [] });
 });

@@ -1,17 +1,19 @@
 /**
  * 公告歸納進入點 — 5 層商用管線
  *
- * Layer 0  hardExclude         → 丟棄
- * Layer 1  scoreMessage        → 規則評分
- * Layer 2  makeDecision        → drop / rule_matched / needs_ai_review
- * Layer 3  classifyAnnouncement → 僅灰區訊息才送 AI（內含 Pass 1 gate）
- * Layer 4  persist             → 寫入 DB（含去重）
+ * Layer 0   hardExclude                  → 丟棄（短回覆/表情/指令）
+ * Layer 0.5 classifyAnnouncementImportance → 排除任務/交接/異常
+ * Layer 1   scoreMessage                 → 規則評分
+ * Layer 2   makeDecision                 → drop / rule_matched / needs_ai_review
+ * Layer 3   classifyAnnouncement         → 僅灰區訊息才送 AI（含 Pass 1 gate）
+ * Layer 4   persist                      → 寫入 DB（含去重）
  */
 
 import { db } from '../../db';
 import { announcementCandidates } from '@shared/schema';
 import { hardExclude, scoreMessage, makeDecision, type SpeakerType } from './announcementRuleEngine';
 import { classifyAnnouncement } from './announcementClassifierService';
+import { classifyAnnouncementImportance } from './announcementImportanceClassifier';
 import { storage } from '../../storage';
 import {
   incReceived, incHardExcluded, incRuleEngine,
@@ -48,6 +50,18 @@ export async function ingestMessageForAnnouncement(params: {
   const excl = hardExclude(text);
   if (excl.excluded) {
     incHardExcluded();
+    return;
+  }
+
+  // Layer 0.5: 公告重要性預分類 — 排除任務/交接/異常
+  const importanceDecision = classifyAnnouncementImportance({
+    text,
+    groupId,
+    displayName: displayName ?? undefined,
+    createdAt: new Date(),
+  });
+  if (importanceDecision.importance === 'not_announcement') {
+    console.log(`⏭️ [公告] not_announcement (${importanceDecision.reasonCodes.join(',')}) "${text.substring(0, 40)}"`);
     return;
   }
 
