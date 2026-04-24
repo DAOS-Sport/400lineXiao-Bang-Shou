@@ -20,6 +20,7 @@ import { getOneMonthRange } from "./utils/time";
 import dayjs from "dayjs";
 import { announcementRouter } from "./routes/announcementRoutes";
 import { facilityHomeRouter } from "./routes/facilityHomeRoutes";
+import { internalRouter } from "./routes/internalRoutes";
 import { ensureFacilitiesSeeded } from "./services/facilitySeeder";
 import { ingestMessageForAnnouncement } from "./services/announcement/announcementIngestService";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
@@ -925,6 +926,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ========== 館別首頁 API ==========
   app.use('/api/facility-home', facilityHomeRouter);
+
+  // ========== 駿斯工作台 BFF 內部 API ==========
+  app.use('/api/internal', internalRouter);
 
   // 面試授權用戶列表
   app.get('/api/admin/interview-users', async (req, res) => {

@@ -125,6 +125,17 @@ Preferred communication style: Simple, everyday language.
 - **`facilities`**：館別主表，`lineGroupId` 對應 LINE 工作群，自動 seeded at startup（`server/services/facilitySeeder.ts`）
 - **`published_announcements`**：Step 2 已發布公告池，`publishedByUserId` 關聯 `users.id`（非 LINE UID 直連），支援 priority / homeVisibility / effectiveEndAt / needsAck
 
+### Internal API（駿斯工作台 BFF 專用）
+- **Router**: `server/routes/internalRoutes.ts`，掛載於 `/api/internal`
+- **Auth**: `INTERNAL_API_TOKEN` 環境變數，接受 `Authorization: Bearer <token>`、`X-Internal-Token: <token>`、`X-API-Key: <token>`（constant-time compare）
+- **只回 JSON**，不做 LIFF / LINE session 檢查，不做 CORS，適合 server-to-server 呼叫
+- `GET /api/internal/facility-home/:groupId/home` — 整合首頁（mustRead + announcements + campaigns + todayShift[] + handover[]）
+- `GET /api/internal/facility-home/:groupId/announcements` — 公告列表（支援 ?page=&pageSize=&q=&type=）
+- `GET /api/internal/facility-home/:groupId/announcements/:id` — 單筆公告詳情
+- `GET /api/internal/facility-home/:groupId/today-shift` — 班表（stub，目前回空陣列）
+- `GET /api/internal/facility-home/:groupId/handover` — 交接事項（stub，目前回空陣列）
+- 錯誤格式統一為 `{ "message": "..." }`；401 / 404 / 500 皆為 JSON
+
 ### Facility Home API
 - `GET /api/facility-home/list` — 取得所有啟用中的館別清單（供值班首頁選館用）
 - `GET /api/facility-home/:groupId/home` — 館別今日首頁（mustRead 置頂包 + 一般公告包）
