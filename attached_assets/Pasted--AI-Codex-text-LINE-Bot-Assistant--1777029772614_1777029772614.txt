@@ -1,0 +1,233 @@
+這份可以直接貼給「整理群組重要公告」專案的 AI / Codex，用來做完整診斷與修復。
+
+```text
+你現在要檢查「整理群組重要公告 / LINE Bot Assistant」專案，目標是讓外部駿斯工作台 `400qian-duan-yi-biao-ban` 可以穩定讀取公告與場館首頁資料。
+
+請先不要大改架構，先做診斷、列問題、再小範圍修復。
+
+背景：
+駿斯工作台會從 Node BFF 以 server-to-server 方式呼叫本專案。呼叫端不是 LINE LIFF、不是瀏覽器、沒有 LINE user agent、沒有 LINE session cookie。它會帶內部 token header。
+
+呼叫端可能帶其中任一 header：
+- `Authorization: Bearer <token>`
+- `X-Internal-Token: <token>`
+- `X-API-Key: <token>`
+
+請使用環境變數：
+- `INTERNAL_API_TOKEN`
+
+任務一：完整盤點 API 現況
+
+請列出目前所有與公告、候選池、場館首頁、交接、今日班表有關的 API，包括但不限於：
+
+- `/api/announcement-dashboard/summary`
+- `/api/announcement-candidates`
+- `/api/announcement-candidates/:id`
+- `/api/announcement-candidates/:id/approve`
+- `/api/announcement-candidates/:id/reject`
+- `/api/announcement-reports/weekly`
+- `/api/facility-home/:groupId/home`
+- `/api/facility-home/:groupId/announcements`
+- `/api/facility-home/:groupId/announcements/:id`
+- `/api/facility-home/:groupId/today-shift`
+- `/api/facility-home/:groupId/handover`
+- `/api/facility-home/:groupId/announcements/:id/ack`
+
+對每個 API 請說明：
+- method
+- 是否需要 LIFF / LINE user / session
+- 是否目前會回 JSON
+- 是否可能回 HTML fallback
+- 是否可以給 server-to-server 呼叫
+- response shape 範例
+- 目前資料來源是哪裡
+- 目前錯誤格式是什麼
+
+任務二：找出目前小問題
+
+請特別檢查這些問題：
+
+1. API 回傳 HTML 而不是 JSON
+   - 尤其是 `/api/facility-home/:groupId/*`
+   - server-to-server fetch 不應拿到 SPA fallback HTML
+
+2. 403 / 401 錯誤格式不一致
+   - API route 請永遠回 JSON：
+     `{ "message": "unauthorized" }`
+   - 不要回 HTML
+
+3. groupId / facilityKey 混用
+   - `/facility-home/:groupId/*` 必須吃 LINE groupId
+   - 不要把 facilityKey 當 groupId
+   - 請列出目前支援的 groupId 白名單
+
+4. 公告 candidate shape 是否穩定
+   請確認每筆至少有：
+   - `id`
+   - `status`
+   - `candidateType`
+   - `title`
+   - `summary`
+   - `originalText`
+   - `confidence`
+   - `reasoningTags`
+   - `recommendedAction`
+   - `recommendedReply`
+   - `appliesToRoles`
+   - `scopeType`
+   - `facilityName`
+   - `groupId`
+   - `displayName`
+   - `userId`
+   - `isFromSupervisor`
+   - `detectedAt`
+   - `sourceMessageId`
+
+5. 分頁格式是否穩定
+   `/api/announcement-candidates?page=1&pageSize=100`
+   請確認回傳格式到底是：
+   - 直接 array
+   - `{ items, total }`
+   - `{ data, pagination }`
+   並統一或文件化。
+
+6. 日期欄位是否都是 ISO string
+   - `startAt`
+   - `endAt`
+   - `detectedAt`
+   - ack 時間
+
+7. 重要公告與一般公告分類邏輯
+   請檢查：
+   - `priority`
+   - `candidateType`
+   - `recommendedAction`
+   - `appliesToRoles`
+   - `scopeType`
+   是否足夠讓外部工作台判斷「必讀 / 提醒 / 一般」。
+
+8. CORS / preflight
+   雖然 server-to-server 不需要 CORS，但若瀏覽器測試會打，請確認 OPTIONS 不會誤回 HTML。
+
+任務三：新增 server-to-server internal API
+
+不要破壞原本 LIFF API。請新增 internal API，專門給駿斯工作台 BFF 使用。
+
+認證：
+使用 `INTERNAL_API_TOKEN`。
+接受以下 header：
+- `Authorization: Bearer <token>`
+- `X-Internal-Token: <token>`
+- `X-API-Key: <token>`
+
+token 比對請用 constant-time compare。
+沒有 token 或錯 token：
+```json
+{ "message": "unauthorized" }
+```
+HTTP status：401。
+
+新增 API：
+
+1. `GET /api/internal/facility-home/:groupId/home`
+2. `GET /api/internal/facility-home/:groupId/announcements?page=&pageSize=`
+3. `GET /api/internal/facility-home/:groupId/announcements/:id`
+4. `GET /api/internal/facility-home/:groupId/today-shift`
+5. `GET /api/internal/facility-home/:groupId/handover`
+
+可選：
+6. `POST /api/internal/facility-home/:groupId/announcements/:id/ack`
+
+要求：
+- 只回 JSON
+- 不做 LIFF / LINE user-agent 檢查
+- 不需要 LINE session cookie
+- 仍然要檢查 groupId 是否在白名單
+- 不回傳敏感 LINE token / cookie / idToken
+- 上游資料缺失時回空陣列或 section status，不要 500
+
+建議 `/home` response：
+
+```json
+{
+  "facilityName": "新北高中游泳池&運動中心",
+  "groupId": "C66a4b3bb3fbc3dcf52d42626ec512484",
+  "announcements": [
+    {
+      "id": "ann_001",
+      "title": "會員系統維護通知",
+      "summary": "4/25 22:00 起進行會員系統維護",
+      "priority": "required",
+      "effectiveRange": "2026-04-25T22:00:00+08:00 - 2026-04-26T02:00:00+08:00",
+      "detectedAt": "2026-04-24T09:00:00+08:00"
+    }
+  ],
+  "handover": [
+    {
+      "id": "handover_001",
+      "title": "晚班鑰匙交接",
+      "content": "鑰匙放在抽屜第二層",
+      "authorName": "王小明",
+      "createdAt": "2026-04-24T16:00:00+08:00"
+    }
+  ],
+  "todayShift": [
+    {
+      "id": "shift_001",
+      "label": "早班",
+      "timeRange": "08:00 - 16:00",
+      "startsAt": "2026-04-24T08:00:00+08:00",
+      "endsAt": "2026-04-24T16:00:00+08:00",
+      "status": "active"
+    }
+  ],
+  "campaigns": []
+}
+```
+
+任務四：加入 smoke test
+
+請新增或提供以下測試方式：
+
+```bash
+BASE="https://line-bot-assistant-ronchen2.replit.app"
+TOKEN="$INTERNAL_API_TOKEN"
+GROUP_ID="C66a4b3bb3fbc3dcf52d42626ec512484"
+
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/home"
+
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/announcements?page=1&pageSize=20"
+
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/today-shift"
+
+curl -i -H "X-Internal-Token: $TOKEN" \
+  "$BASE/api/internal/facility-home/$GROUP_ID/handover"
+```
+
+每個都必須符合：
+- HTTP 200
+- Content-Type 包含 `application/json`
+- body 是 JSON
+- 不出現 `<!doctype html>`
+- token 錯誤時 HTTP 401 JSON
+- groupId 錯誤時 HTTP 404 JSON
+
+任務五：輸出結果
+
+請最後輸出：
+
+1. 發現的問題清單
+2. 修改過的檔案
+3. 新增的 internal API 路由
+4. 環境變數需求
+5. smoke test 結果
+6. 給 `400qian-duan-yi-biao-ban` 端需要設定的值：
+   - `LINE_BOT_BASE_URL`
+   - `LINE_BOT_INTERNAL_TOKEN`
+7. 若 response shape 與上面建議不同，請明確列出實際 shape
+```
+
+等它修完回你結果後，你貼給我，我會幫你把我們這邊的 adapter 路徑與 mapping 對齊。
