@@ -81,6 +81,25 @@ export const auditLogs = pgTable('audit_logs', {
   levelIdx: index('audit_logs_level_idx').on(table.level)
 }));
 
+// Outgoing Messages Table - Bot 傳出訊息紀錄（reply / push 全紀錄）
+export const outgoingMessages = pgTable('outgoing_messages', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  to: text('to').notNull(), // groupId (C...) 或 userId (U...)
+  toType: text('to_type').notNull(), // 'group' | 'user' | 'room'
+  sendType: text('send_type').notNull(), // 'reply' | 'push'
+  messageType: text('message_type').notNull(), // 'text' | 'image' | 'video' | 'multi' | 'quickReply'
+  text: text('text'), // 文字內容（多訊息時為摘要）
+  payload: jsonb('payload'), // 完整 LINE message payload
+  status: text('status').notNull(), // 'sent' | 'failed'
+  errorMessage: text('error_message'), // 失敗原因（若 status=failed）
+  triggeredBy: text('triggered_by'), // 觸發來源：'webhook' | 'scheduler' | 'admin' | 'manual'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+}, (table) => ({
+  toIdx: index('outgoing_messages_to_idx').on(table.to),
+  createdAtIdx: index('outgoing_messages_created_at_idx').on(table.createdAt.desc()),
+  statusIdx: index('outgoing_messages_status_idx').on(table.status)
+}));
+
 // Message Backups Table - 消息備份歷史（永久保存）
 export const messageBackups = pgTable('message_backups', {
   id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -470,6 +489,33 @@ export interface CreateAuditLogData {
   category: string;
   message: string;
   details?: any;
+}
+
+// Outgoing Messages interfaces
+export interface IOutgoingMessage {
+  id: string;
+  to: string;
+  toType: string;
+  sendType: string;
+  messageType: string;
+  text?: string | null;
+  payload?: any;
+  status: string;
+  errorMessage?: string | null;
+  triggeredBy?: string | null;
+  createdAt: Date;
+}
+
+export interface CreateOutgoingMessageData {
+  to: string;
+  toType: string;
+  sendType: 'reply' | 'push';
+  messageType: string;
+  text?: string;
+  payload?: any;
+  status: 'sent' | 'failed';
+  errorMessage?: string;
+  triggeredBy?: string;
 }
 
 // Employee Cache interfaces

@@ -22,68 +22,146 @@ const client = config.channelAccessToken && config.channelSecret
   : null;
 
 export class LineService {
-  async replyMessage(replyToken: string, text: string): Promise<void> {
+  // 統一記錄 Bot 傳出訊息（不阻塞發送流程）
+  private async logOutgoing(params: {
+    to: string;
+    sendType: 'reply' | 'push';
+    messageType: string;
+    text?: string;
+    payload?: any;
+    status: 'sent' | 'failed';
+    errorMessage?: string;
+    triggeredBy?: string;
+  }): Promise<void> {
+    try {
+      const toType = params.to.startsWith('C') ? 'group'
+        : params.to.startsWith('R') ? 'room'
+        : params.to.startsWith('U') ? 'user'
+        : 'unknown';
+      await storage.insertOutgoingMessage({
+        to: params.to,
+        toType,
+        sendType: params.sendType,
+        messageType: params.messageType,
+        text: params.text,
+        payload: params.payload,
+        status: params.status,
+        errorMessage: params.errorMessage,
+        triggeredBy: params.triggeredBy,
+      });
+    } catch (e) {
+      // 紀錄失敗絕不影響發送
+      console.warn('outgoing log 失敗:', (e as Error).message);
+    }
+  }
+
+  async replyMessage(replyToken: string, text: string, opts: { to?: string; triggeredBy?: string } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法發送回覆');
       return;
     }
     
+    const payload = { type: 'text', text };
     try {
-      await client.replyMessage(replyToken, {
-        type: 'text',
-        text: text
+      await client.replyMessage(replyToken, payload as any);
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'text',
+        text,
+        payload,
+        status: 'sent',
+        triggeredBy: opts.triggeredBy,
       });
     } catch (error) {
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'text',
+        text,
+        payload,
+        status: 'failed',
+        errorMessage: (error as Error).message,
+        triggeredBy: opts.triggeredBy,
+      });
       console.error('LINE 回覆訊息失敗:', error);
       throw error;
     }
   }
 
-  async replyRawMessages(replyToken: string, messages: any[]): Promise<void> {
+  async replyRawMessages(replyToken: string, messages: any[], opts: { to?: string; triggeredBy?: string } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法發送回覆');
       return;
     }
     try {
-      await client.replyMessage(replyToken, messages);
+      await client.replyMessage(replyToken, messages as any);
+      const summary = messages.map(m => m?.text || `[${m?.type}]`).join(' | ').substring(0, 500);
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'multi',
+        text: summary,
+        payload: messages,
+        status: 'sent',
+        triggeredBy: opts.triggeredBy,
+      });
     } catch (error) {
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'multi',
+        payload: messages,
+        status: 'failed',
+        errorMessage: (error as Error).message,
+        triggeredBy: opts.triggeredBy,
+      });
       console.error('LINE 多訊息回覆失敗:', error);
       throw error;
     }
   }
 
-  async replyWithQuickReply(replyToken: string, text: string, quickReplies: Array<{ label: string; text: string }>): Promise<void> {
+  async replyWithQuickReply(replyToken: string, text: string, quickReplies: Array<{ label: string; text: string }>, opts: { to?: string; triggeredBy?: string } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法發送 Quick Reply');
       return;
     }
 
-    try {
-      const message: any = {
-        type: 'text',
-        text: text,
+    const message: any = { type: 'text', text };
+    if (quickReplies && quickReplies.length > 0) {
+      message.quickReply = {
+        items: quickReplies.slice(0, 13).map(qr => ({
+          type: 'action',
+          action: { type: 'message', label: qr.label.substring(0, 20), text: qr.text }
+        }))
       };
+    }
 
-      // 有 Quick Reply 按鈕時附加
-      if (quickReplies && quickReplies.length > 0) {
-        message.quickReply = {
-          items: quickReplies.slice(0, 13).map(qr => ({
-            type: 'action',
-            action: {
-              type: 'message',
-              label: qr.label.substring(0, 20), // LINE 限制最多 20 字
-              text: qr.text,
-            }
-          }))
-        };
-      }
-
+    try {
       await client.replyMessage(replyToken, message);
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'quickReply',
+        text,
+        payload: message,
+        status: 'sent',
+        triggeredBy: opts.triggeredBy,
+      });
     } catch (error) {
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'quickReply',
+        text,
+        payload: message,
+        status: 'failed',
+        errorMessage: (error as Error).message,
+        triggeredBy: opts.triggeredBy,
+      });
       console.error('LINE Quick Reply 回覆失敗:', error);
-      // fallback: 用純文字回覆
       try {
-        await this.replyMessage(replyToken, text);
+        await this.replyMessage(replyToken, text, opts);
       } catch (fallbackError) {
         console.error('LINE 純文字 fallback 也失敗:', fallbackError);
         throw fallbackError;
@@ -91,39 +169,71 @@ export class LineService {
     }
   }
 
-  async replyVideoMessage(replyToken: string, videoUrl: string, previewImageUrl: string): Promise<void> {
+  async replyVideoMessage(replyToken: string, videoUrl: string, previewImageUrl: string, opts: { to?: string; triggeredBy?: string } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法發送影片回覆');
       return;
     }
     
+    const payload = { type: 'video', originalContentUrl: videoUrl, previewImageUrl };
     try {
-      await client.replyMessage(replyToken, {
-        type: 'video',
-        originalContentUrl: videoUrl,
-        previewImageUrl: previewImageUrl
-      });
+      await client.replyMessage(replyToken, payload as any);
       console.log('✅ 影片訊息回覆成功');
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'video',
+        text: `[video] ${videoUrl}`,
+        payload,
+        status: 'sent',
+        triggeredBy: opts.triggeredBy,
+      });
     } catch (error) {
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'video',
+        text: `[video] ${videoUrl}`,
+        payload,
+        status: 'failed',
+        errorMessage: (error as Error).message,
+        triggeredBy: opts.triggeredBy,
+      });
       console.error('❌ LINE 影片回覆訊息失敗:', error);
       throw error;
     }
   }
 
-  async replyImageMessage(replyToken: string, imageUrl: string, previewImageUrl?: string): Promise<void> {
+  async replyImageMessage(replyToken: string, imageUrl: string, previewImageUrl?: string, opts: { to?: string; triggeredBy?: string } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法發送圖片回覆');
       return;
     }
     
+    const payload = { type: 'image', originalContentUrl: imageUrl, previewImageUrl: previewImageUrl || imageUrl };
     try {
-      await client.replyMessage(replyToken, {
-        type: 'image',
-        originalContentUrl: imageUrl,
-        previewImageUrl: previewImageUrl || imageUrl
-      });
+      await client.replyMessage(replyToken, payload as any);
       console.log('✅ 圖片訊息回覆成功');
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'image',
+        text: `[image] ${imageUrl}`,
+        payload,
+        status: 'sent',
+        triggeredBy: opts.triggeredBy,
+      });
     } catch (error) {
+      await this.logOutgoing({
+        to: opts.to || `reply:${replyToken.substring(0, 12)}`,
+        sendType: 'reply',
+        messageType: 'image',
+        text: `[image] ${imageUrl}`,
+        payload,
+        status: 'failed',
+        errorMessage: (error as Error).message,
+        triggeredBy: opts.triggeredBy,
+      });
       console.error('❌ LINE 圖片回覆訊息失敗:', error);
       throw error;
     }
@@ -163,28 +273,35 @@ export class LineService {
     }
   }
 
-  async pushMessage(to: string, text: string, options: { maxRetries?: number } = {}): Promise<void> {
+  async pushMessage(to: string, text: string, options: { maxRetries?: number; triggeredBy?: string } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法推送訊息');
       return;
     }
     
-    const { maxRetries = 3 } = options;
+    const { maxRetries = 3, triggeredBy } = options;
     let attempt = 0;
     
     while (attempt < maxRetries) {
       try {
+        const payload = { type: 'text', text };
         // LINE API 支援推送到群組 ID (C開頭) 和用戶 ID (U開頭)
-        await client.pushMessage(to, {
-          type: 'text',
-          text: text
-        });
+        await client.pushMessage(to, payload as any);
         
         if (to.startsWith('C')) {
           console.log(`✅ 成功推送訊息到群組 ${to.substring(0, 8)}...`);
         } else {
           console.log(`✅ 成功推送訊息到用戶 ${to.substring(0, 8)}...`);
         }
+        await this.logOutgoing({
+          to,
+          sendType: 'push',
+          messageType: 'text',
+          text,
+          payload,
+          status: 'sent',
+          triggeredBy,
+        });
         return;
         
       } catch (error: any) {
@@ -241,6 +358,13 @@ export class LineService {
               reason: status === 403 ? 'Bot 被踢出群組或權限不足' : 'ID 不存在或無效'
             }
           });
+          await this.logOutgoing({
+            to, sendType: 'push', messageType: 'text', text,
+            payload: { type: 'text', text },
+            status: 'failed',
+            errorMessage: `[${status}] ${error.message}`,
+            triggeredBy,
+          });
           
           // 設置 retryAttempt 屬性供上層記錄
           error.retryAttempt = attempt;
@@ -281,6 +405,13 @@ export class LineService {
           message: 'LINE 推送最終失敗',
           details: errorDetails
         });
+        await this.logOutgoing({
+          to, sendType: 'push', messageType: 'text', text,
+          payload: { type: 'text', text },
+          status: 'failed',
+          errorMessage: `[${status}] ${error.message}`,
+          triggeredBy,
+        });
         
         // 設置 retryAttempt 屬性供上層記錄
         error.retryAttempt = attempt;
@@ -289,29 +420,31 @@ export class LineService {
     }
   }
 
-  async pushVideoMessage(to: string, videoUrl: string, previewImageUrl: string, options: { maxRetries?: number } = {}): Promise<void> {
+  async pushVideoMessage(to: string, videoUrl: string, previewImageUrl: string, options: { maxRetries?: number; triggeredBy?: string } = {}): Promise<void> {
     if (!client) {
       console.warn('LINE client 未初始化，無法推送影片');
       return;
     }
     
-    const { maxRetries = 3 } = options;
+    const { maxRetries = 3, triggeredBy } = options;
     let attempt = 0;
+    const payload = { type: 'video', originalContentUrl: videoUrl, previewImageUrl };
     
     while (attempt < maxRetries) {
       try {
         // LINE API 支援推送影片到群組 ID (C開頭) 和用戶 ID (U開頭)
-        await client.pushMessage(to, {
-          type: 'video',
-          originalContentUrl: videoUrl,
-          previewImageUrl: previewImageUrl
-        });
+        await client.pushMessage(to, payload as any);
         
         if (to.startsWith('C')) {
           console.log(`✅ 成功推送影片到群組 ${to.substring(0, 8)}...`);
         } else {
           console.log(`✅ 成功推送影片到用戶 ${to.substring(0, 8)}...`);
         }
+        await this.logOutgoing({
+          to, sendType: 'push', messageType: 'video',
+          text: `[video] ${videoUrl}`, payload,
+          status: 'sent', triggeredBy,
+        });
         return;
         
       } catch (error: any) {
@@ -319,6 +452,13 @@ export class LineService {
         console.error(`❌ 推送影片失敗 (嘗試 ${attempt}/${maxRetries}):`, error);
         
         if (attempt >= maxRetries) {
+          await this.logOutgoing({
+            to, sendType: 'push', messageType: 'video',
+            text: `[video] ${videoUrl}`, payload,
+            status: 'failed',
+            errorMessage: error.message,
+            triggeredBy,
+          });
           throw error;
         }
         

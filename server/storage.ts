@@ -1,7 +1,7 @@
 import { 
-  messages, tasks, admins, auditLogs, authorizedGroups, employeeCache,
-  type IMessage, type ITask, type IAdmin, type IAuditLog, type AuthorizedGroup, type IEmployeeCache,
-  type CreateMessageData, type CreateTaskData, type CreateAdminData, type CreateAuditLogData, type InsertAuthorizedGroup, type CreateEmployeeCacheData
+  messages, tasks, admins, auditLogs, authorizedGroups, employeeCache, outgoingMessages,
+  type IMessage, type ITask, type IAdmin, type IAuditLog, type AuthorizedGroup, type IEmployeeCache, type IOutgoingMessage,
+  type CreateMessageData, type CreateTaskData, type CreateAdminData, type CreateAuditLogData, type InsertAuthorizedGroup, type CreateEmployeeCacheData, type CreateOutgoingMessageData
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, sql, count } from "drizzle-orm";
@@ -20,6 +20,18 @@ export interface IStorage {
     pageSize?: number;
   }): Promise<{ messages: IMessage[]; total: number }>;
   getRecentMessages(groupId: string, limit: number): Promise<IMessage[]>;
+
+  // Outgoing Messages（Bot 傳出訊息紀錄）
+  insertOutgoingMessage(data: CreateOutgoingMessageData): Promise<IOutgoingMessage>;
+  getOutgoingMessages(filters: {
+    to?: string;
+    sendType?: string;
+    status?: string;
+    start?: Date;
+    end?: Date;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ messages: IOutgoingMessage[]; total: number }>;
 
   // Tasks
   insertTask(data: CreateTaskData): Promise<ITask>;
@@ -151,6 +163,55 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
     
     return messagesResult as IMessage[];
+  }
+
+  // Outgoing Messages（Bot 傳出訊息紀錄）
+  async insertOutgoingMessage(data: CreateOutgoingMessageData): Promise<IOutgoingMessage> {
+    try {
+      const [row] = await db.insert(outgoingMessages).values(data).returning();
+      return row as IOutgoingMessage;
+    } catch (error) {
+      console.warn('⚠️ outgoing_messages 寫入失敗（不阻塞發送）:', (error as Error).message);
+      return {
+        id: 'unsaved',
+        ...data,
+        createdAt: new Date(),
+      } as unknown as IOutgoingMessage;
+    }
+  }
+
+  async getOutgoingMessages(filters: {
+    to?: string;
+    sendType?: string;
+    status?: string;
+    start?: Date;
+    end?: Date;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ messages: IOutgoingMessage[]; total: number }> {
+    const page = filters.page || 1;
+    const pageSize = Math.min(filters.pageSize || 50, 200);
+    const offset = (page - 1) * pageSize;
+
+    const conds: any[] = [];
+    if (filters.to) conds.push(eq(outgoingMessages.to, filters.to));
+    if (filters.sendType) conds.push(eq(outgoingMessages.sendType, filters.sendType));
+    if (filters.status) conds.push(eq(outgoingMessages.status, filters.status));
+    if (filters.start) conds.push(gte(outgoingMessages.createdAt, filters.start));
+    if (filters.end) conds.push(lte(outgoingMessages.createdAt, filters.end));
+
+    const where = conds.length > 0 ? and(...conds) : undefined;
+
+    const [rows, totalRow] = await Promise.all([
+      db.select().from(outgoingMessages)
+        .where(where)
+        .orderBy(desc(outgoingMessages.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      db.select({ count: count() }).from(outgoingMessages).where(where),
+    ]);
+
+    return { messages: rows as IOutgoingMessage[], total: totalRow[0].count };
   }
 
   // Tasks

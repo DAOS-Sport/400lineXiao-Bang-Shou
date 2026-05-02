@@ -15,7 +15,8 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Layer
 - **ORM**: Drizzle ORM with PostgreSQL (Neon serverless) for type-safe operations and connection pooling.
-- **Schema Design**: Tables for messages, tasks (group-isolated, serial numbering), admins, authorized groups (for GPT), audit logs, message backups, and system settings. Water quality records are stored via audit logs.
+- **Schema Design**: Tables for messages（傳入）, **outgoing_messages（Bot 傳出全紀錄：reply / push / quickReply / image / video）**, tasks (group-isolated, serial numbering), admins, authorized groups (for GPT), audit logs, message backups, and system settings. Water quality records are stored via audit logs.
+- **完整對話雙向記錄**: `messages` 存所有傳入訊息（webhook event），`outgoing_messages` 存所有 Bot 傳出訊息（含 to / sendType / messageType / text / payload / status / errorMessage / triggeredBy）。lineService 統一在 `replyMessage` / `replyRawMessages` / `replyWithQuickReply` / `replyVideoMessage` / `replyImageMessage` / `pushMessage` / `pushVideoMessage` 內透過 private `logOutgoing()` 自動寫入，成功失敗皆紀錄，紀錄失敗不影響發送。查詢方法：`storage.getOutgoingMessages({ to, sendType, status, start, end })`。
 - **Memory Storage**: In-memory caching for water quality data.
 - **Indexing**: Strategic indexes on frequently queried fields.
 - **Backup Strategy**: Permanent message retention with automated daily backups.
