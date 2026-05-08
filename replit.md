@@ -71,12 +71,13 @@ Preferred communication style: Simple, everyday language.
 - **Message API**: Supports text, replies, and push notifications.
 
 ### AI Services
-- **OpenAI API**: GPT-4o-mini for task extraction and conversation analysis.
-- **Prompt Engineering**: Structured prompts for consistent output.
-- **Classifier Upgrade**: Two-pass design — Pass 1 (pure programmatic gate), Pass 2 (GPT-4o-mini with extended output: 5W1H, appliesToRoles, startAt/endAt, recommendedReply, badExample, priority).
+- **OpenAI API**: GPT-4o-mini for task extraction、勵志語、水質分析等其餘 AI 功能。
+- **Gemini API（公告分類器主力，2026-05 切換）**: `gemini-2.5-flash-lite` 為公告 5 層管線 Pass 2 的唯一 LLM。直接以 `fetch` 呼叫 REST `generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`（無 SDK 依賴），使用 `responseMimeType: application/json` 強制 JSON 輸出。成本約 OpenAI GPT-4o-mini 的 2/3（每千次 ~NT$8 vs ~NT$11）。可用 `ANNOUNCEMENT_CLASSIFIER_MODEL` 環境變數切換到 `gemini-2.5-flash` / `gemini-2.0-flash` / `gemini-2.0-flash-lite`。切換原因：OpenAI 帳戶超額（429 RateLimitError）導致公告分類失敗。
+- **Prompt Engineering**: Structured prompts for consistent output（OpenAI 與 Gemini 共用同一份 system prompt `server/prompts/announcementClassifier.ts`）。
+- **Classifier Upgrade**: Two-pass design — Pass 1 (pure programmatic gate), Pass 2 (Gemini 2.5 Flash Lite with extended output: 5W1H, appliesToRoles, startAt/endAt, recommendedReply, badExample, priority).
 - **Supervisor Resolver**: `server/services/supervisorResolver.ts` — queries `users` table with 5-min in-memory cache; falls back to `SUPERVISOR_USER_IDS` env var. `initializeSupervisors()` syncs env var to DB on startup.
 - **Candidate Dedup**: `server/services/candidateDedup.ts` — sha256 contentHash (title+summary+groupId+date) prevents duplicate entries within 24h; upgrades confidence on merge.
-- **Tests**: `server/__tests__/classifier.test.ts` (Vitest, 13 tests). Run: `npx vitest run server/__tests__/classifier.test.ts`
+- **Tests**: `server/__tests__/classifier.test.ts` (Vitest, 13 tests, mock `fetch` 攔截 Gemini API 回傳). Run: `npx vitest run server/__tests__/classifier.test.ts`
 
 ### Database Services
 - **Neon Database**: Serverless PostgreSQL.
@@ -148,6 +149,7 @@ Preferred communication style: Simple, everyday language.
 - `GET /api/admin/announcements/health` — 24h webhook 訊息數、24h candidate 數、`lastIngestAt`、`lastError`、異常旗標（NO_WEBHOOK_24H / NO_CANDIDATE_24H / STALE_LAST_MESSAGE / NO_MESSAGE_EVER）
 - `POST /api/admin/announcements/replay` — 從現有 `messages` 表挑訊息重跑 5 層管線。Body: `{ messageIds?: string[], groupId?: string, limit?: number, dryRun?: boolean }`，預設 limit=10，max=100
 - `POST /api/admin/announcements/replay-mock` — 用 mock 訊息走完整管線，**不送任何 LINE/Email**。Body: `{ groupId, userId?, displayName?, text }`
+- `POST /api/admin/announcements/test-gemini` — 直接打 Gemini API 一次，回傳分類結果 + token 用量 + 成本估算（USD/NTD）。Body: `{ text, model?, isFromSupervisor? }`，model 限定 `gemini-2.5-flash-lite|gemini-2.5-flash|gemini-2.0-flash|gemini-2.0-flash-lite`
 - **Ingest 健康追蹤**：`pipelineStats.ts` 新增 `recordIngestActivity()` / `recordIngestError()` / `getIngestHealth()`，在 `ingestMessageForAnnouncement()` 入口與 persist 失敗時被呼叫
 - **測試**: `server/__tests__/announcementHealth.test.ts`（10 cases）— 執行 `npx vitest run server/__tests__/announcementHealth.test.ts`
 - **已知技術債（與本次無關但有記錄）**: `server/middleware/lineSignature.ts` L17-20 的 LINE webhook 簽章驗證目前被整段 `next()` 跳過（標註「臨時跳過」）。不是訊息中斷的原因，但是安全債，未來應重啟驗證
