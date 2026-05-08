@@ -22,6 +22,7 @@ import {
   getIngestHealth,
   getPipelineStats,
 } from '../services/announcement/pipelineStats';
+import { announcementClassifierSystemPrompt } from '../prompts/announcementClassifier';
 
 export const announcementHealthRouter = Router();
 
@@ -215,6 +216,127 @@ announcementHealthRouter.post('/replay', async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message ?? 'replay failed' });
+  }
+});
+
+// ── POST /test-gemini — 測試 Gemini 是否可作為 OpenAI 備援 ──────────────────
+// body: { text, model?, isFromSupervisor? }
+// 不寫入 DB，僅呼叫 Gemini 一次回傳結果 + 成本估算
+//
+// 預設模型 gemini-2.5-flash-lite：input $0.10 / output $0.40 per 1M tokens
+// 比 OpenAI gpt-4o-mini（$0.15 / $0.60）便宜約 33%
+announcementHealthRouter.post('/test-gemini', async (req, res) => {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ success: false, error: 'GEMINI_API_KEY 未設定' });
+    }
+
+    const {
+      text,
+      model = 'gemini-2.5-flash-lite',
+      isFromSupervisor = false,
+    } = (req.body ?? {}) as { text?: string; model?: string; isFromSupervisor?: boolean };
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ success: false, error: 'text 為必填' });
+    }
+    if (text.length > 2000) {
+      return res.status(400).json({ success: false, error: 'text 過長（>2000 字）' });
+    }
+
+    const safeModel = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'].includes(model)
+      ? model : 'gemini-2.5-flash-lite';
+
+    const userContent = `訊息：${text}\n是否為主管：${isFromSupervisor ? '是' : '否'}\n\n請依系統提示回傳 JSON。`;
+
+    const t0 = Date.now();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${safeModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 18_000);
+
+    let geminiResp: Response;
+    try {
+      geminiResp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: announcementClassifierSystemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+            maxOutputTokens: 800,
+          },
+        }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      clearTimeout(timer);
+      return res.status(502).json({
+        success: false,
+        error: err?.name === 'AbortError' ? 'Gemini 逾時（18s）' : `Gemini 連線失敗：${err?.message}`,
+      });
+    }
+    clearTimeout(timer);
+
+    const latencyMs = Date.now() - t0;
+
+    if (!geminiResp.ok) {
+      const errText = await geminiResp.text().catch(() => '');
+      return res.status(geminiResp.status).json({
+        success: false,
+        error: `Gemini API ${geminiResp.status}`,
+        // 不洩漏 key，只回 body 前 300 字
+        details: errText.substring(0, 300),
+        latencyMs,
+      });
+    }
+
+    const data: any = await geminiResp.json();
+    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const usage = data?.usageMetadata ?? {};
+    const inputTokens  = Number(usage.promptTokenCount     ?? 0);
+    const outputTokens = Number(usage.candidatesTokenCount ?? 0);
+
+    let parsed: any = null;
+    let parseError: string | null = null;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : null;
+    } catch (e: any) {
+      parseError = e?.message ?? 'JSON parse error';
+    }
+
+    // 成本估算（USD，2025 公告價）
+    const PRICING: Record<string, { in: number; out: number }> = {
+      'gemini-2.5-flash-lite': { in: 0.10, out: 0.40 },
+      'gemini-2.5-flash':      { in: 0.30, out: 2.50 },
+      'gemini-2.0-flash':      { in: 0.10, out: 0.40 },
+      'gemini-2.0-flash-lite': { in: 0.075, out: 0.30 },
+    };
+    const p = PRICING[safeModel] ?? PRICING['gemini-2.5-flash-lite'];
+    const costUSD = (inputTokens * p.in + outputTokens * p.out) / 1_000_000;
+    const costNTD = costUSD * 32; // 約略匯率
+
+    res.json({
+      success: true,
+      model: safeModel,
+      latencyMs,
+      tokens: { input: inputTokens, output: outputTokens },
+      cost: {
+        usd: Number(costUSD.toFixed(8)),
+        ntd: Number(costNTD.toFixed(6)),
+        per1000Calls: {
+          usd: Number((costUSD * 1000).toFixed(4)),
+          ntd: Number((costNTD * 1000).toFixed(2)),
+        },
+      },
+      classification: parsed,
+      parseError,
+      rawTextPreview: rawText.substring(0, 500),
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message ?? 'gemini test failed' });
   }
 });
 
