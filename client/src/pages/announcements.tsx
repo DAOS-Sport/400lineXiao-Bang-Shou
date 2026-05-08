@@ -218,6 +218,17 @@ export default function AnnouncementsPage() {
 
           {isLoading && <p className="text-gray-400 text-sm">載入中…</p>}
 
+          {!isLoading && data && data.items.length === 0 && (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-gray-500 font-medium">目前沒有符合條件的候選公告</p>
+                <p className="text-gray-400 text-xs mt-2">
+                  若所有篩選都未篩，仍顯示為 0，請至「管線健康監控」確認 webhook 是否正常收訊。
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {data?.items.map(c => {
             const meta = c._meta ?? {};
             const isPending = PENDING_STATUSES.includes(c.status);

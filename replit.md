@@ -143,6 +143,15 @@ Preferred communication style: Simple, everyday language.
 - `GET /api/facility-home/:groupId/announcements` — 公告列表（?q= 關鍵字, ?type=, ?page=, ?limit=）
 - `GET /api/facility-home/:groupId/announcements/:id` — 單筆詳情（含話術建議、壞範例）
 
+### 公告管線健康監控與回補工具（2026-05 新增）
+- **Router**: `server/routes/announcementHealthRoutes.ts`，掛載於 `/api/admin/announcements`，全部受 `authMiddleware` 保護（Bearer `ADMIN_TOKEN` 或 Basic `ADMIN_USER`/`ADMIN_PASS`）
+- `GET /api/admin/announcements/health` — 24h webhook 訊息數、24h candidate 數、`lastIngestAt`、`lastError`、異常旗標（NO_WEBHOOK_24H / NO_CANDIDATE_24H / STALE_LAST_MESSAGE / NO_MESSAGE_EVER）
+- `POST /api/admin/announcements/replay` — 從現有 `messages` 表挑訊息重跑 5 層管線。Body: `{ messageIds?: string[], groupId?: string, limit?: number, dryRun?: boolean }`，預設 limit=10，max=100
+- `POST /api/admin/announcements/replay-mock` — 用 mock 訊息走完整管線，**不送任何 LINE/Email**。Body: `{ groupId, userId?, displayName?, text }`
+- **Ingest 健康追蹤**：`pipelineStats.ts` 新增 `recordIngestActivity()` / `recordIngestError()` / `getIngestHealth()`，在 `ingestMessageForAnnouncement()` 入口與 persist 失敗時被呼叫
+- **測試**: `server/__tests__/announcementHealth.test.ts`（10 cases）— 執行 `npx vitest run server/__tests__/announcementHealth.test.ts`
+- **已知技術債（與本次無關但有記錄）**: `server/middleware/lineSignature.ts` L17-20 的 LINE webhook 簽章驗證目前被整段 `next()` 跳過（標註「臨時跳過」）。不是訊息中斷的原因，但是安全債，未來應重啟驗證
+
 ### Duty Page（值班首頁）
 - **Route**: `/duty` — 館別選擇頁（列出所有 Tier A/B 館別，點擊進入值班首頁）
 - **Route**: `/duty/:groupId` — 館別值班首頁（已核准公告展示）

@@ -1,0 +1,94 @@
+PLEASE IMPLEMENT THIS PLAN:
+
+# 公告歸納/審核中心復活計畫
+
+## Summary
+現有公告 AI 分類系統架構已完成，但目前 `announcement_candidates`、`announcement_reviews`、`published_announcements` 都是 0，推定原因是 LINE webhook 沒有正常收訊息，導致 `ingestMessageForAnnouncement()` 從未被呼叫。本輪目標不是重做公告系統，而是把既有 webhook → announcement ingest → candidate DB → supervisor review UI → employee announcement display 的資料流修通，並補上最小監控與回補測試工具。
+
+## Key Changes
+
+### 1. Webhook 真因診斷
+請先檢查現有 LINE webhook 接收路徑與部署設定：
+- LINE webhook route 是否存在並掛到 server runtime
+- webhook URL path 是否與 LINE Console 設定一致
+- channel secret / access token env 是否有讀到，但不得印出完整 secret
+- signature validation 是否會錯誤擋掉合法 request
+- message event 是否有進到目前 messages 表或 announcement ingest
+- 若目前 webhook route 只寫 messages、不呼叫公告管線，補上串接
+
+### 2. 修復公告管線入口
+確認 LINE message event 成功呼叫：
+- `ingestMessageForAnnouncement()`
+- `announcementIngestService.ts`
+- `announcement_candidates` 寫入
+- 去重邏輯 `candidateDedup.ts`
+- 重要性分類器與 rule engine 都有執行
+
+不得重做 5 層分類架構，只修接線與必要錯誤處理。
+
+### 3. 新增安全回補/測試工具
+新增一個 local-only 或 admin-only 測試入口，用來餵入測試訊息：
+- 不需要真的從 LINE 發訊息
+- 可用 mock LINE event 或近期 message row
+- 能跑完整 5 層 pipeline
+- 能確認候選公告寫入 DB
+- 不可送真實 LINE/Email 通知
+
+### 4. 監控與警報
+新增公告管線健康檢查：
+- 最近 24h 是否有 webhook message
+- 最近 24h 是否有 announcement candidate
+- 最近一次 ingest 時間
+- 最近一次錯誤
+- 若 24h 內 webhook 有訊息但 candidates 為 0，要標示異常
+- 若可行，接到現有 system health / audit 頁；不要新增平行 IT 系統
+
+### 5. UI 最小修復
+確認以下頁面能看到穩定狀態：
+- 主管公告審核中心
+- 公告統計總覽
+- 員工公告頁
+- 員工首頁「群組重要公告」卡
+
+沒資料時要顯示「尚無候選公告 / 尚無已發布公告」，不能整塊消失。
+
+## Public Interfaces / Types
+- 不改公告資料表 schema，除非目前缺少必要欄位且有 migration pattern。
+- 不改 GPT 分類架構。
+- 不印出 channel secret / access token。
+- 不發送真實 LINE / Email。
+- 若新增測試 API，必須限制 system/supervisor/admin-only 或 dev-only。
+
+## Test Plan
+請執行：
+- `npm run type-check`
+- `npm run unit:modules`
+- `npm run check:modules`
+- `npm run smoke:modules`
+- `npm run dry-run`
+
+新增或更新測試：
+- webhook message route 會呼叫 announcement ingest
+- mock message 可以寫入 `announcement_candidates`
+- hardExclude 訊息不寫入 candidate
+- rule matched 或 AI review 訊息會進 candidate
+- duplicate message 24h 內不重複新增
+- 公告首頁卡無資料時仍顯示空狀態
+- 主管公告審核中心不因 0 筆資料破圖
+- secrets 不會被 log 出來
+
+## Acceptance Criteria
+完成後請回報：
+- webhook 實際掛載路徑
+- `ingestMessageForAnnouncement()` 被哪裡呼叫
+- mock/replay 測試指令
+- 測試訊息進入 `announcement_candidates` 的證據
+- 目前仍需使用者去 LINE Console 手動確認的項目
+- dry-run 結果
+
+## Assumptions
+- 現有公告 AI 分類系統保留，不重寫。
+- 優先修 webhook 與管線接線。
+- 目前 8 個 LINE 群組白名單先沿用，不新增/移除。
+- VIP 名單先沿用，不新增。
+- GPT 模型先維持 4o-mini。

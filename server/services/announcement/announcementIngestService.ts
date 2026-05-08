@@ -18,6 +18,7 @@ import { storage } from '../../storage';
 import {
   incReceived, incHardExcluded, incRuleEngine,
   incDecision, incAiCall, incStored,
+  recordIngestActivity, recordIngestError,
 } from './pipelineStats';
 import {
   FOCUS_GROUP_IDS, GROUP_FACILITY_MAP, GROUP_TIER_MAP,
@@ -45,6 +46,7 @@ export async function ingestMessageForAnnouncement(params: {
   const { messageId, groupId, userId, displayName, text } = params;
 
   incReceived();
+  recordIngestActivity(groupId);
 
   // Layer 0: 硬排除
   const excl = hardExclude(text);
@@ -312,5 +314,6 @@ async function persistCandidate(params: {
     console.log(`💾 [公告] 已儲存 type=${params.candidateType} priority=${params.priority} src=${params.decisionSource}`);
   } catch (err: any) {
     console.error('❌ [公告] DB 寫入失敗:', err?.message);
+    recordIngestError(`persist: ${err?.message ?? 'unknown'}`);
   }
 }

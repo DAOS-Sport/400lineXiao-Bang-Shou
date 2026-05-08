@@ -25,6 +25,37 @@ export interface PipelineStats {
 
 let stats: PipelineStats = newDayStats();
 
+// ── Ingest 健康追蹤（跨日保留，給 health endpoint 用）────────────────────────
+interface IngestHealth {
+  lastIngestAt: string | null;
+  lastIngestGroupId: string | null;
+  lastError: { at: string; message: string } | null;
+  totalIngestCallsAllTime: number;
+}
+const ingestHealth: IngestHealth = {
+  lastIngestAt: null,
+  lastIngestGroupId: null,
+  lastError: null,
+  totalIngestCallsAllTime: 0,
+};
+
+export function recordIngestActivity(groupId: string): void {
+  ingestHealth.lastIngestAt = new Date().toISOString();
+  ingestHealth.lastIngestGroupId = groupId;
+  ingestHealth.totalIngestCallsAllTime++;
+}
+
+export function recordIngestError(message: string): void {
+  ingestHealth.lastError = {
+    at: new Date().toISOString(),
+    message: (message ?? 'unknown').substring(0, 500),
+  };
+}
+
+export function getIngestHealth(): IngestHealth {
+  return { ...ingestHealth };
+}
+
 function newDayStats(): PipelineStats {
   return {
     date: todayKey(),

@@ -20,6 +20,7 @@ import { getOneMonthRange } from "./utils/time";
 import dayjs from "dayjs";
 import { announcementRouter } from "./routes/announcementRoutes";
 import { facilityHomeRouter } from "./routes/facilityHomeRoutes";
+import { announcementHealthRouter } from "./routes/announcementHealthRoutes";
 import { internalRouter } from "./routes/internalRoutes";
 import { ensureFacilitiesSeeded } from "./services/facilitySeeder";
 import { ingestMessageForAnnouncement } from "./services/announcement/announcementIngestService";
@@ -923,6 +924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ========== 重要事項公告歸納器 API ==========
   app.use('/api', announcementRouter);
+  app.use('/api/admin/announcements', announcementHealthRouter);
 
   // ========== 館別首頁 API ==========
   app.use('/api/facility-home', facilityHomeRouter);
