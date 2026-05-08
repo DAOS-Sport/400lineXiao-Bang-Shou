@@ -607,42 +607,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/admin/messages - 管理後台 API
+  /**
+   * GET /api/admin/messages — 訊息查詢／外部監控 API（production-ready）
+   *
+   * 認證：authMiddleware
+   *   - Authorization: Bearer <ADMIN_TOKEN>     ← 推薦給外部系統用
+   *   - Authorization: Basic base64(ADMIN_USER:ADMIN_PASS)
+   *
+   * 查詢參數（全部選填）：
+   *   since        ISO 時間，回傳「嚴格晚於」這個時間的訊息（增量輪詢用）
+   *   start / end  ISO 時間區間（含）
+   *   groupId      LINE 群組 ID
+   *   sourceType   'user' | 'group' | 'room'
+   *   type         'text' | 'image' | 'video' | 'sticker' | 'file' | 'audio' | 'location'
+   *   q            關鍵字（在 text 欄位 ILIKE）
+   *   page         頁碼（預設 1）
+   *   pageSize     每頁筆數（預設 50，最大 500）
+   *   includeRaw   '1' 才會回傳 rawEvent 原始 JSON（預設關閉，避免回應過大）
+   *
+   * 回應格式：
+   *   {
+   *     messages: [{ id, messageId, timestamp, sourceType, groupId, userId,
+   *                  displayName, type, text }, ...],
+   *     pagination: { page, pageSize, total, totalPages },
+   *     nextSince: "<最新一筆的 timestamp，可作為下一次 since 用>",
+   *     count: <本次回傳筆數>
+   *   }
+   *
+   * 增量輪詢範例（外部系統推薦用法）：
+   *   首次 GET /api/admin/messages?limit=200
+   *   之後 GET /api/admin/messages?since=<上次 nextSince>&limit=200
+   */
   app.get("/api/admin/messages", authMiddleware, async (req, res) => {
     try {
       const {
-        q,
-        start,
-        end,
-        sourceType,
-        page = 1,
-        pageSize = 50
-      } = req.query;
+        q, start, end, since,
+        sourceType, groupId, type,
+        page = '1',
+        pageSize = '50',
+        limit, // alias for pageSize
+        includeRaw,
+      } = req.query as Record<string, string | undefined>;
 
-      const filters: any = {
-        page: parseInt(page as string),
-        pageSize: parseInt(pageSize as string)
+      const effectivePageSize = Math.min(
+        parseInt((limit ?? pageSize) || '50', 10) || 50,
+        500,
+      );
+      const effectivePage = Math.max(parseInt(page || '1', 10) || 1, 1);
+
+      const filters: Parameters<typeof storage.getMessages>[0] = {
+        page: effectivePage,
+        pageSize: effectivePageSize,
       };
-
-      if (q) filters.q = q as string;
-      if (start) filters.start = new Date(start as string);
-      if (end) filters.end = new Date(end as string);
-      if (sourceType) filters.sourceType = sourceType as string;
+      if (q) filters.q = q;
+      if (start) filters.start = new Date(start);
+      if (end) filters.end = new Date(end);
+      if (since) filters.since = new Date(since);
+      if (sourceType) filters.sourceType = sourceType;
+      if (groupId) filters.groupId = groupId;
+      if (type) filters.type = type;
 
       const result = await storage.getMessages(filters);
-      
+
+      // 預設不回 rawEvent（資料量大且含 LINE 內部欄位）
+      const wantRaw = includeRaw === '1' || includeRaw === 'true';
+      const trimmed = result.messages.map((m: any) => {
+        const base = {
+          id: m.id,
+          messageId: m.messageId,
+          timestamp: m.timestamp,
+          sourceType: m.sourceType,
+          groupId: m.groupId,
+          roomId: m.roomId,
+          userId: m.userId,
+          displayName: m.displayName,
+          type: m.type,
+          text: m.text,
+          createdAt: m.createdAt,
+        };
+        return wantRaw ? { ...base, rawEvent: m.rawEvent } : base;
+      });
+
+      const nextSince = trimmed.length > 0
+        ? (trimmed[0].timestamp instanceof Date
+            ? trimmed[0].timestamp.toISOString()
+            : trimmed[0].timestamp)
+        : (since ?? null);
+
       res.set({
         'Cache-Control': 'no-store',
-        'Pragma': 'no-cache'
+        'Pragma': 'no-cache',
       });
 
       res.json({
-        messages: result.messages,
+        messages: trimmed,
         pagination: {
-          page: filters.page,
-          pageSize: filters.pageSize,
+          page: effectivePage,
+          pageSize: effectivePageSize,
           total: result.total,
-          totalPages: Math.ceil(result.total / filters.pageSize)
-        }
+          totalPages: Math.ceil(result.total / effectivePageSize),
+        },
+        nextSince,
+        count: trimmed.length,
       });
     } catch (error) {
       console.error("獲取訊息失敗:", error);

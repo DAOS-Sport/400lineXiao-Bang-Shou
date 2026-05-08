@@ -15,7 +15,10 @@ export interface IStorage {
     q?: string;
     start?: Date;
     end?: Date;
+    since?: Date;
     sourceType?: string;
+    groupId?: string;
+    type?: string;
     page?: number;
     pageSize?: number;
   }): Promise<{ messages: IMessage[]; total: number }>;
@@ -114,12 +117,15 @@ export class DatabaseStorage implements IStorage {
     q?: string;
     start?: Date;
     end?: Date;
+    since?: Date;       // strict greater-than，給增量輪詢用
     sourceType?: string;
+    groupId?: string;
+    type?: string;
     page?: number;
     pageSize?: number;
   }): Promise<{ messages: IMessage[]; total: number }> {
     const page = filters.page || 1;
-    const pageSize = Math.min(filters.pageSize || 50, 200);
+    const pageSize = Math.min(filters.pageSize || 50, 500);
     const offset = (page - 1) * pageSize;
 
     let whereConditions = [];
@@ -127,11 +133,20 @@ export class DatabaseStorage implements IStorage {
     if (filters.start) {
       whereConditions.push(gte(messages.timestamp, filters.start));
     }
+    if (filters.since) {
+      whereConditions.push(sql`${messages.timestamp} > ${filters.since}`);
+    }
     if (filters.end) {
       whereConditions.push(lte(messages.timestamp, filters.end));
     }
     if (filters.sourceType && filters.sourceType !== 'all') {
       whereConditions.push(eq(messages.sourceType, filters.sourceType));
+    }
+    if (filters.groupId) {
+      whereConditions.push(eq(messages.groupId, filters.groupId));
+    }
+    if (filters.type) {
+      whereConditions.push(eq(messages.type, filters.type));
     }
     // Note: Full-text search would need PostgreSQL-specific implementation
     // For now, we'll implement basic text search on the text field
