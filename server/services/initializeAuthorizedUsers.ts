@@ -10,6 +10,7 @@ const AUTHORIZED_USERS = [
   { userId: 'U43a939938384fe34da7a136ab51fdf6a', userName: '夏鈺婷' },
   { userId: 'Ue96d3a9e804ebbb9660589d81aa52e57', userName: '莊嘉容' },
   { userId: 'U1377e3b691add6a9b93699eb02dea502', userName: '莊柏彥' },
+  { userId: 'U85897f6b8b944c4710ad5eb61b516cfd', userName: '吳承晏' },
 ];
 
 export async function initializeAuthorizedUsers(): Promise<void> {
