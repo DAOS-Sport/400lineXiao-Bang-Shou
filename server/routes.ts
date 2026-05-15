@@ -22,6 +22,7 @@ import { announcementRouter } from "./routes/announcementRoutes";
 import { facilityHomeRouter } from "./routes/facilityHomeRoutes";
 import { announcementHealthRouter } from "./routes/announcementHealthRoutes";
 import { internalRouter } from "./routes/internalRoutes";
+import { adminConsoleRouter } from "./routes/adminConsoleRoutes";
 import { ensureFacilitiesSeeded } from "./services/facilitySeeder";
 import { ingestMessageForAnnouncement } from "./services/announcement/announcementIngestService";
 // import { insertMessageSchema } from "@shared/schema"; // 移除未使用的 import
@@ -992,6 +993,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api', announcementRouter);
   app.use('/api/admin/announcements', announcementHealthRouter);
 
+  // ========== Admin Console（白名單管理 + 服務監聽）==========
+  app.use('/api/admin', authMiddleware, adminConsoleRouter);
+
   // ========== 館別首頁 API ==========
   app.use('/api/facility-home', facilityHomeRouter);
 
@@ -1008,15 +1012,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         total: users.length,
         users: users.map(u => ({
-          id: u.id,
+          id: u.userId,
           userId: u.userId,
           userName: u.userName,
-          isActive: u.isActive,
-          canInterviewCheck: u.canInterviewCheck,
-          canInternalQuery: u.canInternalQuery,
+          isActive: u.isActive === 'true',
+          canInterviewCheck: u.canInterviewCheck === 'true',
+          canInternalQuery: u.canInternalQuery === 'true',
           createdAt: u.createdAt,
         }))
       });
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  // 面試授權用戶 — 新增
+  app.post('/api/admin/interview-users', async (req, res) => {
+    try {
+      const { db } = await import('./db');
+      const { interviewAuthorizedUsers } = await import('@shared/schema');
+      const { userId, userName, canInterviewCheck = true, canInternalQuery = false } = req.body ?? {};
+      if (!userId || !userName) {
+        return res.status(400).json({ success: false, error: 'userId 和 userName 為必填' });
+      }
+      const [created] = await db.insert(interviewAuthorizedUsers).values({
+        userId: String(userId),
+        userName: String(userName),
+        isActive: 'true',
+        canInterviewCheck: canInterviewCheck !== false ? 'true' : 'false',
+        canInternalQuery: canInternalQuery === true ? 'true' : 'false',
+      }).returning();
+      res.json({ success: true, user: { ...created, isActive: created.isActive === 'true', canInterviewCheck: created.canInterviewCheck === 'true', canInternalQuery: created.canInternalQuery === 'true' } });
+    } catch (error: any) {
+      if (error?.message?.includes('duplicate') || error?.code === '23505') {
+        return res.status(409).json({ success: false, error: '該 userId 已存在' });
+      }
+      res.status(500).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  // 面試授權用戶 — 更新
+  app.patch('/api/admin/interview-users/:userId', async (req, res) => {
+    try {
+      const { db } = await import('./db');
+      const { interviewAuthorizedUsers } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const { isActive, canInterviewCheck, canInternalQuery, userName } = req.body ?? {};
+      const updateData: Record<string, any> = {};
+      if (typeof isActive === 'boolean') updateData.isActive = isActive ? 'true' : 'false';
+      if (typeof canInterviewCheck === 'boolean') updateData.canInterviewCheck = canInterviewCheck ? 'true' : 'false';
+      if (typeof canInternalQuery === 'boolean') updateData.canInternalQuery = canInternalQuery ? 'true' : 'false';
+      if (userName) updateData.userName = String(userName);
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ success: false, error: '沒有可更新的欄位' });
+      }
+      const [updated] = await db.update(interviewAuthorizedUsers)
+        .set(updateData)
+        .where(eq(interviewAuthorizedUsers.userId, req.params.userId))
+        .returning();
+      if (!updated) return res.status(404).json({ success: false, error: '找不到該用戶' });
+      res.json({ success: true, user: updated });
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  // 面試授權用戶 — 刪除
+  app.delete('/api/admin/interview-users/:userId', async (req, res) => {
+    try {
+      const { db } = await import('./db');
+      const { interviewAuthorizedUsers } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const [deleted] = await db.delete(interviewAuthorizedUsers)
+        .where(eq(interviewAuthorizedUsers.userId, req.params.userId))
+        .returning();
+      if (!deleted) return res.status(404).json({ success: false, error: '找不到該用戶' });
+      res.json({ success: true, userId: req.params.userId });
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message });
     }

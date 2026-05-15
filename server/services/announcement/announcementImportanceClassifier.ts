@@ -81,10 +81,25 @@ const MUST_READ_SIGNALS: Array<{ code: string; test: (t: string) => boolean }> =
 
 // ── NORMAL ANNOUNCEMENT 訊號 ──────────────────────────────────────────────────
 
+// 寬鬆模式（預設）：單一關鍵字即可命中
 const NORMAL_KEYWORDS = [
   '報名', '課程', '活動資訊', '通知', '更新', '招生',
   '優惠', '夏令營', '冬令營', '開放', '體驗課', '公告',
 ];
+
+// 嚴格模式（ANNOUNCEMENT_STRICT_NORMAL_PHRASES=true）：
+// 需符合「短語」才命中，避免閒聊中偶爾帶到單字
+const NORMAL_PHRASES_STRICT = [
+  /報名(資訊|辦法|日期|開始|已開放)/, /課程(說明|內容|安排|調整|異動)/,
+  /活動資訊/, /通知(大家|各館|相關人員)/, /更新(了|版本|公告)/,
+  /招生(活動|期間|中)/, /優惠(活動|方案|優惠期)/, /夏令營/, /冬令營/,
+  /開放(時間|報名|申請)/, /體驗課/, /(公告|通告)[：:]/,
+];
+
+// 動態讀取 env var，支援測試覆蓋
+function isStrictNormalMode(): boolean {
+  return process.env.ANNOUNCEMENT_STRICT_NORMAL_PHRASES === 'true';
+}
 
 // ── 主函式 ────────────────────────────────────────────────────────────────────
 
@@ -120,10 +135,17 @@ export function classifyAnnouncementImportance(input: {
     return { importance: 'must_read', reasonCodes: hitCodes, confidence: 0.72 };
   }
 
-  // 3. 一般公告關鍵字
-  const normalHit = NORMAL_KEYWORDS.find(k => t.includes(k));
-  if (normalHit && t.length >= 15) {
-    return { importance: 'normal', reasonCodes: [`normal:${normalHit}`], confidence: 0.60 };
+  // 3. 一般公告關鍵字（嚴格模式用短語，寬鬆模式用單字）
+  if (isStrictNormalMode()) {
+    const phraseMatch = NORMAL_PHRASES_STRICT.find(re => re.test(t));
+    if (phraseMatch && t.length >= 15) {
+      return { importance: 'normal', reasonCodes: [`normal_phrase:${phraseMatch.source.substring(0, 20)}`], confidence: 0.60 };
+    }
+  } else {
+    const normalHit = NORMAL_KEYWORDS.find(k => t.includes(k));
+    if (normalHit && t.length >= 15) {
+      return { importance: 'normal', reasonCodes: [`normal:${normalHit}`], confidence: 0.60 };
+    }
   }
 
   // 4. 預設：不是公告

@@ -518,6 +518,35 @@ export interface CreateOutgoingMessageData {
   triggeredBy?: string;
 }
 
+// ── T003：公告白名單（外部化 VIP_USERS） ─────────────────────────────────────
+
+export const announcementWhitelistUsers = pgTable('announcement_whitelist_users', {
+  userId: text('user_id').primaryKey(),
+  userName: text('user_name').notNull(),
+  role: text('role').default('vip').notNull(), // 'vip' | 'supervisor_hint'
+  note: text('note'),
+  isActive: boolean('is_active').default(true).notNull(),
+  addedBy: text('added_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type AnnouncementWhitelistUser = typeof announcementWhitelistUsers.$inferSelect;
+
+// ── T003：服務健康快照 ────────────────────────────────────────────────────────
+
+export const serviceHealthSnapshots = pgTable('service_health_snapshots', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  snappedAt: timestamp('snapped_at', { withTimezone: true }).defaultNow().notNull(),
+  overallStatus: text('overall_status').notNull(),
+  servicesJson: jsonb('services_json').default([]).notNull(),
+  triggeredBy: text('triggered_by'),
+  webhookSentAt: timestamp('webhook_sent_at', { withTimezone: true }),
+  webhookStatus: text('webhook_status'),
+});
+
+export type ServiceHealthSnapshot = typeof serviceHealthSnapshots.$inferSelect;
+
 // Employee Cache interfaces
 export interface IEmployeeCache {
   id: string;

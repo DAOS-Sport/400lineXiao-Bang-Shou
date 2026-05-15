@@ -34,7 +34,7 @@ interface AnnSummary {
 }
 interface AuditLog { id: string; level: string; category: string; message: string; timestamp: string; }
 interface InterviewUser {
-  id: number; userId: string; userName: string; isActive: boolean;
+  id: string; userId: string; userName: string; isActive: boolean;
   canInterviewCheck: boolean; canInternalQuery: boolean; createdAt: string;
 }
 interface WebhookStats {
@@ -582,10 +582,49 @@ function LogsSection() {
 // ── Users Section ─────────────────────────────────────────────────────────────
 
 function UsersSection() {
+  const { toast } = useToast();
   const { data, refetch, isFetching } = useQuery<{ success: boolean; users: InterviewUser[] }>({
     queryKey: ['/api/admin/interview-users'], refetchInterval: 60_000,
   });
   const users = data?.users ?? [];
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [newUserId, setNewUserId] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newCanInterview, setNewCanInterview] = useState(true);
+  const [newCanInternal, setNewCanInternal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  const addMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/admin/interview-users', {
+      userId: newUserId.trim(), userName: newUserName.trim(),
+      canInterviewCheck: newCanInterview, canInternalQuery: newCanInternal,
+    }),
+    onSuccess: () => {
+      toast({ title: '已新增授權用戶' });
+      setShowAdd(false); setNewUserId(''); setNewUserName('');
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/interview-users'] });
+    },
+    onError: (e: any) => toast({ title: '新增失敗', description: e?.message, variant: 'destructive' }),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
+      apiRequest('PATCH', `/api/admin/interview-users/${encodeURIComponent(userId)}`, { isActive }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/admin/interview-users'] }),
+    onError: (e: any) => toast({ title: '更新失敗', description: e?.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiRequest('DELETE', `/api/admin/interview-users/${encodeURIComponent(userId)}`),
+    onSuccess: () => {
+      toast({ title: '已刪除授權用戶' });
+      setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/interview-users'] });
+    },
+    onError: (e: any) => toast({ title: '刪除失敗', description: e?.message, variant: 'destructive' }),
+  });
 
   return (
     <div className="space-y-6">
@@ -594,6 +633,72 @@ function UsersSection() {
         <MetricCard label="總授權用戶" value={users.length} icon={Users} />
         <MetricCard label="啟用中" value={users.filter(u => u.isActive).length} color="text-emerald-600" icon={CheckCircle2} />
       </div>
+
+      {/* 新增表單 */}
+      {showAdd ? (
+        <Card className="border-0 shadow-sm bg-blue-50">
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-semibold text-gray-700">新增授權用戶</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">LINE User ID *</label>
+                <input value={newUserId} onChange={e => setNewUserId(e.target.value)}
+                  placeholder="Uxxxxxxxxxx..."
+                  className="w-full text-sm border border-gray-200 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">姓名 *</label>
+                <input value={newUserName} onChange={e => setNewUserName(e.target.value)}
+                  placeholder="例：王小明"
+                  className="w-full text-sm border border-gray-200 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-[#1a3a5c]" />
+              </div>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={newCanInterview} onChange={e => setNewCanInterview(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-[#1a3a5c]" />
+                <span className="text-gray-600">面試查核</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={newCanInternal} onChange={e => setNewCanInternal(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-[#1a3a5c]" />
+                <span className="text-gray-600">內部查詢</span>
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => addMutation.mutate()} disabled={addMutation.isPending || !newUserId.trim() || !newUserName.trim()}
+                className="bg-[#1a3a5c] hover:bg-[#15304d] text-white h-8 text-xs">
+                {addMutation.isPending ? '儲存中…' : '確認新增'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowAdd(false)} className="h-8 text-xs">取消</Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Button size="sm" onClick={() => setShowAdd(true)}
+          className="bg-[#1a3a5c] hover:bg-[#15304d] text-white h-9 text-xs">
+          <Users className="w-3.5 h-3.5 mr-1.5" />新增授權用戶
+        </Button>
+      )}
+
+      {/* 刪除確認對話框 */}
+      {deleteTarget && (
+        <Card className="border border-red-200 shadow-sm bg-red-50">
+          <CardContent className="px-5 py-4">
+            <p className="text-sm text-red-700 mb-3">確定要刪除 <span className="font-mono font-semibold">{deleteTarget}</span> 的授權嗎？此操作不可復原。</p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => deleteMutation.mutate(deleteTarget)} disabled={deleteMutation.isPending}
+                className="bg-red-600 hover:bg-red-700 text-white h-8 text-xs">
+                {deleteMutation.isPending ? '刪除中…' : '確認刪除'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setDeleteTarget(null)} className="h-8 text-xs">取消</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border-0 shadow-sm">
         <CardContent className="p-0">
           <div className="divide-y divide-gray-50">
@@ -606,10 +711,18 @@ function UsersSection() {
                   <p className="text-sm font-medium text-gray-800">{u.userName}</p>
                   <p className="text-xs text-gray-400 font-mono truncate">{u.userId}</p>
                 </div>
-                <div className="flex gap-1.5 shrink-0">
-                  {u.isActive && <Badge className="text-xs bg-emerald-100 text-emerald-700 border-0">啟用</Badge>}
+                <div className="flex gap-1.5 shrink-0 items-center">
                   {u.canInterviewCheck && <Badge className="text-xs bg-blue-100 text-blue-700 border-0">面試查核</Badge>}
                   {u.canInternalQuery && <Badge className="text-xs bg-violet-100 text-violet-700 border-0">內部查詢</Badge>}
+                  <button
+                    onClick={() => toggleMutation.mutate({ userId: u.userId, isActive: !u.isActive })}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-all ${u.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'}`}>
+                    {u.isActive ? '啟用' : '停用'}
+                  </button>
+                  <button onClick={() => setDeleteTarget(u.userId)}
+                    className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded" title="刪除">
+                    <XCircle className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}

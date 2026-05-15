@@ -10,11 +10,28 @@ import { GroupTier, SCOPE_MULTI_FACILITY_KEYWORDS } from './announcementConfig';
 
 // ── 評分維度關鍵字 ──────────────────────────────────────────────────────────
 
-const STRONG_KEYWORDS = [
-  '即日起', '一律', '禁止', '不得', '務必', 'SOP', '請統一', '統一說法',
-  '禁止說詞', '請各館配合', '全體員工', '休館', '暫停開放', '恢復營運',
-  '課程取消', '時段調整', '價格調整', '請轉知', '請知悉', '異動如下', '公告如下',
+// 單一命中即可直接 rule_matched 的強關鍵字
+const STRONG_KEYWORDS_SOLO = [
+  '即日起', '休館', '暫停開放', '恢復營運',
+  'SOP', '統一說法', '禁止說詞',
+  '異動如下', '公告如下', '請各館配合',
 ];
+
+// 需要 + 字數 ≥ 25 或 + 另一強訊號 才能 rule_matched（嚴格模式下生效）
+const STRONG_KEYWORDS_COMBO = [
+  '一律', '禁止', '不得', '務必',
+  '請統一', '全體員工',
+  '課程取消', '時段調整', '價格調整',
+  '請轉知', '請知悉',
+];
+
+// 環境變數關閉時，行為退回舊版（兩者合併視為單一命中）
+// 注意：每次呼叫時動態讀取 env var，以支援測試覆蓋
+function isStrictMode(): boolean {
+  return process.env.ANNOUNCEMENT_STRICT_STRONG_KEYWORDS === 'true';
+}
+// STRONG_KEYWORDS 依嚴格模式動態決定（在 scoreMessage 內重新計算）
+const STRONG_KEYWORDS = [...STRONG_KEYWORDS_SOLO, ...STRONG_KEYWORDS_COMBO];
 
 const WEAK_KEYWORDS = [
   '活動', '優惠', '折扣', '通知', '調整', '更新', '修正', '報名', '開放',
@@ -89,6 +106,7 @@ export function hardExclude(text: string): HardExcludeResult {
 export interface RuleScore {
   total: number;
   strongHits: string[];
+  strongComboHits: string[];
   weakHits: string[];
   timeHits: string[];
   audienceHits: string[];
@@ -102,7 +120,12 @@ export interface RuleScore {
 }
 
 export function scoreMessage(text: string): RuleScore {
-  const strongHits = STRONG_KEYWORDS.filter(k => text.includes(k));
+  const strict = isStrictMode();
+  const activeStrongKeywords = strict ? STRONG_KEYWORDS_SOLO : STRONG_KEYWORDS;
+  const strongHits = activeStrongKeywords.filter(k => text.includes(k));
+  const strongComboHits = strict
+    ? STRONG_KEYWORDS_COMBO.filter(k => text.includes(k))
+    : [];
   const weakHits = WEAK_KEYWORDS.filter(k => text.includes(k));
   const timeHits = TIME_WORDS.filter(k => text.includes(k));
   const audienceHits = AUDIENCE_WORDS.filter(k => text.includes(k));
@@ -125,11 +148,25 @@ export function scoreMessage(text: string): RuleScore {
   total += actionHits.length * 2;    // 行動詞 +2/個
   if (hasStructure) total += 5;      // 結構訊號 +5
   if (scopeType === 'multi_facility') total += 8; // 跨館 +8
-  total -= noiseHits.length * 4;     // 噪音詞 -4/個
+
+  // 噪音詞：開頭或結尾命中 ×2 權重（邊緣更容易是閒聊）
+  const HEAD_TAIL_LEN = 6;
+  const edgeHead = text.substring(0, HEAD_TAIL_LEN);
+  const edgeTail = text.substring(Math.max(0, text.length - HEAD_TAIL_LEN));
+  let noiseScore = 0;
+  for (const noise of NOISE_WORDS) {
+    if (edgeHead.includes(noise) || edgeTail.includes(noise)) {
+      noiseScore += 8;  // 開頭/結尾 ×2
+    } else if (text.includes(noise)) {
+      noiseScore += 4;
+    }
+  }
+  total -= noiseScore;
 
   return {
     total: Math.max(0, total),
     strongHits,
+    strongComboHits,
     weakHits,
     timeHits,
     audienceHits,
@@ -165,8 +202,26 @@ export function makeDecision(params: {
   const len = text.length;
   const matched: string[] = [];
 
-  // ── 強關鍵字命中 → rule_matched（不送 AI）─────────────────────────────
-  if (score.strongHits.length > 0) {
+  // ── 強關鍵字 SOLO 命中 → rule_matched（不送 AI）──────────────────────
+  const soloHits = score.strongHits.filter(k => STRONG_KEYWORDS_SOLO.includes(k));
+  if (soloHits.length > 0) {
+    matched.push(...soloHits.map(k => `strong_solo:${k}`));
+    return { decision: 'rule_matched', reason: 'strong_keyword_solo', score, matchedRules: matched };
+  }
+
+  // ── 強關鍵字 COMBO 命中（嚴格模式才走這條）────────────────────────────
+  if (isStrictMode() && score.strongComboHits.length > 0) {
+    const lenOk = text.length >= 25;
+    const hasOtherSignal = score.hasStructure || score.scopeType !== 'group' || score.strongComboHits.length >= 2;
+    if (lenOk || hasOtherSignal) {
+      matched.push(...score.strongComboHits.map(k => `strong_combo:${k}`));
+      return { decision: 'rule_matched', reason: 'strong_keyword_combo', score, matchedRules: matched };
+    }
+    // 不夠條件 → 繼續往下走 tri-element / score threshold
+  }
+
+  // ── 非嚴格模式：COMBO 視同舊版強關鍵字（strongHits 已含全部） ────────
+  if (!isStrictMode() && score.strongHits.length > 0) {
     matched.push(...score.strongHits.map(k => `strong:${k}`));
     return { decision: 'rule_matched', reason: 'strong_keyword', score, matchedRules: matched };
   }
@@ -175,7 +230,12 @@ export function makeDecision(params: {
   const triCount = [score.hasTimeSensitivity, score.hasExplicitAudience, score.hasExplicitAction]
     .filter(Boolean).length;
 
-  if (triCount >= 2 && score.total >= 12) {
+  // 需要 triCount >= 2 + total >= 16 + 至少一個結構/scope/強訊號
+  const hasTriSignal = score.hasStructure
+    || score.scopeType !== 'group'
+    || score.strongHits.length > 0;
+
+  if (triCount >= 2 && score.total >= 16 && hasTriSignal) {
     matched.push('tri_element_match');
     if (score.hasTimeSensitivity) matched.push('has_time');
     if (score.hasExplicitAudience) matched.push('has_audience');

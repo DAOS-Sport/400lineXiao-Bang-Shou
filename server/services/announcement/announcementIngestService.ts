@@ -24,6 +24,7 @@ import {
   FOCUS_GROUP_IDS, GROUP_FACILITY_MAP, GROUP_TIER_MAP,
   VIP_USERS, SUPERVISOR_KEYWORDS, NEEDS_ACK_TYPES,
 } from './announcementConfig';
+import { getVipUserMap } from '../admin/whitelistRepo';
 import { isSupervisor as resolveIsSupervisor } from '../supervisorResolver';
 import { computeContentHash, checkAndDedup } from '../candidateDedup';
 
@@ -68,7 +69,9 @@ export async function ingestMessageForAnnouncement(params: {
   }
 
   // 身份判斷（supervisorResolver + fallback）
-  const vipName = VIP_USERS[userId] ?? null;
+  // VIP 列表優先查 DB（5分鐘 cache），DB 失敗回退到 config 常數
+  const dbVipMap = await getVipUserMap();
+  const vipName = dbVipMap[userId] ?? VIP_USERS[userId] ?? null;
   const isVip = vipName !== null;
   const isAdminInDb = await storage.isAdmin(userId);
   const isAdminByName = isSupervisorByName(displayName);
@@ -83,11 +86,56 @@ export async function ingestMessageForAnnouncement(params: {
   const tier = GROUP_TIER_MAP[groupId] ?? null;
   if (!tier) return;
 
+  // must_read 快速通道：Layer 0.5 高信心命中 → 繞過規則引擎直接進候選池
+  const isFastTrack = importanceDecision.importance === 'must_read'
+    && importanceDecision.confidence >= 0.85;
+
+  // normal 重要性 → tier 往下降一級（減少一般通知占用高tier候選池）
+  const effectiveTier = importanceDecision.importance === 'normal'
+    ? (tier === 'A' ? 'B' : tier === 'B' ? 'C' : 'C')
+    : tier;
+
   incRuleEngine();
+
+  // must_read 快速通道：信心足夠高時不走規則引擎，直接寫入
+  if (isFastTrack) {
+    console.log(`✅ [公告] must_read 快速通道 (${importanceDecision.reasonCodes.join(',')}) "${text.substring(0, 50)}"`);
+    const fastScore = scoreMessage(text);
+    const facilityNameFast = GROUP_FACILITY_MAP[groupId] ?? '未知場館';
+    const fastType = inferTypeFromRules(importanceDecision.reasonCodes, fastScore);
+    const needsAckFast = NEEDS_ACK_TYPES.has(fastType) || fastScore.scopeType !== 'group';
+    await persistCandidate({
+      messageId, groupId, facilityName: facilityNameFast, userId, displayName,
+      text, speakerType, isSupervisor: isSup, tier: effectiveTier,
+      candidateType: fastType,
+      scopeType: fastScore.scopeType,
+      title: null,
+      summary: null,
+      confidence: String(importanceDecision.confidence),
+      reasoningTags: ['fast_track', ...importanceDecision.reasonCodes],
+      status: 'rule_matched_pending_review',
+      decisionSource: 'rule_engine',
+      preFilterScore: fastScore.total,
+      matchedRules: ['fast_track', ...importanceDecision.reasonCodes],
+      needsAck: needsAckFast,
+      isTimeSensitive: fastScore.hasTimeSensitivity,
+      isCustomerFacing: fastScore.hasExplicitAudience,
+      isOperationallyRelevant: true,
+      appliesToRoles: [],
+      startAt: null,
+      endAt: null,
+      recommendedAction: null,
+      recommendedReply: null,
+      badExample: null,
+      aiExtractedJson: null,
+      priority: 'must_read',
+    });
+    return;
+  }
 
   // Layer 1 + 2: 規則評分 + 決策
   const score = scoreMessage(text);
-  const decisionResult = makeDecision({ text, score, speakerType, tier });
+  const decisionResult = makeDecision({ text, score, speakerType, tier: effectiveTier });
 
   incDecision(decisionResult.decision, {
     groupId,
@@ -112,7 +160,7 @@ export async function ingestMessageForAnnouncement(params: {
 
     await persistCandidate({
       messageId, groupId, facilityName, userId, displayName,
-      text, speakerType, isSupervisor: isSup, tier,
+      text, speakerType, isSupervisor: isSup, tier: effectiveTier,
       candidateType,
       scopeType: score.scopeType,
       title: null,
@@ -149,10 +197,7 @@ export async function ingestMessageForAnnouncement(params: {
 
   try {
     aiResult = await classifyAnnouncement(text, `${facilityName}（${groupId.substring(0, 8)}…）`, isSup || isVip, {
-      pass: true,
       detectedKeywords: score.strongHits,
-      hintType: 'unknown',
-      scopeHint: 'group',
       passReason: decisionResult.reason as any,
     });
   } catch (err: any) {
@@ -170,11 +215,19 @@ export async function ingestMessageForAnnouncement(params: {
     return;
   }
 
+  // AI confidence 門檻：非主管/VIP 的低信心結果 drop（可調）
+  const minConf = parseFloat(process.env.ANNOUNCEMENT_AI_MIN_CONFIDENCE ?? '0.55');
+  const aiConf = typeof aiResult.confidence === 'number' ? aiResult.confidence : parseFloat(String(aiResult.confidence ?? '0'));
+  if (!isSup && !isVip && aiConf < minConf) {
+    console.log(`⏭️ [公告] AI low confidence drop (conf=${aiConf} < min=${minConf}) "${text.substring(0, 40)}"`);
+    return;
+  }
+
   const needsAck = NEEDS_ACK_TYPES.has(aiResult.candidateType) || aiResult.scopeType !== 'group' || !!aiResult.needsAck;
 
   await persistCandidate({
     messageId, groupId, facilityName, userId, displayName,
-    text, speakerType, isSupervisor: isSup, tier,
+    text, speakerType, isSupervisor: isSup, tier: effectiveTier,
     candidateType: aiResult.candidateType,
     scopeType: aiResult.scopeType,
     title: aiResult.title,

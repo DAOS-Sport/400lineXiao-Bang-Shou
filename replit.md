@@ -154,6 +154,33 @@ Preferred communication style: Simple, everyday language.
 - **測試**: `server/__tests__/announcementHealth.test.ts`（10 cases）— 執行 `npx vitest run server/__tests__/announcementHealth.test.ts`
 - **已知技術債（與本次無關但有記錄）**: `server/middleware/lineSignature.ts` L17-20 的 LINE webhook 簽章驗證目前被整段 `next()` 跳過（標註「臨時跳過」）。不是訊息中斷的原因，但是安全債，未來應重啟驗證
 
+### 公告白名單外部化（T003）
+- **表**: `announcement_whitelist_users` — 存放 VIP 用戶（取代 `announcementConfig.ts` 的 `VIP_USERS` 常數）
+- **Service**: `server/services/admin/whitelistRepo.ts` — CRUD + 5分鐘 in-memory cache；DB 失敗自動 fallback 至 config 常數
+- **Seed**: `scripts/seed_whitelist.ts` — 一次性遷移工具
+- **Endpoints**: `/api/admin/whitelist/*`（GET/POST/PATCH/DELETE）
+
+### 服務監聽 Admin API（T003）
+- **表**: `service_health_snapshots` — 定期儲存健康快照（overallStatus, servicesJson, webhookStatus）
+- **Service**: `server/services/monitoring/healthAggregator.ts` — 彙整 DB / LINE Bot / Gemini / OpenAI / 公告管線健康狀態
+- **Service**: `server/services/monitoring/dashboardPusher.ts` — HMAC-SHA256 簽名推送到外部儀表板（`DASHBOARD_WEBHOOK_URL`，空白則停用）
+- **Router**: `server/routes/adminConsoleRoutes.ts` — 掛載於 `/api/admin`（authMiddleware 保護）
+- **Env vars**: `DASHBOARD_WEBHOOK_URL`, `DASHBOARD_WEBHOOK_SECRET`, `DASHBOARD_HEARTBEAT_INTERVAL_MS`
+
+### 面試白名單前端管理（T019）
+- **Endpoints**: `POST/PATCH/DELETE /api/admin/interview-users`（新增於 `server/routes.ts`）
+- **Frontend**: `client/src/pages/admin.tsx` UsersSection — 可新增/啟停/刪除面試授權用戶
+
+### 公告審核精度修正（T017）
+- **announcementRuleEngine.ts**：強關鍵字分為 SOLO（直接 rule_matched）和 COMBO（嚴格模式需額外條件）；tri-element 門檻 12→16 + 需有 triSignal；噪音詞邊緣（開頭/尾）×2 扣分
+- **announcementImportanceClassifier.ts**：新增 `NORMAL_PHRASES_STRICT`（嚴格模式下要求短語）
+- **announcementIngestService.ts**：must_read 快速通道（confidence ≥ 0.85 繞過規則引擎）；normal tier 降一級；AI confidence 門檻（預設 0.55）
+- **Env vars**: `ANNOUNCEMENT_STRICT_STRONG_KEYWORDS`, `ANNOUNCEMENT_STRICT_NORMAL_PHRASES`, `ANNOUNCEMENT_AI_MIN_CONFIDENCE`
+- **Tests**: `server/__tests__/announcementPrecision.test.ts`（14 cases, all passing）
+
+### 外部服務清單文件（T020）
+- **文件**: `docs/外部服務清單.md` — 四區塊：外部呼叫清單、暴露端點、環境變數、容錯設計
+
 ### Duty Page（值班首頁）
 - **Route**: `/duty` — 館別選擇頁（列出所有 Tier A/B 館別，點擊進入值班首頁）
 - **Route**: `/duty/:groupId` — 館別值班首頁（已核准公告展示）
