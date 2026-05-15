@@ -136,6 +136,12 @@ Preferred communication style: Simple, everyday language.
 - `GET /api/internal/facility-home/:groupId/announcements/:id` — 單筆公告詳情
 - `GET /api/internal/facility-home/:groupId/today-shift` — 班表（stub，目前回空陣列）
 - `GET /api/internal/facility-home/:groupId/handover` — 交接事項（stub，目前回空陣列）
+- `GET    /api/internal/announcement-whitelist` — 列出所有公告 VIP 白名單
+- `POST   /api/internal/announcement-whitelist` — 新增白名單用戶（body: userId, userName, role?, note?, addedBy?）
+- `PATCH  /api/internal/announcement-whitelist/:userId` — 更新（userName / role / note / isActive）
+- `DELETE /api/internal/announcement-whitelist/:userId` — 刪除
+- `GET /api/internal/service-health` — 即時健康（DB / LINE Bot / Gemini / OpenAI / 公告管線）
+- `GET /api/internal/service-health/snapshots` — 最近 N 小時快照（?hours=24，最長 168h）
 - 錯誤格式統一為 `{ "message": "..." }`；401 / 404 / 500 皆為 JSON
 
 ### Facility Home API

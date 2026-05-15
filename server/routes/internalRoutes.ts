@@ -16,11 +16,19 @@
  *   找不到館別 → 404 { "message": "FACILITY_GROUP_NOT_FOUND" }
  *
  * 路由清單：
- *   GET /api/internal/facility-home/:groupId/home
- *   GET /api/internal/facility-home/:groupId/announcements
- *   GET /api/internal/facility-home/:groupId/announcements/:id
- *   GET /api/internal/facility-home/:groupId/today-shift
- *   GET /api/internal/facility-home/:groupId/handover
+ *   GET  /api/internal/facility-home/:groupId/home
+ *   GET  /api/internal/facility-home/:groupId/announcements
+ *   GET  /api/internal/facility-home/:groupId/announcements/:id
+ *   GET  /api/internal/facility-home/:groupId/today-shift
+ *   GET  /api/internal/facility-home/:groupId/handover
+ *
+ *   GET    /api/internal/announcement-whitelist
+ *   POST   /api/internal/announcement-whitelist
+ *   PATCH  /api/internal/announcement-whitelist/:userId
+ *   DELETE /api/internal/announcement-whitelist/:userId
+ *
+ *   GET  /api/internal/service-health
+ *   GET  /api/internal/service-health/snapshots
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -28,6 +36,13 @@ import crypto from 'crypto';
 import { db } from '../db';
 import { publishedAnnouncements, facilities } from '@shared/schema';
 import { eq, and, or, gte, ilike, isNull, desc, sql } from 'drizzle-orm';
+import {
+  listWhitelistUsers,
+  addWhitelistUser,
+  updateWhitelistUser,
+  deleteWhitelistUser,
+} from '../services/admin/whitelistRepo';
+import { aggregateHealth, getRecentSnapshots } from '../services/monitoring/healthAggregator';
 
 export const internalRouter = Router();
 
@@ -359,4 +374,105 @@ internalRouter.get('/facility-home/:groupId/handover', async (req, res) => {
   }
 
   return res.json({ items: [] });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 公告 VIP 白名單管理
+// GET    /api/internal/announcement-whitelist         — 列表
+// POST   /api/internal/announcement-whitelist         — 新增
+// PATCH  /api/internal/announcement-whitelist/:userId — 更新
+// DELETE /api/internal/announcement-whitelist/:userId — 刪除
+// ═══════════════════════════════════════════════════════════════════════════
+
+internalRouter.get('/announcement-whitelist', async (_req, res) => {
+  try {
+    const rows = await listWhitelistUsers();
+    return res.json({ items: rows });
+  } catch (err: any) {
+    console.error('❌ [internal/whitelist] list error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+internalRouter.post('/announcement-whitelist', async (req, res) => {
+  const { userId, userName, role, note, addedBy } = req.body ?? {};
+  if (!userId || typeof userId !== 'string') {
+    return res.status(400).json({ message: 'MISSING_USER_ID' });
+  }
+  if (!userName || typeof userName !== 'string') {
+    return res.status(400).json({ message: 'MISSING_USER_NAME' });
+  }
+  try {
+    const created = await addWhitelistUser({ userId, userName, role, note, addedBy });
+    return res.status(201).json({ data: created });
+  } catch (err: any) {
+    const isDuplicate = err?.message?.includes('unique') || err?.code === '23505';
+    if (isDuplicate) {
+      return res.status(409).json({ message: 'USER_ALREADY_EXISTS' });
+    }
+    console.error('❌ [internal/whitelist] add error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+internalRouter.patch('/announcement-whitelist/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { userName, role, note, isActive } = req.body ?? {};
+  const patch: Record<string, any> = {};
+  if (userName !== undefined) patch.userName = userName;
+  if (role    !== undefined) patch.role    = role;
+  if (note    !== undefined) patch.note    = note;
+  if (isActive !== undefined) patch.isActive = Boolean(isActive);
+
+  if (Object.keys(patch).length === 0) {
+    return res.status(400).json({ message: 'NO_FIELDS_TO_UPDATE' });
+  }
+
+  try {
+    const updated = await updateWhitelistUser(userId, patch);
+    if (!updated) return res.status(404).json({ message: 'USER_NOT_FOUND' });
+    return res.json({ data: updated });
+  } catch (err: any) {
+    console.error('❌ [internal/whitelist] update error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+internalRouter.delete('/announcement-whitelist/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const ok = await deleteWhitelistUser(userId);
+    if (!ok) return res.status(404).json({ message: 'USER_NOT_FOUND' });
+    return res.json({ message: 'DELETED' });
+  } catch (err: any) {
+    console.error('❌ [internal/whitelist] delete error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 服務健康狀態
+// GET /api/internal/service-health           — 即時健康（DB / LINE / Gemini / OpenAI / 公告管線）
+// GET /api/internal/service-health/snapshots — 最近 N 小時快照（?hours=24）
+// ═══════════════════════════════════════════════════════════════════════════
+
+internalRouter.get('/service-health', async (_req, res) => {
+  try {
+    const payload = await aggregateHealth();
+    return res.json(payload);
+  } catch (err: any) {
+    console.error('❌ [internal/service-health] error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+internalRouter.get('/service-health/snapshots', async (req, res) => {
+  const hours = Math.min(168, Math.max(1, parseInt(req.query.hours as string) || 24));
+  try {
+    const rows = await getRecentSnapshots(hours);
+    return res.json({ items: rows, hours });
+  } catch (err: any) {
+    console.error('❌ [internal/service-health/snapshots] error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
 });
