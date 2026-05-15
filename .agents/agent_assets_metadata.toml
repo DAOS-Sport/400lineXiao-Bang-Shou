@@ -12,3 +12,9 @@ id = "KYXqd7t2DcCi23RyWxKxj"
 uri = "file://docs/資料庫訊息總覽.md"
 type = "text"
 title = "資料庫訊息總覽.md"
+
+[[outputs]]
+id = "jEWhT_OLxbej3mOcKVH0g"
+uri = "file://docs/公告篩選機制.md"
+type = "text"
+title = "公告篩選機制（5 層管線）"
