@@ -18,3 +18,9 @@ id = "jEWhT_OLxbej3mOcKVH0g"
 uri = "file://docs/公告篩選機制.md"
 type = "text"
 title = "公告篩選機制（5 層管線）"
+
+[[outputs]]
+id = "A5H5ggvcPR7kS_mFaKbLw"
+uri = "file://docs/exports/announcement_candidates.json"
+type = "unspecified"
+title = "公告候選池全部資料 (JSON)"
