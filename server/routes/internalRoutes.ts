@@ -43,6 +43,7 @@ import {
   deleteWhitelistUser,
 } from '../services/admin/whitelistRepo';
 import { aggregateHealth, getRecentSnapshots } from '../services/monitoring/healthAggregator';
+import { interviewAuthorizedUsers } from '@shared/schema';
 
 export const internalRouter = Router();
 
@@ -473,6 +474,32 @@ internalRouter.get('/service-health/snapshots', async (req, res) => {
     return res.json({ items: rows, hours });
   } catch (err: any) {
     console.error('❌ [internal/service-health/snapshots] error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 面試檢核授權用戶（可使用 LINE 官方功能的 8 位名單）
+// GET /api/internal/interview-users — 唯讀，供外部儀表板顯示
+// ═══════════════════════════════════════════════════════════════════════════
+
+internalRouter.get('/interview-users', async (_req, res) => {
+  try {
+    const rows = await db.select().from(interviewAuthorizedUsers);
+    return res.json({
+      items: rows.map(r => ({
+        userId:           r.userId,
+        userName:         r.userName,
+        isActive:         r.isActive === 'true',
+        canInterviewCheck: r.canInterviewCheck === 'true',
+        canInternalQuery:  r.canInternalQuery  === 'true',
+        canUseAiAgent:     r.canUseAiAgent     === 'true',
+        note:             r.note ?? null,
+      })),
+      total: rows.length,
+    });
+  } catch (err: any) {
+    console.error('❌ [internal/interview-users] error:', err?.message);
     return res.status(500).json({ message: 'SERVER_ERROR' });
   }
 });
