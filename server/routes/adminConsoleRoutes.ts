@@ -8,7 +8,7 @@
 import { Router } from 'express';
 import {
   listWhitelistUsers, addWhitelistUser,
-  updateWhitelistUser, deleteWhitelistUser,
+  updateWhitelistUser,
 } from '../services/admin/whitelistRepo';
 import { aggregateHealth, getRecentSnapshots } from '../services/monitoring/healthAggregator';
 import { pushHealthSnapshot, storeHealthSnapshot } from '../services/monitoring/dashboardPusher';
@@ -58,9 +58,9 @@ adminConsoleRouter.patch('/whitelist/:userId', async (req, res) => {
 
 adminConsoleRouter.delete('/whitelist/:userId', async (req, res) => {
   try {
-    const deleted = await deleteWhitelistUser(req.params.userId);
-    if (!deleted) return res.status(404).json({ success: false, error: '找不到該用戶' });
-    res.json({ success: true, userId: req.params.userId });
+    const disabled = await updateWhitelistUser(req.params.userId, { isActive: false });
+    if (!disabled) return res.status(404).json({ success: false, error: '找不到該用戶' });
+    res.json({ success: true, action: 'disabled', user: disabled });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message });
   }

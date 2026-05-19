@@ -26,7 +26,7 @@ PH 7.8
     console.log(`   氣溫: ${result.airTemp}°C`);
     
     // 測試儲存功能
-    await waterQualityService.saveWaterQualityRecord(result);
+    await waterQualityService.saveWaterQualityRecord(result, 'test-group-001');
     console.log('✅ 水質紀錄已儲存');
     
     // 測試報告生成

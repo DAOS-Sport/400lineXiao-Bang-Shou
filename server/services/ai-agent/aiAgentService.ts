@@ -235,6 +235,9 @@ async function callOpenAI(question: string): Promise<string> {
   // 處理 function calling
   if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
     const toolCall = choice.message.tool_calls[0];
+    if (toolCall.type !== 'function') {
+      throw new Error(`Unsupported tool call type: ${toolCall.type}`);
+    }
     const { name, arguments: argsStr } = toolCall.function;
     const args = JSON.parse(argsStr || '{}');
 

@@ -4,8 +4,8 @@ async function manualPush() {
   try {
     console.log('📤 手動推播代辦事項...');
     
-    // 手動觸發一次任務提醒
-    await schedulerService.dailyTaskSummary();
+    // 手動觸發一次任務提醒（使用公開的排程入口，避免直接呼叫 private method）
+    await schedulerService.manualTriggerTaskSummary();
     
     console.log('✅ 手動推播完成');
     

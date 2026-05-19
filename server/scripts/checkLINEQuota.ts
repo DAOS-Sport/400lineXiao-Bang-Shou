@@ -58,7 +58,7 @@ async function checkLINEQuota() {
         const headers = response.headers || {};
         const quotaHeaders = Object.keys(headers)
           .filter(key => key.toLowerCase().includes('limit') || key.toLowerCase().includes('quota'))
-          .reduce((obj, key) => {
+          .reduce<Record<string, unknown>>((obj, key) => {
             obj[key] = headers[key];
             return obj;
           }, {});

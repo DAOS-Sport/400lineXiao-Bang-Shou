@@ -3,27 +3,32 @@
  */
 
 import { storage } from '../storage';
+import type { IAuditLog, IMessage, ITask } from '@shared/schema';
 
 async function checkAllActiveGroups() {
   console.log('🔍 檢查所有活動群組...');
   
   try {
     // 查看所有訊息記錄中的群組
-    const messages = await storage.getAllMessages();
-    const messageGroups = Array.from(new Set(messages.map(m => m.groupId).filter(g => g && g.startsWith('C'))));
+    const { messages } = await storage.getMessages({ pageSize: 1000 });
+    const messageGroups = Array.from(new Set(
+      messages
+        .map((message: IMessage) => message.groupId)
+        .filter((groupId): groupId is string => !!groupId && groupId.startsWith('C')),
+    ));
     console.log(`📧 訊息記錄中的群組數量: ${messageGroups.length}`);
     
     // 查看所有任務記錄中的群組
     const tasks = await storage.getAllTasks();
-    const taskGroups = Array.from(new Set(tasks.map(t => t.groupId)));
+    const taskGroups = Array.from(new Set(tasks.map((task: ITask) => task.groupId)));
     console.log(`📝 任務記錄中的群組數量: ${taskGroups.length}`);
     
     // 查看所有audit log中的群組
-    const auditLogs = await storage.getAllAuditLogs();
+    const auditLogs = await storage.getAuditLogs(1000);
     const auditGroups = Array.from(new Set(
       auditLogs
-        .map(a => a.details?.groupId)
-        .filter(g => g && typeof g === 'string' && g.startsWith('C'))
+        .map((auditLog: IAuditLog) => (auditLog.details as { groupId?: unknown } | null)?.groupId)
+        .filter((groupId): groupId is string => typeof groupId === 'string' && groupId.startsWith('C'))
     ));
     console.log(`📋 審計記錄中的群組數量: ${auditGroups.length}`);
     
@@ -32,10 +37,10 @@ async function checkAllActiveGroups() {
     console.log(`🎯 總共發現群組數量: ${allGroups.length}`);
     
     console.log('\n📊 詳細群組清單:');
-    allGroups.forEach((groupId, index) => {
-      const msgCount = messages.filter(m => m.groupId === groupId).length;
-      const taskCount = tasks.filter(t => t.groupId === groupId).length;
-      const pendingTaskCount = tasks.filter(t => t.groupId === groupId && t.status === 'pending').length;
+    allGroups.forEach((groupId: string, index: number) => {
+      const msgCount = messages.filter((message: IMessage) => message.groupId === groupId).length;
+      const taskCount = tasks.filter((task: ITask) => task.groupId === groupId).length;
+      const pendingTaskCount = tasks.filter((task: ITask) => task.groupId === groupId && task.status === 'pending').length;
       console.log(`${index + 1}. ${groupId.substring(0, 20)}... (訊息:${msgCount}, 任務:${taskCount}, 待辦:${pendingTaskCount})`);
     });
     

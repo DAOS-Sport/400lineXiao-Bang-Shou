@@ -65,7 +65,7 @@ export async function initializeSupervisors(): Promise<void> {
   console.log(`🔧 同步主管身份 (${SUPERVISOR_IDS_FROM_ENV.size} 人)...`);
 
   try {
-    const ids = [...SUPERVISOR_IDS_FROM_ENV];
+    const ids = Array.from(SUPERVISOR_IDS_FROM_ENV);
     const existing = await db.select().from(users).where(inArray(users.lineUserId, ids));
     const existingIds = new Set(existing.map(u => u.lineUserId).filter(Boolean) as string[]);
 

@@ -10,9 +10,9 @@ async function manualReport() {
   try {
     const report = await waterQualityService.generateDailyWaterQualityReport();
     
-    console.log('=' * 60);
+    console.log('='.repeat(60));
     console.log(report);
-    console.log('=' * 60);
+    console.log('='.repeat(60));
     
     console.log('\n📝 這就是會在每晚 22:00 自動發送到群組的完整內容！');
     console.log('🎯 群組：C50c2a9623a78cc5f5e9f39557e3abfe6');

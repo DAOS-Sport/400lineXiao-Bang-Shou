@@ -24,6 +24,16 @@ interface EmployeeDetails {
   isActive: boolean; // 是否在職
 }
 
+export interface AuthorizationCandidate {
+  displayName: string;
+  lineUserId: string;
+  phone: string;
+  department: string;
+  employeeNumber: string;
+  sourceTable: 'H01' | 'H02';
+  matchedBy: 'name' | 'lineUserId' | 'employeeNumber' | 'department';
+}
+
 // RAGIC API 回應格式（保持不變）
 interface RagicApiResponse {
   success: boolean;
@@ -254,6 +264,52 @@ export class RagicService {
   }
 
   /**
+   * 400QIAN 授權白名單候選搜尋。
+   *
+   * H01 是目前 SDK 的主表。H02 尚未有獨立 sheet config 時，不假裝成功；
+   * 由 internal API 的 sourceStatus 回報 fallback_not_configured。
+   */
+  async searchAuthorizationCandidates(query: string, limit = 20): Promise<AuthorizationCandidate[]> {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return [];
+
+    const records = await this.sdkService.getAll({ limit: 200 });
+    const candidates: AuthorizationCandidate[] = [];
+
+    for (const record of records) {
+      const displayName = pickText(record, ['姓名', '名稱', 'name', '_index_title_']);
+      const lineUserId = pickText(record, ['lineId', '個人LINE ID', 'LINE ID', 'LINE userId', 'userId']);
+      const employeeNumber = pickText(record, ['employeeNo', '員工編號', '工號']);
+      const phone = pickText(record, ['電話', '手機', '行動電話', 'phone', 'mobile']);
+      const department = pickText(record, ['部門', '單位', '館別', 'department']);
+      const haystack = [displayName, lineUserId, employeeNumber, phone, department]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(normalized)) continue;
+
+      const matchedBy: AuthorizationCandidate['matchedBy'] =
+        displayName.toLowerCase().includes(normalized) ? 'name'
+          : lineUserId.toLowerCase().includes(normalized) ? 'lineUserId'
+            : employeeNumber.toLowerCase().includes(normalized) ? 'employeeNumber'
+              : 'department';
+
+      candidates.push({
+        displayName,
+        lineUserId,
+        phone,
+        department,
+        employeeNumber,
+        sourceTable: 'H01',
+        matchedBy,
+      });
+
+      if (candidates.length >= limit) break;
+    }
+
+    return candidates;
+  }
+
+  /**
    * 測試 RAGIC API 連線
    */
   async testConnection(): Promise<boolean> {
@@ -295,6 +351,21 @@ export class RagicService {
     }
   }
 }
+
+const pickText = (record: StandardRecord, keys: string[]) => {
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      const joined = value.filter(Boolean).join(',');
+      if (joined) return joined;
+      continue;
+    }
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return '';
+};
 
 // 匯出實例
 export const ragicService = new RagicService();

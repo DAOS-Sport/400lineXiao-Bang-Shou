@@ -25,10 +25,17 @@
  *   GET    /api/internal/announcement-whitelist
  *   POST   /api/internal/announcement-whitelist
  *   PATCH  /api/internal/announcement-whitelist/:userId
- *   DELETE /api/internal/announcement-whitelist/:userId
+ *   DELETE /api/internal/announcement-whitelist/:userId  (相容路徑：停用，不實刪)
+ *
+ *   GET   /api/internal/feature-whitelist
+ *   POST  /api/internal/feature-whitelist
+ *   PATCH /api/internal/feature-whitelist/:lineUserId
+ *   GET   /api/internal/ragic/authorization-candidates?q=
  *
  *   GET  /api/internal/service-health
  *   GET  /api/internal/service-health/snapshots
+ *
+ *   GET  /api/internal/monitoring/*
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
@@ -40,10 +47,11 @@ import {
   listWhitelistUsers,
   addWhitelistUser,
   updateWhitelistUser,
-  deleteWhitelistUser,
 } from '../services/admin/whitelistRepo';
 import { aggregateHealth, getRecentSnapshots } from '../services/monitoring/healthAggregator';
+import { monitoringRouter } from './monitoringRoutes';
 import { interviewAuthorizedUsers } from '@shared/schema';
+import { RagicService } from '../services/ragicService';
 
 export const internalRouter = Router();
 
@@ -105,6 +113,7 @@ function requireInternalToken(req: Request, res: Response, next: NextFunction) {
 }
 
 internalRouter.use(requireInternalToken);
+internalRouter.use('/monitoring', monitoringRouter);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 輔助函式
@@ -174,6 +183,52 @@ function formatAnnouncement(row: typeof publishedAnnouncements.$inferSelect, fac
     groupId:            row.facilityLineGroupId ?? null,
     facilityName:       facilityName ?? null,
   };
+}
+
+function featureWhitelistRow(row: typeof interviewAuthorizedUsers.$inferSelect) {
+  const isActive = row.isActive === 'true';
+  return {
+    lineUserId: row.userId,
+    userId: row.userId,
+    displayName: row.userName,
+    userName: row.userName,
+    phone: null,
+    department: null,
+    employeeNumber: null,
+    isActive,
+    status: isActive ? 'active' : 'disabled',
+    features: {
+      interview: row.canInterviewCheck === 'true',
+      cautionQuery: row.canInternalQuery === 'true',
+      employeeLookup: row.canInternalQuery === 'true',
+      miniAssistant: true,
+      aiAgent: row.canUseAiAgent === 'true',
+      vipAnnouncement: false,
+    },
+    startsAt: null,
+    endsAt: null,
+    unlimited: true,
+    source: 'interview_authorized_users',
+    createdAt: row.createdAt?.toISOString?.() ?? row.createdAt,
+    updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt,
+  };
+}
+
+function featurePatchFromBody(body: any) {
+  const features = body?.features && typeof body.features === 'object' ? body.features : {};
+  const patch: Record<string, any> = {};
+  if (body?.displayName !== undefined || body?.userName !== undefined) {
+    patch.userName = String(body.displayName ?? body.userName);
+  }
+  if (body?.isActive !== undefined || body?.status !== undefined) {
+    patch.isActive = body.isActive === false || body.status === 'disabled' ? 'false' : 'true';
+  }
+  if (features.interview !== undefined) patch.canInterviewCheck = features.interview ? 'true' : 'false';
+  if (features.cautionQuery !== undefined) patch.canInternalQuery = features.cautionQuery ? 'true' : 'false';
+  if (features.employeeLookup !== undefined) patch.canInternalQuery = features.employeeLookup ? 'true' : 'false';
+  if (features.aiAgent !== undefined) patch.canUseAiAgent = features.aiAgent ? 'true' : 'false';
+  patch.updatedAt = new Date();
+  return patch;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -442,11 +497,11 @@ internalRouter.patch('/announcement-whitelist/:userId', async (req, res) => {
 internalRouter.delete('/announcement-whitelist/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
-    const ok = await deleteWhitelistUser(userId);
-    if (!ok) return res.status(404).json({ message: 'USER_NOT_FOUND' });
-    return res.json({ message: 'DELETED' });
+    const updated = await updateWhitelistUser(userId, { isActive: false });
+    if (!updated) return res.status(404).json({ message: 'USER_NOT_FOUND' });
+    return res.json({ message: 'DISABLED', data: updated });
   } catch (err: any) {
-    console.error('❌ [internal/whitelist] delete error:', err?.message);
+    console.error('❌ [internal/whitelist] disable error:', err?.message);
     return res.status(500).json({ message: 'SERVER_ERROR' });
   }
 });
@@ -494,12 +549,126 @@ internalRouter.get('/interview-users', async (_req, res) => {
         canInterviewCheck: r.canInterviewCheck === 'true',
         canInternalQuery:  r.canInternalQuery  === 'true',
         canUseAiAgent:     r.canUseAiAgent     === 'true',
-        note:             r.note ?? null,
       })),
       total: rows.length,
     });
   } catch (err: any) {
     console.error('❌ [internal/interview-users] error:', err?.message);
     return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 功能白名單主控 API（400QIAN 讀取 / 比對 / 後續寫入用）
+// GET   /api/internal/feature-whitelist
+// POST  /api/internal/feature-whitelist
+// PATCH /api/internal/feature-whitelist/:lineUserId
+// DELETE 不提供；撤權請 PATCH isActive=false 或 endsAt 到期
+// ═══════════════════════════════════════════════════════════════════════════
+
+internalRouter.get('/feature-whitelist', async (_req, res) => {
+  try {
+    const rows = await db.select().from(interviewAuthorizedUsers);
+    const items = rows.map(featureWhitelistRow);
+    return res.json({
+      authority: '400LINE',
+      generatedAt: new Date().toISOString(),
+      total: items.length,
+      items,
+      sourceStatus: {
+        source: 'interview_authorized_users',
+        status: 'ready',
+      },
+    });
+  } catch (err: any) {
+    console.error('❌ [internal/feature-whitelist] list error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+internalRouter.post('/feature-whitelist', async (req, res) => {
+  const body = req.body ?? {};
+  const lineUserId = String(body.lineUserId ?? body.userId ?? '').trim();
+  const displayName = String(body.displayName ?? body.userName ?? '').trim();
+  if (!lineUserId) return res.status(400).json({ message: 'MISSING_LINE_USER_ID' });
+  if (!displayName) return res.status(400).json({ message: 'MISSING_DISPLAY_NAME' });
+
+  try {
+    const existing = await db.select().from(interviewAuthorizedUsers).where(eq(interviewAuthorizedUsers.userId, lineUserId)).limit(1);
+    const patch = featurePatchFromBody(body);
+    if (existing[0]) {
+      const [updated] = await db.update(interviewAuthorizedUsers)
+        .set({ ...patch, userName: displayName })
+        .where(eq(interviewAuthorizedUsers.userId, lineUserId))
+        .returning();
+      return res.json({ data: featureWhitelistRow(updated), action: 'updated' });
+    }
+
+    const [created] = await db.insert(interviewAuthorizedUsers).values({
+      userId: lineUserId,
+      userName: displayName,
+      isActive: patch.isActive ?? 'true',
+      canInterviewCheck: patch.canInterviewCheck ?? 'true',
+      canInternalQuery: patch.canInternalQuery ?? 'false',
+      canUseAiAgent: patch.canUseAiAgent ?? 'false',
+    }).returning();
+    return res.status(201).json({ data: featureWhitelistRow(created), action: 'created' });
+  } catch (err: any) {
+    console.error('❌ [internal/feature-whitelist] upsert error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+internalRouter.patch('/feature-whitelist/:lineUserId', async (req, res) => {
+  const { lineUserId } = req.params;
+  const patch = featurePatchFromBody(req.body ?? {});
+  if (Object.keys(patch).length <= 1) return res.status(400).json({ message: 'NO_FIELDS_TO_UPDATE' });
+
+  try {
+    const [updated] = await db.update(interviewAuthorizedUsers)
+      .set(patch)
+      .where(eq(interviewAuthorizedUsers.userId, lineUserId))
+      .returning();
+    if (!updated) return res.status(404).json({ message: 'USER_NOT_FOUND' });
+    return res.json({ data: featureWhitelistRow(updated) });
+  } catch (err: any) {
+    console.error('❌ [internal/feature-whitelist] patch error:', err?.message);
+    return res.status(500).json({ message: 'SERVER_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Ragic 授權候選搜尋
+// GET /api/internal/ragic/authorization-candidates?q=姓名或LINEID
+// ═══════════════════════════════════════════════════════════════════════════
+
+internalRouter.get('/ragic/authorization-candidates', async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? '20'), 10) || 20));
+  if (!q) return res.json({ items: [], sourceStatus: { primary: 'H01', fallback: 'H02', status: 'empty_query' } });
+
+  try {
+    const service = new RagicService();
+    const items = await service.searchAuthorizationCandidates(q, limit);
+    return res.json({
+      items,
+      sourceStatus: {
+        primary: 'H01',
+        fallback: 'H02',
+        status: 'ready',
+        fallbackStatus: 'not_configured',
+      },
+    });
+  } catch (err: any) {
+    console.error('❌ [internal/ragic/authorization-candidates] error:', err?.message);
+    return res.status(502).json({
+      items: [],
+      sourceStatus: {
+        primary: 'H01',
+        fallback: 'H02',
+        status: 'error',
+        errorMessage: err?.message ?? 'RAGIC_QUERY_FAILED',
+      },
+    });
   }
 });

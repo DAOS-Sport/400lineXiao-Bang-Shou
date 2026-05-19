@@ -12,7 +12,8 @@ async function triggerPendingMessageCheck() {
     console.log('✅ 檢查完成');
     
   } catch (error) {
-    console.error('❌ 檢查失敗:', error.message);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ 檢查失敗:', message);
   }
 }
 

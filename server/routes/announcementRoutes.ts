@@ -150,7 +150,7 @@ announcementRouter.get('/announcement-dashboard/summary', async (_req, res) => {
     const midConf  = allRows.filter(r => parseFloat(r.confidence) >= 0.4 && parseFloat(r.confidence) < 0.7).length;
     const lowConf  = allRows.filter(r => parseFloat(r.confidence) < 0.4).length;
 
-    const focusGroups = [...FOCUS_GROUP_IDS];
+    const focusGroups = Array.from(FOCUS_GROUP_IDS);
 
     res.json({
       success: true,
